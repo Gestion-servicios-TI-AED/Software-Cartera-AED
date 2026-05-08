@@ -62,14 +62,14 @@ Sin colores oscuros en texto sobre fondo blanco excepto `#1e293b` para valores p
 
 ### KPI Cards (fila de 4)
 Grid de 4 columnas, cards blancas con borde `#e8f0fe` y `box-shadow` sutil.  
-Cada card tiene: ícono en cuadrado redondeado de color pastel, label gris, valor grande (`font-size: 22px, font-weight: 700`), tendencia con color (↑ verde, ↓ rojo, neutral gris).
+Cada card tiene: ícono en cuadrado redondeado de color pastel, label gris, valor grande (`font-size: 22px, font-weight: 700`). Sin indicadores de tendencia (el backend no tiene datos históricos).
 
-| Card | Valor | Ícono bg |
+| Card | Valor de API | Ícono bg |
 |---|---|---|
-| Total oportunidades | Conteo total con filtro `pagoSeparacion != null` | `#eff6ff` |
-| En negociación | Etapas intermedias activas | `#fffbeb` |
-| Total recaudado | Suma de `valorTotal` de registros activos | `#f0fdf4` |
-| Encargos activos | Conteo de `EncargFiduciario` | `#faf5ff` |
+| Total oportunidades | `GET /api/opportunities?page=1&pageSize=1` → campo `total` | `#eff6ff` |
+| En negociación | `GET /api/opportunities/stages` → suma de etapas intermedias | `#fffbeb` |
+| Total recaudado | `GET /api/opportunities` → suma client-side de `valorTotal` | `#f0fdf4` |
+| Encargos activos | `GET /api/fiducia` → campo `total` | `#faf5ff` |
 
 ### Tabla de oportunidades
 Card blanca con header que incluye título, badge de conteo azul, selector de etapa y botón "↻ Sincronizar".
@@ -102,7 +102,8 @@ Cada campo: label en 9px gris claro + valor en 12px `#1e293b`. Ref. recaudo en m
 
 1. **Plan de pagos** — tabla de 2 columnas (label | valor) con colores semánticos: verde para pagado, azul para pendiente cuota inicial, rojo para saldo
 2. **Avance de recaudo** — barra de progreso con gradiente azul-índigo, porcentaje a la derecha, subtexto `$Xm pagados / $Ym restantes`
-3. **Forma de pago** — barras horizontales proporcionales por concepto (cuotas, cesantías, crédito, prima), cada barra con label izquierda y valor derecha
+3. **Forma de pago** — barras horizontales proporcionales por concepto (cuotas, cesantías, crédito, prima), datos del subform `Forma_de_Pago`. Cada barra: label izquierda, barra proporcional al total, valor derecha.
+4. **Propuesta de pago** — tabla compacta de 2 columnas (Concepto | Valor) con filas del subform `Propuesta_de_Pago`. Si no hay datos, muestra estado vacío "Sin propuesta registrada".
 
 **Columna derecha (230px) — Movimientos:** Fondo blanco, borde izquierdo.  
 Timeline vertical: cada movimiento tiene dot de color por origen (verde fiducia, azul claro cuotas, morado Zoho), nombre, fecha, badge de origen (`Fiducia` / `Zoho CRM`), monto alineado a la derecha.  
@@ -138,7 +139,7 @@ Al hacer clic en un encargo se carga el detalle en el panel derecho sin navegaci
 - Paginación abajo: info de registros a la izquierda, botones Anterior / Siguiente a la derecha
 
 ### Botón de importación
-El botón "↑ Importar Excel" va en el topbar del módulo (azul primario, prominente). Reemplaza la zona de drag-and-drop que interrumpía el layout del listado. El upload abre un modal o panel lateral.
+El botón "↑ Importar Excel" va en el topbar del módulo (azul primario, prominente). Reemplaza la zona de drag-and-drop que interrumpía el layout del listado. El upload abre un **modal** centrado con zona de drag-and-drop y botón de selección de archivo. El modal muestra el progreso de procesamiento y cierra automáticamente al terminar con éxito.
 
 ---
 
