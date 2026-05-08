@@ -1,0 +1,345 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getEncargos, uploadFiducia, deleteEncargo, updateEncargo } from '../utils/api';
+import { formatDateTime } from '../utils/format';
+import NavBar from '../components/NavBar';
+
+function UploadZone({ onUploaded }) {
+  const inputRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  async function handleFiles(files) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setError(null);
+    setResult(null);
+
+    const results = [];
+    for (const file of files) {
+      try {
+        const fd = new FormData();
+        fd.append('archivo', file);
+        const res = await uploadFiducia(fd);
+        results.push({ file: file.name, hojas: res.hojas?.length || 0, ok: true });
+      } catch (err) {
+        results.push({ file: file.name, error: err.response?.data?.error || err.message, ok: false });
+      }
+    }
+
+    setResult(results);
+    setUploading(false);
+    onUploaded();
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    setDragging(false);
+    handleFiles([...e.dataTransfer.files].filter((f) => /\.xlsx?$/i.test(f.name)));
+  }
+
+  return (
+    <div className="mb-6">
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        onClick={() => inputRef.current?.click()}
+        className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+          dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
+        }`}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          multiple
+          className="hidden"
+          onChange={(e) => handleFiles([...e.target.files])}
+        />
+        {uploading ? (
+          <div className="flex items-center justify-center gap-2 text-blue-600">
+            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            Procesando archivo(s)...
+          </div>
+        ) : (
+          <>
+            <svg className="w-10 h-10 mx-auto mb-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <p className="text-sm font-medium text-gray-700">Arrastra los Excel aquí o haz clic para seleccionar</p>
+            <p className="text-xs text-gray-400 mt-1">Archivos .xlsx o .xls — puedes subir varios a la vez</p>
+          </>
+        )}
+      </div>
+
+      {result && (
+        <div className="mt-3 space-y-1">
+          {result.map((r, i) => (
+            <div
+              key={i}
+              className={`text-sm px-3 py-2 rounded-lg flex items-center gap-2 ${
+                r.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+              }`}
+            >
+              {r.ok ? (
+                <>
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span><strong>{r.file}</strong> — {r.hojas} hoja{r.hojas !== 1 ? 's' : ''} importada{r.hojas !== 1 ? 's' : ''}</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  <span><strong>{r.file}</strong> — {r.error}</span>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function FiduciaModule() {
+  const navigate = useNavigate();
+  const [data, setData] = useState(null);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ nombre: '', codigo: '' });
+
+  async function load(s = search, p = page) {
+    setLoading(true);
+    try {
+      const res = await getEncargos({ search: s || undefined, page: p, limit: 20 });
+      setData(res);
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  function handleSearch(e) {
+    const v = e.target.value;
+    setSearch(v);
+    setPage(1);
+    load(v, 1);
+  }
+
+  async function handleDelete(id, nombre) {
+    if (!confirm(`¿Eliminar el encargo "${nombre}"? Se borrarán todas sus hojas.`)) return;
+    setDeleting(id);
+    try {
+      await deleteEncargo(id);
+      load();
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  function startEdit(e, enc) {
+    e.stopPropagation();
+    setEditingId(enc.id);
+    setEditForm({ nombre: enc.nombre || '', codigo: enc.codigo || '' });
+  }
+
+  async function handleSaveEdit(e, id) {
+    e.stopPropagation();
+    try {
+      await updateEncargo(id, { nombre: editForm.nombre, codigo: editForm.codigo });
+      setEditingId(null);
+      load();
+    } catch (err) {
+      alert('Error al actualizar: ' + err.message);
+    }
+  }
+
+  function handleCancelEdit(e) {
+    e.stopPropagation();
+    setEditingId(null);
+  }
+
+  const pagination = data?.pagination;
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-screen-xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Movimientos Fiduciarios</h1>
+              <p className="text-xs text-gray-500 mt-0.5">Archivos Excel por encargo fiduciario</p>
+            </div>
+            <NavBar />
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-screen-xl mx-auto px-6 py-6">
+        <UploadZone onUploaded={() => { setPage(1); load(search, 1); }} />
+
+        {/* Búsqueda */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="relative flex-1 max-w-sm">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={handleSearch}
+              placeholder="Buscar encargo, código o archivo..."
+              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          {pagination && (
+            <span className="text-sm text-gray-500">{pagination.total} encargo{pagination.total !== 1 ? 's' : ''}</span>
+          )}
+        </div>
+
+        {/* Tabla */}
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-gray-400">
+            <svg className="w-5 h-5 animate-spin mr-2" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            Cargando...
+          </div>
+        ) : !data || data.data.length === 0 ? (
+          <div className="text-center py-16 text-gray-400">
+            <svg className="w-12 h-12 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p className="font-medium">Sin encargos importados</p>
+            <p className="text-sm mt-1">Arrastra un archivo Excel arriba para comenzar</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre / Código</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Archivo</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Hojas</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Importado</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {data.data.map((enc) => (
+                  <tr
+                    key={enc.id}
+                    className="border-b border-gray-100 hover:bg-blue-50 cursor-pointer"
+                    onClick={() => navigate(`/fiducia/${enc.id}/nomenclaturas`)}
+                  >
+                    <td className="px-4 py-3">
+                      {editingId === enc.id ? (
+                        <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            value={editForm.nombre}
+                            onChange={(e) => setEditForm({ ...editForm, nombre: e.target.value })}
+                            className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                            placeholder="Nombre del encargo"
+                          />
+                          <input
+                            type="text"
+                            value={editForm.codigo}
+                            onChange={(e) => setEditForm({ ...editForm, codigo: e.target.value })}
+                            className="text-xs border border-gray-300 rounded px-2 py-1 font-mono focus:outline-none focus:border-blue-500 w-24"
+                            placeholder="Código"
+                          />
+                          <div className="flex gap-2 mt-1">
+                            <button onClick={(e) => handleSaveEdit(e, enc.id)} className="text-xs text-white bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded font-medium">Guardar</button>
+                            <button onClick={handleCancelEdit} className="text-xs text-gray-600 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded font-medium">Cancelar</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="font-medium text-gray-900 truncate max-w-xs">{enc.nombre}</p>
+                          {enc.codigo && (
+                            <span className="text-xs font-mono text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded mt-0.5 inline-block">{enc.codigo}</span>
+                          )}
+                        </>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-xs">{enc.archivoNombre}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {enc.hojas.map((h) => (
+                          <span key={h.id} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                            {h.nombreHoja} ({h.totalFilas})
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDateTime(enc.createdAt)}</td>
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      {editingId !== enc.id && (
+                        <button
+                          onClick={(e) => startEdit(e, enc)}
+                          className="text-gray-400 hover:text-blue-600 transition-colors p-1 rounded mr-1"
+                          title="Editar"
+                        >
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(enc.id, enc.nombre)}
+                        disabled={deleting === enc.id}
+                        className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded"
+                        title="Eliminar"
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {pagination && pagination.totalPages > 1 && (
+              <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-xs text-gray-500">
+                  Página {pagination.page} de {pagination.totalPages}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    disabled={pagination.page === 1}
+                    onClick={() => { const p = page - 1; setPage(p); load(search, p); }}
+                    className="btn-secondary text-xs py-1 px-2 disabled:opacity-40"
+                  >Anterior</button>
+                  <button
+                    disabled={pagination.page === pagination.totalPages}
+                    onClick={() => { const p = page + 1; setPage(p); load(search, p); }}
+                    className="btn-secondary text-xs py-1 px-2 disabled:opacity-40"
+                  >Siguiente</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

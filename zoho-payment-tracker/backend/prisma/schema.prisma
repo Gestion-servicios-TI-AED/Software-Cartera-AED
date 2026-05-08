@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Opportunity {
+  id                 String    @id @default(uuid())
+  zohoId             String    @unique
+  dealName           String
+  stage              String?
+  contactName        String?
+  contactEmail       String?
+  contactPhone       String?
+  contactId          String?
+  accountName        String?
+  referenciaRecaudo  String?
+  pagoSeparacion     DateTime?
+
+  // Campos financieros dinámicos (todos los currency fields de Zoho)
+  camposFinancieros  Json?
+
+  // Secciones completas del CRM
+  seccionInmueble    Json?
+  seccionCotizacion  Json?
+
+  // Subforms de Zoho (array de filas)
+  formaPago          Json?
+  propuestaPago      Json?
+
+  // Movimientos de pago desde correo
+  pagosMovimientos   PagoMovimiento[]
+
+  // Control de sincronización
+  lastSyncedAt       DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model PagoMovimiento {
+  id             String       @id @default(uuid())
+  opportunityId  String?
+  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id])
+  emailId        String       // Graph message ID — clave de deduplicación
+  emailSubject   String?
+  emailFecha     DateTime?
+  archivoNombre  String?
+  referencia     String?      // referencia recaudo extraída de la fila
+  datos          Json         // fila completa del Excel como JSON
+  matched        Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([opportunityId])
+  @@index([referencia])
+  @@index([emailId])
+}
+
+model EmailSyncLog {
+  id                 String    @id @default(uuid())
+  startedAt          DateTime  @default(now())
+  finishedAt         DateTime?
+  status             String    // 'success' | 'error' | 'running'
+  emailsProcessed    Int       @default(0)
+  movimientosCreados Int       @default(0)
+  errorMsg           String?
+}
+
+model EncargFiduciario {
+  id            String                 @id @default(uuid())
+  nombre        String
+  codigo        String?
+  archivoNombre String
+  emailId       String?
+  emailAsunto   String?
+  emailFecha    DateTime?
+  hojas         HojaFiduciaria[]
+  movimientos   MovimientoFiduciario[]
+  createdAt     DateTime               @default(now())
+
+  @@index([codigo])
+}
+
+model HojaFiduciaria {
+  id           String                 @id @default(uuid())
+  encargId     String
+  encargo      EncargFiduciario       @relation(fields: [encargId], references: [id], onDelete: Cascade)
+  nombreHoja   String
+  columnas     Json                   // string[]
+  filas        Json                   // any[][]
+  totalFilas   Int                    @default(0)
+  movimientos  MovimientoFiduciario[]
+  createdAt    DateTime               @default(now())
+
+  @@index([encargId])
+}
+
+model MovimientoFiduciario {
+  id          String           @id @default(uuid())
+  encargId    String
+  encargo     EncargFiduciario @relation(fields: [encargId], references: [id], onDelete: Cascade)
+  hojaId      String
+  hoja        HojaFiduciaria   @relation(fields: [hojaId], references: [id], onDelete: Cascade)
+  nombreHoja  String           // desnormalizado para queries rápidas
+  propietario String?          // nombre del cliente/propietario detectado
+  datos       Json             // fila como { columna: valor }
+  createdAt   DateTime         @default(now())
+
+  @@index([encargId])
+  @@index([propietario])
+  @@index([encargId, propietario])
+}
+
+model ZohoFieldMetadata {
+  id          String   @id @default(uuid())
+  apiName     String   @unique
+  fieldLabel  String
+  dataType    String
+  sectionName String?
+  isCustom    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model SyncLog {
+  id          String    @id @default(uuid())
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  status      String    // 'success' | 'error' | 'running'
+  recordsSync Int       @default(0)
+  errorMsg    String?
+}

@@ -1,0 +1,5 @@
+# Claude Code internal folder
+.claude/
+
+# Environment files at root level
+.env
