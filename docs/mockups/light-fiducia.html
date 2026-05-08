@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Fiducia — Cartera AED</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #e8f0fe; display: flex; align-items: flex-start; justify-content: center; padding: 24px; gap: 24px; flex-direction: column; }
+
+.label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: #64748b; margin-bottom: 8px; }
+
+.shell {
+  width: 1060px; height: 600px; border-radius: 16px; overflow: hidden;
+  display: flex; box-shadow: 0 4px 6px -1px rgba(0,0,0,.08), 0 20px 40px -8px rgba(0,0,0,.14);
+  border: 1px solid #e2e8f0;
+}
+
+/* Sidebar */
+.sidebar { width: 60px; background: #fff; border-right: 1px solid #e8f0fe; display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 6px; flex-shrink: 0; }
+.sb-logo { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg,#3b82f6,#6366f1); display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; font-weight: 700; margin-bottom: 8px; }
+.sb-item { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 17px; color: #94a3b8; position: relative; }
+.sb-item.active { background: #eff6ff; color: #3b82f6; }
+.sb-item.active::before { content: ''; position: absolute; left: -1px; top: 25%; bottom: 25%; width: 3px; border-radius: 0 3px 3px 0; background: #3b82f6; }
+.sb-divider { width: 28px; height: 1px; background: #f1f5f9; margin: 4px 0; }
+.sb-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg,#bfdbfe,#ddd6fe); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #4f46e5; margin-top: auto; }
+
+/* Main content */
+.main { flex: 1; display: flex; flex-direction: column; background: #f8faff; overflow: hidden; }
+.topbar { height: 52px; background: #fff; border-bottom: 1px solid #e8f0fe; display: flex; align-items: center; padding: 0 20px; gap: 10px; flex-shrink: 0; }
+.topbar h1 { font-size: 15px; font-weight: 700; color: #1e293b; }
+.topbar-sub { font-size: 12px; color: #94a3b8; }
+.upload-btn { margin-left: auto; display: flex; align-items: center; gap: 6px; background: #3b82f6; color: #fff; border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; }
+
+.body { flex: 1; display: flex; overflow: hidden; }
+
+/* Left panel: encargo list */
+.encargo-list { width: 280px; border-right: 1px solid #e8f0fe; display: flex; flex-direction: column; background: #fff; overflow: hidden; }
+.list-header { padding: 12px 14px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 8px; }
+.search-box { flex: 1; background: #f8faff; border: 1px solid #e8f0fe; border-radius: 7px; padding: 6px 10px; font-size: 11px; color: #94a3b8; }
+.count-badge { background: #eff6ff; color: #3b82f6; border-radius: 99px; padding: 2px 8px; font-size: 10px; font-weight: 600; }
+
+.encargo-item { padding: 12px 14px; border-bottom: 1px solid #f8faff; cursor: pointer; transition: background .1s; display: flex; flex-direction: column; gap: 4px; }
+.encargo-item:hover { background: #f8faff; }
+.encargo-item.active { background: #eff6ff; border-left: 3px solid #3b82f6; padding-left: 11px; }
+.enc-name { font-size: 12px; font-weight: 600; color: #1e293b; }
+.enc-code { font-size: 10px; font-family: monospace; color: #3b82f6; background: #eff6ff; padding: 1px 6px; border-radius: 4px; display: inline-block; }
+.enc-meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.enc-sheets { font-size: 10px; color: #94a3b8; }
+.enc-date { font-size: 10px; color: #b0bad3; margin-left: auto; }
+
+/* Right panel: detail */
+.detail { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.detail-header { padding: 14px 18px; border-bottom: 1px solid #e8f0fe; background: #fff; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.detail-header h2 { font-size: 14px; font-weight: 700; color: #1e293b; }
+.detail-header-sub { font-size: 11px; color: #94a3b8; }
+
+/* Tab strip */
+.tabs { display: flex; gap: 0; padding: 0 18px; background: #fff; border-bottom: 1px solid #e8f0fe; flex-shrink: 0; overflow-x: auto; }
+.tab { padding: 10px 14px; font-size: 11px; font-weight: 500; color: #94a3b8; border-bottom: 2px solid transparent; white-space: nowrap; cursor: pointer; }
+.tab.active { color: #3b82f6; border-bottom-color: #3b82f6; font-weight: 600; }
+.tab:hover:not(.active) { color: #64748b; }
+.tab-count { display: inline-block; background: #f1f5f9; color: #64748b; border-radius: 99px; padding: 0px 5px; font-size: 9px; margin-left: 4px; }
+.tab.active .tab-count { background: #dbeafe; color: #3b82f6; }
+
+/* Table area */
+.table-area { flex: 1; overflow: auto; }
+.tbl-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-bottom: 1px solid #f1f5f9; background: #fff; }
+.tbl-search { background: #f8faff; border: 1px solid #e8f0fe; border-radius: 7px; padding: 5px 10px; font-size: 11px; color: #94a3b8; width: 160px; }
+.tbl-filter { background: #f8faff; border: 1px solid #e8f0fe; border-radius: 7px; padding: 5px 10px; font-size: 11px; color: #64748b; }
+.row-count { font-size: 11px; color: #94a3b8; margin-left: auto; }
+
+table { width: 100%; border-collapse: collapse; }
+thead th { padding: 9px 14px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; background: #f8faff; border-bottom: 1px solid #f1f5f9; text-align: left; white-space: nowrap; }
+thead th:first-child { position: sticky; left: 0; background: #f8faff; z-index: 1; }
+tbody tr { border-bottom: 1px solid #f8faff; cursor: pointer; }
+tbody tr:hover td { background: #f0f6ff; }
+tbody td { padding: 9px 14px; font-size: 11px; color: #334155; white-space: nowrap; }
+tbody td:first-child { position: sticky; left: 0; background: #fff; font-weight: 500; color: #1e293b; z-index: 1; }
+tbody tr:hover td:first-child { background: #f0f6ff; }
+
+.badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 600; }
+.badge-green { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+.badge-blue  { background: #eff6ff; color: #3b82f6; border: 1px solid #bfdbfe; }
+.badge-amber { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+.badge-red   { background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; }
+
+.pagination { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px; border-top: 1px solid #f1f5f9; background: #fff; flex-shrink: 0; }
+.pag-info { font-size: 11px; color: #94a3b8; }
+.pag-btns { display: flex; gap: 4px; }
+.pag-btn { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; }
+.pag-btn.prev { background: #f8faff; color: #64748b; border: 1px solid #e8f0fe; }
+.pag-btn.next { background: #3b82f6; color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="label">Vista 3 — Módulo Fiducia (Master-Detail + Tabs por hoja)</div>
+
+<div class="shell">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sb-logo">A</div>
+    <div class="sb-item">📊</div>
+    <div class="sb-item active">📁</div>
+    <div class="sb-item">💳</div>
+    <div class="sb-divider"></div>
+    <div class="sb-item">⚙️</div>
+    <div class="sb-avatar">RG</div>
+  </div>
+
+  <div class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <h1>Encargos Fiduciarios</h1>
+      <span class="topbar-sub">7 encargos activos</span>
+      <div class="upload-btn">↑ Importar Excel</div>
+    </div>
+
+    <div class="body">
+      <!-- Left: encargo list -->
+      <div class="encargo-list">
+        <div class="list-header">
+          <input class="search-box" placeholder="🔍 Buscar encargo…">
+          <span class="count-badge">7</span>
+        </div>
+
+        <div class="encargo-item">
+          <span class="enc-name">Torres del Parque</span>
+          <span class="enc-code">99289-TDP</span>
+          <div class="enc-meta">
+            <span class="enc-sheets">4 hojas · 180 aptos</span>
+            <span class="enc-date">Hoy</span>
+          </div>
+        </div>
+        <div class="encargo-item active">
+          <span class="enc-name">Kala Torre 3 y 4</span>
+          <span class="enc-code">99412-KAL</span>
+          <div class="enc-meta">
+            <span class="enc-sheets">5 hojas · 234 aptos</span>
+            <span class="enc-date">28 Abr</span>
+          </div>
+        </div>
+        <div class="encargo-item">
+          <span class="enc-name">Mirador Norte</span>
+          <span class="enc-code">99103-MNR</span>
+          <div class="enc-meta">
+            <span class="enc-sheets">3 hojas · 96 aptos</span>
+            <span class="enc-date">25 Abr</span>
+          </div>
+        </div>
+        <div class="encargo-item">
+          <span class="enc-name">Parque Central</span>
+          <span class="enc-code">99055-PKC</span>
+          <div class="enc-meta">
+            <span class="enc-sheets">3 hojas · 112 aptos</span>
+            <span class="enc-date">20 Abr</span>
+          </div>
+        </div>
+        <div class="encargo-item">
+          <span class="enc-name">Reserva del Río</span>
+          <span class="enc-code">99301-RDR</span>
+          <div class="enc-meta">
+            <span class="enc-sheets">2 hojas · 68 aptos</span>
+            <span class="enc-date">15 Abr</span>
+          </div>
+        </div>
+        <div class="encargo-item">
+          <span class="enc-name">Bosques de Ubaque</span>
+          <span class="enc-code">99187-BUB</span>
+          <div class="enc-meta">
+            <span class="enc-sheets">4 hojas · 140 aptos</span>
+            <span class="enc-date">10 Abr</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: detail -->
+      <div class="detail">
+        <div class="detail-header">
+          <div>
+            <h2>Kala Torre 3 y 4</h2>
+            <span class="detail-header-sub">Código: 99412-KAL · Importado 28 Abr 2026 · 234 apartamentos</span>
+          </div>
+          <div style="margin-left:auto; display:flex; gap:8px;">
+            <button style="background:#f8faff;border:1px solid #e8f0fe;border-radius:7px;padding:5px 12px;font-size:11px;color:#64748b;cursor:pointer;">✎ Editar</button>
+            <button style="background:#fff1f2;border:1px solid #fecdd3;border-radius:7px;padding:5px 12px;font-size:11px;color:#e11d48;cursor:pointer;">Eliminar</button>
+          </div>
+        </div>
+
+        <!-- Tabs (hojas) -->
+        <div class="tabs">
+          <div class="tab">Resumen<span class="tab-count">234</span></div>
+          <div class="tab active">Movimientos <span class="tab-count">1.240</span></div>
+          <div class="tab">Propietarios <span class="tab-count">198</span></div>
+          <div class="tab">Corte Dic 2025 <span class="tab-count">450</span></div>
+          <div class="tab">Corte Mar 2026 <span class="tab-count">380</span></div>
+          <div class="tab">Corte Abr 2026 <span class="tab-count">410</span></div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="tbl-toolbar">
+          <input class="tbl-search" placeholder="🔍 Buscar nomenclatura o propietario…">
+          <select class="tbl-filter"><option>Todos los estados</option><option>Vigente</option><option>Vencido</option></select>
+          <span class="row-count">1.240 registros</span>
+        </div>
+
+        <!-- Table -->
+        <div class="table-area">
+          <table>
+            <thead>
+              <tr>
+                <th>Nomenclatura</th>
+                <th>Propietario</th>
+                <th>Concepto</th>
+                <th>Fecha</th>
+                <th>Valor</th>
+                <th>Saldo</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>501</td>
+                <td>Carlos Mejía</td>
+                <td>Cuota administración</td>
+                <td>28 Abr 2026</td>
+                <td>$2.500.000</td>
+                <td>$0</td>
+                <td><span class="badge badge-green">Vigente</span></td>
+              </tr>
+              <tr>
+                <td>502</td>
+                <td>Ana Rodríguez</td>
+                <td>Cuota administración</td>
+                <td>28 Abr 2026</td>
+                <td>$2.500.000</td>
+                <td>$1.200.000</td>
+                <td><span class="badge badge-amber">Parcial</span></td>
+              </tr>
+              <tr>
+                <td>204</td>
+                <td>María Fernández</td>
+                <td>Interés de mora</td>
+                <td>15 Abr 2026</td>
+                <td>$180.000</td>
+                <td>$180.000</td>
+                <td><span class="badge badge-red">Vencido</span></td>
+              </tr>
+              <tr>
+                <td>301</td>
+                <td>Jorge Castaño</td>
+                <td>Cuota administración</td>
+                <td>28 Abr 2026</td>
+                <td>$2.500.000</td>
+                <td>$0</td>
+                <td><span class="badge badge-green">Vigente</span></td>
+              </tr>
+              <tr>
+                <td>108</td>
+                <td>Laura Ospina</td>
+                <td>Cuota administración</td>
+                <td>28 Abr 2026</td>
+                <td>$2.500.000</td>
+                <td>$2.500.000</td>
+                <td><span class="badge badge-red">Vencido</span></td>
+              </tr>
+              <tr>
+                <td>612</td>
+                <td>Andrés Vargas</td>
+                <td>Abono capital</td>
+                <td>20 Abr 2026</td>
+                <td>$5.000.000</td>
+                <td>$0</td>
+                <td><span class="badge badge-green">Vigente</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination">
+          <span class="pag-info">Mostrando 1–50 de 1.240 registros</span>
+          <div class="pag-btns">
+            <button class="pag-btn prev">← Anterior</button>
+            <button class="pag-btn next">Siguiente →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

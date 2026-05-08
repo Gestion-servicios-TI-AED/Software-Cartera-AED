@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enfoques de Rediseño — Cartera AED</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 32px; }
+
+  h1 { text-align: center; font-size: 22px; color: #f8fafc; margin-bottom: 8px; letter-spacing: -0.5px; }
+  .subtitle { text-align: center; font-size: 13px; color: #94a3b8; margin-bottom: 40px; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+
+  .card {
+    background: #1e293b;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid #334155;
+    display: flex;
+    flex-direction: column;
+  }
+  .card.recommended { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6, 0 0 32px #3b82f620; }
+
+  .card-header {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid #334155;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 99px;
+    margin-bottom: 8px;
+  }
+  .badge-blue { background: #1d4ed8; color: #bfdbfe; }
+  .badge-green { background: #065f46; color: #a7f3d0; }
+  .badge-purple { background: #5b21b6; color: #ddd6fe; }
+  .badge-rec { background: #1d4ed8; color: #fff; }
+
+  .card-header h2 { font-size: 16px; color: #f1f5f9; margin-bottom: 4px; }
+  .card-header p { font-size: 12px; color: #94a3b8; line-height: 1.5; }
+
+  .mockup {
+    flex: 1;
+    padding: 16px;
+    background: #0f172a;
+    min-height: 320px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ── APPROACH 1: Sidebar + Cards ── */
+  .a1-shell { display: flex; height: 280px; border-radius: 8px; overflow: hidden; border: 1px solid #334155; }
+  .a1-sidebar {
+    width: 52px; background: #1e3a5f; display: flex; flex-direction: column;
+    align-items: center; padding: 10px 0; gap: 8px; border-right: 1px solid #1d4ed830;
+  }
+  .a1-icon { width: 32px; height: 32px; border-radius: 8px; background: #1d4ed840; display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; }
+  .a1-icon.active { background: #3b82f6; }
+  .a1-main { flex: 1; display: flex; flex-direction: column; background: #0f172a; overflow: hidden; }
+  .a1-topbar { height: 32px; background: #1e293b; border-bottom: 1px solid #334155; display: flex; align-items: center; padding: 0 10px; gap: 6px; }
+  .a1-breadcrumb { font-size: 9px; color: #64748b; }
+  .a1-breadcrumb span { color: #3b82f6; }
+  .a1-kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; padding: 8px; }
+  .a1-kpi { background: #1e293b; border-radius: 6px; padding: 8px; border: 1px solid #334155; }
+  .a1-kpi-label { font-size: 8px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+  .a1-kpi-val { font-size: 14px; font-weight: 700; color: #f8fafc; margin-top: 2px; }
+  .a1-kpi-sub { font-size: 8px; color: #22c55e; margin-top: 1px; }
+  .a1-table-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; }
+  .a1-table-header span { font-size: 10px; font-weight: 600; color: #94a3b8; }
+  .a1-search { background: #334155; border-radius: 4px; padding: 3px 8px; font-size: 9px; color: #94a3b8; border: none; width: 100px; }
+  .a1-row { display: grid; grid-template-columns: 2fr 1fr 0.8fr 0.8fr; gap: 4px; padding: 5px 8px; align-items: center; font-size: 9px; border-bottom: 1px solid #1e293b; }
+  .a1-row:hover { background: #1e293b; }
+  .a1-row-head { background: #1e293b; color: #475569; font-size: 8px; text-transform: uppercase; }
+  .pill { display: inline-block; padding: 1px 6px; border-radius: 99px; font-size: 8px; font-weight: 600; }
+  .pill-green { background: #052e16; color: #4ade80; }
+  .pill-blue { background: #0c1a40; color: #60a5fa; }
+  .pill-amber { background: #2d1a00; color: #fbbf24; }
+  .pill-purple { background: #1e1040; color: #c084fc; }
+
+  /* ── APPROACH 2: Tabs + Analytics ── */
+  .a2-shell { height: 280px; border-radius: 8px; overflow: hidden; border: 1px solid #334155; display: flex; flex-direction: column; }
+  .a2-nav { background: #1e293b; display: flex; align-items: center; padding: 0 10px; height: 36px; border-bottom: 1px solid #334155; gap: 1px; }
+  .a2-navitem { padding: 4px 10px; font-size: 9px; color: #64748b; border-radius: 4px; }
+  .a2-navitem.active { background: #3b82f6; color: white; font-weight: 600; }
+  .a2-content { flex: 1; display: flex; overflow: hidden; }
+  .a2-left { flex: 1.2; padding: 8px; display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
+  .a2-right { width: 130px; background: #0a0f1a; border-left: 1px solid #334155; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .a2-chart-title { font-size: 8px; color: #64748b; text-transform: uppercase; }
+  .a2-bars { display: flex; align-items: flex-end; gap: 3px; height: 50px; }
+  .a2-bar { flex: 1; border-radius: 2px 2px 0 0; }
+  .a2-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .a2-stat { background: #1e293b; border-radius: 5px; padding: 6px; }
+  .a2-stat-label { font-size: 7px; color: #64748b; }
+  .a2-stat-val { font-size: 12px; font-weight: 700; color: #f8fafc; }
+  .a2-donut-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .a2-donut { width: 60px; height: 60px; border-radius: 50%; background: conic-gradient(#3b82f6 0% 45%, #22c55e 45% 70%, #f59e0b 70% 85%, #6366f1 85% 100%); display: flex; align-items: center; justify-content: center; }
+  .a2-donut-inner { width: 38px; height: 38px; border-radius: 50%; background: #0a0f1a; }
+  .a2-legend { display: flex; flex-direction: column; gap: 3px; width: 100%; }
+  .a2-legend-item { display: flex; align-items: center; gap: 4px; font-size: 7px; color: #94a3b8; }
+  .a2-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .a2-tabs { display: flex; gap: 1px; padding: 0 8px; border-bottom: 1px solid #334155; background: #1e293b; }
+  .a2-tab { padding: 5px 10px; font-size: 8px; color: #64748b; border-bottom: 2px solid transparent; }
+  .a2-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+
+  /* ── APPROACH 3: Dual Mode ── */
+  .a3-shell { height: 280px; border-radius: 8px; overflow: hidden; border: 1px solid #334155; display: flex; flex-direction: column; }
+  .a3-mode-bar { background: #1e293b; height: 38px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-bottom: 1px solid #334155; }
+  .a3-mode-toggle { display: flex; background: #0f172a; border-radius: 6px; padding: 2px; }
+  .a3-mode-btn { padding: 3px 10px; font-size: 9px; border-radius: 4px; color: #64748b; }
+  .a3-mode-btn.active { background: #3b82f6; color: white; font-weight: 600; }
+  .a3-content { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 0; overflow: hidden; }
+  .a3-panel { padding: 8px; display: flex; flex-direction: column; gap: 5px; overflow: hidden; }
+  .a3-panel-title { font-size: 8px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; padding-bottom: 4px; border-bottom: 1px solid #334155; }
+  .a3-deal-card { background: #1e293b; border-radius: 5px; padding: 6px 8px; border: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+  .a3-deal-name { font-size: 9px; color: #e2e8f0; }
+  .a3-deal-amt { font-size: 9px; color: #22c55e; font-weight: 600; }
+  .a3-divider { width: 1px; background: #334155; }
+  .a3-move-row { display: flex; gap: 6px; align-items: center; font-size: 8px; color: #94a3b8; }
+  .a3-move-dot { width: 6px; height: 6px; border-radius: 50%; background: #3b82f6; flex-shrink: 0; }
+  .a3-warning { background: #2d1a00; border: 1px solid #92400e; border-radius: 5px; padding: 5px 8px; font-size: 8px; color: #fbbf24; }
+
+  /* ── Footer ── */
+  .card-footer { padding: 14px 20px; border-top: 1px solid #334155; }
+  .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pros-title, .cons-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .pros-title { color: #4ade80; }
+  .cons-title { color: #f87171; }
+  .pros li, .cons li { font-size: 10px; color: #94a3b8; margin-left: 12px; margin-bottom: 2px; line-height: 1.4; }
+
+  .rec-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #1d4ed820; border: 1px solid #3b82f6;
+    border-radius: 6px; padding: 5px 10px; margin-top: 10px;
+    font-size: 11px; color: #93c5fd; font-weight: 500;
+  }
+  .rec-badge::before { content: '★'; color: #f59e0b; }
+</style>
+</head>
+<body>
+
+<h1>3 Enfoques de Rediseño — Cartera AED</h1>
+<p class="subtitle">Escritorio · React + Tailwind · Equipos Comercial y Cartera</p>
+
+<div class="grid">
+
+  <!-- APPROACH 1 -->
+  <div class="card recommended">
+    <div class="card-header">
+      <span class="badge badge-blue">Opción A</span>
+      <h2>Sidebar + Dashboard con KPIs</h2>
+      <p>Navegación lateral persistente, tarjetas de métricas arriba, tabla compacta debajo. Detalle de oportunidad en layout de 3 columnas.</p>
+    </div>
+    <div class="mockup">
+      <div class="a1-shell">
+        <div class="a1-sidebar">
+          <div class="a1-icon">🏠</div>
+          <div class="a1-icon active">📊</div>
+          <div class="a1-icon">📁</div>
+          <div class="a1-icon">📧</div>
+        </div>
+        <div class="a1-main">
+          <div class="a1-topbar">
+            <span class="a1-breadcrumb">Cartera AED › <span>Oportunidades</span></span>
+            <span style="margin-left:auto; font-size:9px; color:#22c55e;">● Sync hace 2min</span>
+          </div>
+          <div class="a1-kpi-row">
+            <div class="a1-kpi"><div class="a1-kpi-label">Total oport.</div><div class="a1-kpi-val">142</div><div class="a1-kpi-sub">↑ 4 esta semana</div></div>
+            <div class="a1-kpi"><div class="a1-kpi-label">En negociación</div><div class="a1-kpi-val">38</div><div class="a1-kpi-sub" style="color:#f59e0b;">↓ 2 hoy</div></div>
+            <div class="a1-kpi"><div class="a1-kpi-label">Recaudado</div><div class="a1-kpi-val">$2.4B</div><div class="a1-kpi-sub">↑ 12%</div></div>
+            <div class="a1-kpi"><div class="a1-kpi-label">Encargos</div><div class="a1-kpi-val">7</div><div class="a1-kpi-sub" style="color:#64748b;">activos</div></div>
+          </div>
+          <div class="a1-table-header">
+            <span>Oportunidades</span>
+            <input class="a1-search" placeholder="🔍 Buscar...">
+          </div>
+          <div class="a1-row a1-row-head"><span>Negocio</span><span>Etapa</span><span>Separación</span><span>Valor</span></div>
+          <div class="a1-row"><span style="color:#e2e8f0;">Torres del Parque 204</span><span><span class="pill pill-green">Ganado</span></span><span style="color:#94a3b8;">12 Mar</span><span style="color:#22c55e;">$280M</span></div>
+          <div class="a1-row"><span style="color:#e2e8f0;">Kala T3 Apto 501</span><span><span class="pill pill-blue">Propuesta</span></span><span style="color:#94a3b8;">28 Abr</span><span style="color:#22c55e;">$195M</span></div>
+          <div class="a1-row"><span style="color:#e2e8f0;">Mirador Norte 108</span><span><span class="pill pill-amber">Negoc.</span></span><span style="color:#94a3b8;">3 May</span><span style="color:#22c55e;">$340M</span></div>
+          <div class="a1-row"><span style="color:#e2e8f0;">Parque Central 612</span><span><span class="pill pill-purple">Análisis</span></span><span style="color:#94a3b8;">15 May</span><span style="color:#22c55e;">$220M</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-footer">
+      <div class="pros-cons">
+        <div>
+          <div class="pros-title">✓ Ventajas</div>
+          <ul class="pros">
+            <li>Máximo aprovechamiento del ancho de escritorio</li>
+            <li>KPIs siempre visibles sin scroll</li>
+            <li>Navegación permanente sin perder contexto</li>
+            <li>Escalable a más módulos futuros</li>
+          </ul>
+        </div>
+        <div>
+          <div class="cons-title">✗ Desafíos</div>
+          <ul class="cons">
+            <li>Cambio más grande para usuarios habituales</li>
+            <li>Requiere rediseñar todos los layouts</li>
+            <li>El sidebar ocupa espacio horizontal</li>
+          </ul>
+        </div>
+      </div>
+      <div class="rec-badge">Recomendado — mejor balance entre cambio y beneficio</div>
+    </div>
+  </div>
+
+  <!-- APPROACH 2 -->
+  <div class="card">
+    <div class="card-header">
+      <span class="badge badge-green">Opción B</span>
+      <h2>Top Nav + Tabs + Gráficas</h2>
+      <p>Mantiene la navegación superior actual. Agrega un dashboard de analítica con gráficas de etapas y movimientos. Detalle reemplaza secciones colapsables por tabs.</p>
+    </div>
+    <div class="mockup">
+      <div class="a2-shell">
+        <div class="a2-nav">
+          <span style="font-size:10px; font-weight:700; color:#3b82f6; margin-right:12px;">AED</span>
+          <span class="a2-navitem active">Oportunidades</span>
+          <span class="a2-navitem">Encargos</span>
+          <span class="a2-navitem">Movimientos</span>
+          <span style="margin-left:auto; font-size:9px; color:#64748b;">rgalindo@aed.com.co</span>
+        </div>
+        <div class="a2-tabs">
+          <span class="a2-tab active">Dashboard</span>
+          <span class="a2-tab">Lista</span>
+          <span class="a2-tab">Mapa</span>
+        </div>
+        <div class="a2-content">
+          <div class="a2-left">
+            <div class="a2-stats">
+              <div class="a2-stat"><div class="a2-stat-label">Oportunidades</div><div class="a2-stat-val">142</div></div>
+              <div class="a2-stat"><div class="a2-stat-label">Recaudado</div><div class="a2-stat-val">$2.4B</div></div>
+              <div class="a2-stat"><div class="a2-stat-label">Encargos activos</div><div class="a2-stat-val">7</div></div>
+              <div class="a2-stat"><div class="a2-stat-label">Pendientes</div><div class="a2-stat-val">38</div></div>
+            </div>
+            <div>
+              <div class="a2-chart-title" style="margin-bottom:4px;">Recaudo mensual (COP)</div>
+              <div class="a2-bars">
+                <div class="a2-bar" style="height:30%; background:#1d4ed8;"></div>
+                <div class="a2-bar" style="height:55%; background:#1d4ed8;"></div>
+                <div class="a2-bar" style="height:40%; background:#1d4ed8;"></div>
+                <div class="a2-bar" style="height:70%; background:#1d4ed8;"></div>
+                <div class="a2-bar" style="height:60%; background:#1d4ed8;"></div>
+                <div class="a2-bar" style="height:90%; background:#3b82f6;"></div>
+                <div class="a2-bar" style="height:75%; background:#1d4ed860;"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-top:3px;">
+                <span style="font-size:7px; color:#475569;">Nov</span>
+                <span style="font-size:7px; color:#475569;">Dic</span>
+                <span style="font-size:7px; color:#475569;">Ene</span>
+                <span style="font-size:7px; color:#475569;">Feb</span>
+                <span style="font-size:7px; color:#475569;">Mar</span>
+                <span style="font-size:7px; color:#475569;">Abr</span>
+                <span style="font-size:7px; color:#475569;">May</span>
+              </div>
+            </div>
+          </div>
+          <div class="a2-right">
+            <div class="a2-chart-title">Por etapa</div>
+            <div class="a2-donut-wrap">
+              <div class="a2-donut"><div class="a2-donut-inner"></div></div>
+              <div class="a2-legend">
+                <div class="a2-legend-item"><div class="a2-dot" style="background:#3b82f6;"></div>Propuesta 45%</div>
+                <div class="a2-legend-item"><div class="a2-dot" style="background:#22c55e;"></div>Ganado 25%</div>
+                <div class="a2-legend-item"><div class="a2-dot" style="background:#f59e0b;"></div>Negoc. 15%</div>
+                <div class="a2-legend-item"><div class="a2-dot" style="background:#6366f1;"></div>Otros 15%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-footer">
+      <div class="pros-cons">
+        <div>
+          <div class="pros-title">✓ Ventajas</div>
+          <ul class="pros">
+            <li>Menor curva de aprendizaje (nav igual)</li>
+            <li>Gráficas dan valor analítico real</li>
+            <li>Implementación incremental posible</li>
+          </ul>
+        </div>
+        <div>
+          <div class="cons-title">✗ Desafíos</div>
+          <ul class="cons">
+            <li>Requiere librería de charting (Recharts)</li>
+            <li>El detalle de oportunidad sigue complejo</li>
+            <li>Menos espacio para el contenido principal</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPROACH 3 -->
+  <div class="card">
+    <div class="card-header">
+      <span class="badge badge-purple">Opción C</span>
+      <h2>Vista Dual por Rol</h2>
+      <p>Toggle "Comercial / Cartera" que cambia el dashboard y la info priorizada. Cada equipo ve lo que le importa sin ruido del otro módulo.</p>
+    </div>
+    <div class="mockup">
+      <div class="a3-shell">
+        <div class="a3-mode-bar">
+          <span style="font-size:10px; font-weight:700; color:#3b82f6;">Cartera AED</span>
+          <div class="a3-mode-toggle">
+            <div class="a3-mode-btn active">Comercial</div>
+            <div class="a3-mode-btn">Cartera</div>
+          </div>
+          <span style="font-size:9px; color:#64748b;">● En línea</span>
+        </div>
+        <div class="a3-content">
+          <div class="a3-panel">
+            <div class="a3-panel-title">Mis Oportunidades</div>
+            <div class="a3-deal-card">
+              <div>
+                <div class="a3-deal-name">Torres del Parque 204</div>
+                <span class="pill pill-green">Cerrado</span>
+              </div>
+              <div class="a3-deal-amt">$280M</div>
+            </div>
+            <div class="a3-deal-card">
+              <div>
+                <div class="a3-deal-name">Kala Torre 3 - 501</div>
+                <span class="pill pill-blue">Propuesta</span>
+              </div>
+              <div class="a3-deal-amt">$195M</div>
+            </div>
+            <div class="a3-deal-card">
+              <div>
+                <div class="a3-deal-name">Mirador Norte 108</div>
+                <span class="pill pill-amber">Negoc.</span>
+              </div>
+              <div class="a3-deal-amt">$340M</div>
+            </div>
+            <div class="a3-warning">⚠ 3 pagos pendientes de confirmación</div>
+          </div>
+          <div class="a3-divider"></div>
+          <div class="a3-panel">
+            <div class="a3-panel-title">Últimos Movimientos</div>
+            <div class="a3-move-row"><div class="a3-move-dot"></div><span>Kala T3-501 · $12.5M · Hoy 9:14</span></div>
+            <div class="a3-move-row"><div class="a3-move-dot" style="background:#22c55e;"></div><span>Torres 204 · $28M · Ayer 16:02</span></div>
+            <div class="a3-move-row"><div class="a3-move-dot" style="background:#f59e0b;"></div><span>Mirador 108 · Pendiente · 5 May</span></div>
+            <div class="a3-move-row"><div class="a3-move-dot"></div><span>Parque Central · $9M · 4 May</span></div>
+            <div style="margin-top:6px; padding-top:6px; border-top:1px solid #334155;">
+              <div class="a3-panel-title" style="margin-bottom:4px;">Encargos Activos</div>
+              <div class="a3-move-row"><span>Kala Torre 3 y 4 · 234 aptos</span></div>
+              <div class="a3-move-row"><span>Torres del Parque · 180 aptos</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-footer">
+      <div class="pros-cons">
+        <div>
+          <div class="pros-title">✓ Ventajas</div>
+          <ul class="pros">
+            <li>Cada rol ve info relevante</li>
+            <li>Reduce ruido cognitivo por equipo</li>
+          </ul>
+        </div>
+        <div>
+          <div class="cons-title">✗ Desafíos</div>
+          <ul class="cons">
+            <li>Duplica lógica de componentes</li>
+            <li>Sin auth de roles, el toggle es cosmético</li>
+            <li>Más difícil de mantener</li>
+            <li>No resuelve el problema de las tablas densas</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

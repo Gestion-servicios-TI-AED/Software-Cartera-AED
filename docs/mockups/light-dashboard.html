@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Cartera AED — Diseño Claro</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #e8f0fe; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 32px 24px; gap: 32px; }
+
+/* ── Palette strip ── */
+.palette { display: flex; gap: 8px; align-items: center; }
+.swatch { width: 48px; height: 48px; border-radius: 10px; border: 1px solid rgba(0,0,0,.06); display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 4px; }
+.swatch span { font-size: 8px; color: #64748b; }
+.section-label { font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+
+/* ── Shell ── */
+.label { font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.6px; }
+
+.shell {
+  width: 960px;
+  height: 580px;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,.07), 0 20px 40px -8px rgba(0,0,0,.12);
+  border: 1px solid #e2e8f0;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 60px;
+  background: #ffffff;
+  border-right: 1px solid #e8f0fe;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  gap: 6px;
+}
+.sb-logo {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; color: white; font-weight: 700; margin-bottom: 8px;
+}
+.sb-item {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; cursor: pointer; color: #94a3b8;
+  transition: all .15s;
+  position: relative;
+}
+.sb-item:hover { background: #f1f5f9; color: #64748b; }
+.sb-item.active { background: #eff6ff; color: #3b82f6; }
+.sb-item.active::before {
+  content: ''; position: absolute; left: -1px; top: 25%; bottom: 25%;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: #3b82f6;
+}
+.sb-divider { width: 28px; height: 1px; background: #f1f5f9; margin: 4px 0; }
+.sb-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, #bfdbfe, #ddd6fe);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #4f46e5;
+  margin-top: auto;
+}
+
+/* ── Main ── */
+.main { flex: 1; display: flex; flex-direction: column; background: #f8faff; overflow: hidden; }
+
+/* Topbar */
+.topbar {
+  height: 52px; background: #ffffff; border-bottom: 1px solid #e8f0fe;
+  display: flex; align-items: center; padding: 0 20px; gap: 12px;
+  flex-shrink: 0;
+}
+.topbar h1 { font-size: 15px; font-weight: 700; color: #1e293b; }
+.topbar-sub { font-size: 12px; color: #94a3b8; margin-left: 2px; }
+.search-box {
+  margin-left: auto;
+  background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px;
+  padding: 6px 12px; display: flex; align-items: center; gap: 6px; width: 200px;
+}
+.search-box span { font-size: 12px; color: #94a3b8; }
+.sync-badge {
+  display: flex; align-items: center; gap: 5px;
+  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;
+  padding: 5px 10px; font-size: 11px; color: #16a34a; font-weight: 500;
+}
+.sync-dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
+
+/* Content */
+.content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+/* KPIs */
+.kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+.kpi-card {
+  background: #ffffff; border-radius: 12px; padding: 16px;
+  border: 1px solid #e8f0fe;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.kpi-icon {
+  width: 32px; height: 32px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; margin-bottom: 4px;
+}
+.kpi-label { font-size: 11px; color: #94a3b8; font-weight: 500; }
+.kpi-value { font-size: 22px; font-weight: 700; color: #1e293b; letter-spacing: -0.5px; }
+.kpi-trend { font-size: 11px; font-weight: 500; display: flex; align-items: center; gap: 3px; }
+.trend-up { color: #16a34a; }
+.trend-down { color: #ef4444; }
+.trend-neutral { color: #94a3b8; }
+
+/* Table section */
+.table-card {
+  background: #ffffff; border-radius: 12px;
+  border: 1px solid #e8f0fe; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  flex: 1;
+}
+.table-header {
+  display: flex; align-items: center; padding: 14px 16px;
+  border-bottom: 1px solid #f1f5f9; gap: 10px;
+}
+.table-title { font-size: 13px; font-weight: 600; color: #1e293b; }
+.count-badge {
+  background: #eff6ff; color: #3b82f6; border-radius: 99px;
+  padding: 2px 8px; font-size: 11px; font-weight: 600;
+}
+.filter-row {
+  display: flex; gap: 8px; margin-left: auto; align-items: center;
+}
+.filter-select {
+  background: #f8faff; border: 1px solid #e2e8f0; border-radius: 7px;
+  padding: 5px 10px; font-size: 11px; color: #475569;
+}
+.sync-btn {
+  background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 7px;
+  padding: 5px 12px; font-size: 11px; color: #3b82f6; font-weight: 500; cursor: pointer;
+}
+
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  text-align: left; padding: 10px 14px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.6px; color: #94a3b8; background: #f8faff;
+  border-bottom: 1px solid #f1f5f9;
+}
+tbody tr { border-bottom: 1px solid #f8faff; cursor: pointer; }
+tbody tr:hover td { background: #f0f6ff; }
+tbody td { padding: 11px 14px; font-size: 12px; color: #334155; }
+.td-name { font-weight: 500; color: #1e293b; }
+.td-ref { font-family: monospace; font-size: 11px; color: #64748b; background: #f8faff; padding: 2px 6px; border-radius: 4px; }
+.td-amount { color: #1e293b; font-weight: 600; }
+.td-date { color: #64748b; }
+
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 99px; font-size: 10px; font-weight: 600; }
+.badge-won     { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+.badge-prop    { background: #eff6ff; color: #3b82f6; border: 1px solid #bfdbfe; }
+.badge-neg     { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+.badge-analysis{ background: #faf5ff; color: #7c3aed; border: 1px solid #ddd6fe; }
+.badge-percep  { background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; }
+
+/* ── Detail Shell ── */
+.detail-shell {
+  width: 960px;
+  height: 540px;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,.07), 0 20px 40px -8px rgba(0,0,0,.12);
+  border: 1px solid #e2e8f0;
+  background: #f8faff;
+}
+
+/* Detail sidebar (same as main) */
+.detail-left {
+  width: 60px; background: #ffffff; border-right: 1px solid #e8f0fe;
+  display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 6px;
+}
+
+/* Detail content */
+.detail-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.detail-topbar {
+  height: 52px; background: #ffffff; border-bottom: 1px solid #e8f0fe;
+  display: flex; align-items: center; padding: 0 20px; gap: 10px; flex-shrink: 0;
+}
+.back-btn {
+  width: 28px; height: 28px; border-radius: 7px; background: #f1f5f9;
+  display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer;
+}
+.detail-topbar h1 { font-size: 14px; font-weight: 700; color: #1e293b; }
+
+/* 3 column layout */
+.detail-body { flex: 1; display: grid; grid-template-columns: 220px 1fr 220px; gap: 0; overflow: hidden; }
+
+.col-left { padding: 16px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid #e8f0fe; overflow-y: auto; }
+.col-center { padding: 16px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.col-right { padding: 16px; display: flex; flex-direction: column; gap: 10px; border-left: 1px solid #e8f0fe; overflow-y: auto; background: #ffffff; }
+
+.info-section { display: flex; flex-direction: column; gap: 6px; }
+.info-section-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: #94a3b8; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9; }
+.info-field { display: flex; flex-direction: column; gap: 1px; }
+.info-label { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; }
+.info-value { font-size: 12px; color: #1e293b; font-weight: 500; }
+.info-value.mono { font-family: monospace; font-size: 11px; background: #eff6ff; color: #3b82f6; padding: 2px 6px; border-radius: 4px; }
+
+.plan-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+.plan-row:last-child { border-bottom: none; }
+.plan-label { font-size: 11px; color: #64748b; }
+.plan-value { font-size: 12px; font-weight: 600; color: #1e293b; }
+.plan-value.blue { color: #3b82f6; }
+.plan-value.green { color: #16a34a; }
+
+.mini-card { background: #f8faff; border: 1px solid #e8f0fe; border-radius: 8px; padding: 10px 12px; }
+.mini-card-title { font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+
+.mov-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px 0; border-bottom: 1px solid #f1f5f9; }
+.mov-item:last-child { border-bottom: none; }
+.mov-dot { width: 7px; height: 7px; border-radius: 50%; background: #bfdbfe; margin-top: 3px; flex-shrink: 0; }
+.mov-dot.green { background: #bbf7d0; }
+.mov-info { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.mov-name { font-size: 11px; color: #334155; font-weight: 500; }
+.mov-meta { font-size: 10px; color: #94a3b8; }
+.mov-amount { font-size: 11px; font-weight: 600; color: #1e293b; flex-shrink: 0; }
+
+.chart-bar-wrap { display: flex; flex-direction: column; gap: 4px; }
+.chart-bar-row { display: flex; align-items: center; gap: 6px; }
+.chart-bar-label { font-size: 9px; color: #94a3b8; width: 60px; text-align: right; flex-shrink: 0; }
+.chart-bar-bg { flex: 1; height: 8px; background: #f1f5f9; border-radius: 99px; overflow: hidden; }
+.chart-bar-fill { height: 100%; border-radius: 99px; }
+.chart-bar-val { font-size: 9px; color: #64748b; width: 32px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<!-- Paleta -->
+<div>
+  <div class="section-label">Paleta de colores</div>
+  <div class="palette">
+    <div class="swatch" style="background:#ffffff;"><span>#ffffff</span></div>
+    <div class="swatch" style="background:#f8faff;"><span>#f8faff</span></div>
+    <div class="swatch" style="background:#eff6ff;"><span>#eff6ff</span></div>
+    <div class="swatch" style="background:#dbeafe;"><span>#dbeafe</span></div>
+    <div class="swatch" style="background:#bfdbfe;"><span>#bfdbfe</span></div>
+    <div class="swatch" style="background:#3b82f6;"><span style="color:#fff">#3b82f6</span></div>
+    <div class="swatch" style="background:#1d4ed8;"><span style="color:#fff">#1d4ed8</span></div>
+    <div class="swatch" style="background:#e2e8f0; margin-left:8px;"><span>#e2e8f0</span></div>
+    <div class="swatch" style="background:#94a3b8;"><span style="color:#fff">#94a3b8</span></div>
+    <div class="swatch" style="background:#1e293b;"><span style="color:#fff">#1e293b</span></div>
+    <div class="swatch" style="background:#f0fdf4; margin-left:8px;"><span>#f0fdf4</span></div>
+    <div class="swatch" style="background:#16a34a;"><span style="color:#fff">#16a34a</span></div>
+    <div class="swatch" style="background:#fffbeb;"><span>#fffbeb</span></div>
+    <div class="swatch" style="background:#fef3c7;"><span>#fef3c7</span></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div style="width:960px;">
+  <div class="label">Vista 1 — Dashboard (Oportunidades)</div>
+  <div class="shell">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sb-logo">A</div>
+      <div class="sb-item active" title="Oportunidades">📊</div>
+      <div class="sb-item" title="Encargos">📁</div>
+      <div class="sb-item" title="Movimientos">💳</div>
+      <div class="sb-divider"></div>
+      <div class="sb-item" title="Configuración">⚙️</div>
+      <div class="sb-avatar">RG</div>
+    </div>
+
+    <!-- Main -->
+    <div class="main">
+      <div class="topbar">
+        <h1>Oportunidades</h1>
+        <span class="topbar-sub">CRM Zoho</span>
+        <div class="sync-badge"><div class="sync-dot"></div> Sync hace 4 min · 142 registros</div>
+        <div class="search-box"><span>🔍</span><span>Buscar negocio o contacto…</span></div>
+      </div>
+
+      <div class="content">
+        <!-- KPIs -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:#eff6ff;">📊</div>
+            <div class="kpi-label">Total oportunidades</div>
+            <div class="kpi-value">142</div>
+            <div class="kpi-trend trend-up">↑ 4 esta semana</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:#fffbeb;">⏳</div>
+            <div class="kpi-label">En negociación</div>
+            <div class="kpi-value">38</div>
+            <div class="kpi-trend trend-down">↓ 2 hoy</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:#f0fdf4;">💰</div>
+            <div class="kpi-label">Total recaudado</div>
+            <div class="kpi-value">$2.4B</div>
+            <div class="kpi-trend trend-up">↑ 12% vs mes ant.</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:#faf5ff;">🏛️</div>
+            <div class="kpi-label">Encargos activos</div>
+            <div class="kpi-value">7</div>
+            <div class="kpi-trend trend-neutral">234 apt. en fiducia</div>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-card">
+          <div class="table-header">
+            <span class="table-title">Todos los negocios</span>
+            <span class="count-badge">142</span>
+            <div class="filter-row">
+              <select class="filter-select"><option>Todas las etapas</option></select>
+              <button class="sync-btn">↻ Sincronizar</button>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Negocio / Proyecto</th>
+                <th>Contacto</th>
+                <th>Etapa</th>
+                <th>Pago separación</th>
+                <th>Ref. recaudo</th>
+                <th>Valor total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="td-name">Torres del Parque — Apto 204</td>
+                <td style="color:#64748b;">María Fernández</td>
+                <td><span class="badge badge-won">● Ganado</span></td>
+                <td class="td-date">12 Mar 2026</td>
+                <td><span class="td-ref">REC-2024-8821</span></td>
+                <td class="td-amount">$280.000.000</td>
+              </tr>
+              <tr>
+                <td class="td-name">Kala Torre 3 — Apto 501</td>
+                <td style="color:#64748b;">Carlos Mejía</td>
+                <td><span class="badge badge-prop">● Propuesta</span></td>
+                <td class="td-date">28 Abr 2026</td>
+                <td><span class="td-ref">REC-2024-9103</span></td>
+                <td class="td-amount">$195.000.000</td>
+              </tr>
+              <tr>
+                <td class="td-name">Mirador Norte — Apto 108</td>
+                <td style="color:#64748b;">Laura Ospina</td>
+                <td><span class="badge badge-neg">● Negociación</span></td>
+                <td class="td-date">3 May 2026</td>
+                <td><span class="td-ref">REC-2025-0047</span></td>
+                <td class="td-amount">$340.000.000</td>
+              </tr>
+              <tr>
+                <td class="td-name">Parque Central — Apto 612</td>
+                <td style="color:#64748b;">Andrés Vargas</td>
+                <td><span class="badge badge-analysis">● Análisis</span></td>
+                <td class="td-date">15 May 2026</td>
+                <td><span class="td-ref">REC-2025-0109</span></td>
+                <td class="td-amount">$220.000.000</td>
+              </tr>
+              <tr>
+                <td class="td-name">Reserva del Río — Apto 301</td>
+                <td style="color:#64748b;">Patricia Salcedo</td>
+                <td><span class="badge badge-percep">● Percepción</span></td>
+                <td class="td-date">20 May 2026</td>
+                <td><span class="td-ref">REC-2025-0201</span></td>
+                <td class="td-amount">$310.000.000</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL VIEW -->
+<div style="width:960px;">
+  <div class="label">Vista 2 — Detalle de Oportunidad (layout 3 columnas)</div>
+  <div class="detail-shell">
+    <!-- Sidebar -->
+    <div class="detail-left">
+      <div class="sb-logo">A</div>
+      <div class="sb-item active">📊</div>
+      <div class="sb-item">📁</div>
+      <div class="sb-item">💳</div>
+      <div class="sb-divider"></div>
+      <div class="sb-item">⚙️</div>
+      <div class="sb-avatar">RG</div>
+    </div>
+
+    <!-- Content -->
+    <div class="detail-content">
+      <div class="detail-topbar">
+        <div class="back-btn">←</div>
+        <h1>Kala Torre 3 — Apto 501</h1>
+        <span class="badge badge-prop" style="margin-left:4px;">● Propuesta</span>
+        <span style="margin-left:auto; font-size:11px; color:#94a3b8;">Sync 28 Abr 2026 · 9:14</span>
+      </div>
+
+      <div class="detail-body">
+        <!-- Col izquierda: Resumen del negocio -->
+        <div class="col-left">
+          <div class="info-section">
+            <div class="info-section-title">Contacto</div>
+            <div class="info-field"><span class="info-label">Nombre</span><span class="info-value">Carlos Mejía</span></div>
+            <div class="info-field"><span class="info-label">Email</span><span class="info-value">cmejia@email.com</span></div>
+            <div class="info-field"><span class="info-label">Teléfono</span><span class="info-value">+57 310 4521 887</span></div>
+          </div>
+          <div class="info-section">
+            <div class="info-section-title">Negocio</div>
+            <div class="info-field"><span class="info-label">Proyecto</span><span class="info-value">Kala Torre 3 y 4</span></div>
+            <div class="info-field"><span class="info-label">Pago separación</span><span class="info-value">28 Abr 2026</span></div>
+            <div class="info-field"><span class="info-label">Ref. recaudo</span><span class="info-value mono">REC-2024-9103</span></div>
+          </div>
+          <div class="info-section">
+            <div class="info-section-title">Inmueble</div>
+            <div class="info-field"><span class="info-label">Nomenclatura</span><span class="info-value">501</span></div>
+            <div class="info-field"><span class="info-label">Tipo</span><span class="info-value">Apartamento</span></div>
+            <div class="info-field"><span class="info-label">Área</span><span class="info-value">68.4 m²</span></div>
+            <div class="info-field"><span class="info-label">Estado</span><span class="info-value">En construcción</span></div>
+          </div>
+        </div>
+
+        <!-- Col central: Plan financiero -->
+        <div class="col-center">
+          <div class="info-section">
+            <div class="info-section-title">Plan de pagos</div>
+            <div class="plan-row"><span class="plan-label">Valor total</span><span class="plan-value">$195.000.000</span></div>
+            <div class="plan-row"><span class="plan-label">Separación pagada</span><span class="plan-value green">$5.000.000</span></div>
+            <div class="plan-row"><span class="plan-label">Cuota inicial (30%)</span><span class="plan-value blue">$53.500.000</span></div>
+            <div class="plan-row"><span class="plan-label">Financiado (70%)</span><span class="plan-value">$136.500.000</span></div>
+            <div class="plan-row"><span class="plan-label">Saldo pendiente</span><span class="plan-value" style="color:#ef4444;">$132.000.000</span></div>
+          </div>
+
+          <!-- Barra de avance -->
+          <div class="mini-card">
+            <div class="mini-card-title">Avance de recaudo</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+              <div style="flex:1; height:10px; background:#f1f5f9; border-radius:99px; overflow:hidden;">
+                <div style="width:32%; height:100%; background:linear-gradient(90deg,#3b82f6,#6366f1); border-radius:99px;"></div>
+              </div>
+              <span style="font-size:11px; font-weight:600; color:#3b82f6;">32%</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:10px; color:#94a3b8;">
+              <span>$62.5M pagados</span><span>$132.5M restantes</span>
+            </div>
+          </div>
+
+          <!-- Forma de pago (compacta) -->
+          <div class="mini-card" style="flex:1;">
+            <div class="mini-card-title">Forma de pago</div>
+            <div class="chart-bar-wrap">
+              <div class="chart-bar-row">
+                <span class="chart-bar-label">Cuotas men.</span>
+                <div class="chart-bar-bg"><div class="chart-bar-fill" style="width:60%; background:#bfdbfe;"></div></div>
+                <span class="chart-bar-val">$24M</span>
+              </div>
+              <div class="chart-bar-row">
+                <span class="chart-bar-label">Cesantías</span>
+                <div class="chart-bar-bg"><div class="chart-bar-fill" style="width:25%; background:#bfdbfe;"></div></div>
+                <span class="chart-bar-val">$10M</span>
+              </div>
+              <div class="chart-bar-row">
+                <span class="chart-bar-label">Crédito</span>
+                <div class="chart-bar-bg"><div class="chart-bar-fill" style="width:85%; background:#ddd6fe;"></div></div>
+                <span class="chart-bar-val">$136M</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Col derecha: Movimientos -->
+        <div class="col-right">
+          <div class="info-section-title" style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.7px; color:#94a3b8; padding-bottom:6px; border-bottom:1px solid #f1f5f9;">Movimientos de pago</div>
+
+          <div class="mov-item">
+            <div class="mov-dot green"></div>
+            <div class="mov-info">
+              <span class="mov-name">Cuota mensual abr.</span>
+              <span class="mov-meta">28 Abr 2026 · Fiducia</span>
+            </div>
+            <span class="mov-amount">$2.5M</span>
+          </div>
+          <div class="mov-item">
+            <div class="mov-dot green"></div>
+            <div class="mov-info">
+              <span class="mov-name">Abono cuota inicial</span>
+              <span class="mov-meta">15 Mar 2026 · Fiducia</span>
+            </div>
+            <span class="mov-amount">$10M</span>
+          </div>
+          <div class="mov-item">
+            <div class="mov-dot green"></div>
+            <div class="mov-info">
+              <span class="mov-name">Pago separación</span>
+              <span class="mov-meta">28 Abr 2026 · Zoho</span>
+            </div>
+            <span class="mov-amount">$5M</span>
+          </div>
+          <div class="mov-item">
+            <div class="mov-dot"></div>
+            <div class="mov-info">
+              <span class="mov-name">Cuota mensual mar.</span>
+              <span class="mov-meta">31 Mar 2026 · Fiducia</span>
+            </div>
+            <span class="mov-amount">$2.5M</span>
+          </div>
+          <div class="mov-item">
+            <div class="mov-dot"></div>
+            <div class="mov-info">
+              <span class="mov-name">Cuota mensual feb.</span>
+              <span class="mov-meta">28 Feb 2026 · Fiducia</span>
+            </div>
+            <span class="mov-amount">$2.5M</span>
+          </div>
+
+          <div style="margin-top:auto; padding-top:10px; border-top:1px solid #f1f5f9;">
+            <div style="font-size:10px; color:#94a3b8; margin-bottom:4px;">Total registrado</div>
+            <div style="font-size:16px; font-weight:700; color:#1e293b;">$22.500.000</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
