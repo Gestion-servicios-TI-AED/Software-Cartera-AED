@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import OpportunityDetail from './pages/OpportunityDetail';
 import FiduciaModule from './pages/FiduciaModule';
@@ -12,18 +13,22 @@ import ApartamentoDetalle from './pages/ApartamentoDetalle';
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/opportunity/:id" element={<OpportunityDetail />} />
-        <Route path="/fiducia" element={<FiduciaModule />} />
-        <Route path="/fiducia/movimientos" element={<FiduciaMovimientos />} />
-        <Route path="/fiducia/propietario/:nombre" element={<FiduciaPropietario />} />
-        <Route path="/fiducia/:id/nomenclaturas" element={<EncargoNomenclaturas />} />
-        <Route path="/fiducia/:id/apartamento/:nomenclatura" element={<ApartamentoDetalle />} />
-        <Route path="/fiducia/:id" element={<FiduciaDetalle />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar />
+        <div className="flex-1 overflow-y-auto">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/opportunity/:id" element={<OpportunityDetail />} />
+            <Route path="/fiducia" element={<FiduciaModule />} />
+            <Route path="/fiducia/movimientos" element={<FiduciaMovimientos />} />
+            <Route path="/fiducia/propietario/:nombre" element={<FiduciaPropietario />} />
+            <Route path="/fiducia/:id/nomenclaturas" element={<EncargoNomenclaturas />} />
+            <Route path="/fiducia/:id/apartamento/:nomenclatura" element={<ApartamentoDetalle />} />
+            <Route path="/fiducia/:id" element={<FiduciaDetalle />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </div>
+      </div>
     </BrowserRouter>
   );
 }
-
