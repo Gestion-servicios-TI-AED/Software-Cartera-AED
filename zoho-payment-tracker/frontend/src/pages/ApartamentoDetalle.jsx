@@ -2,26 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getNomenclaturaDetail } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
-import NavBar from '../components/NavBar';
 
 function PropertyCard({ label, value, icon }) {
   const hasValue = value != null && value !== '' && value !== '—';
 
   return (
-    <div className={`bg-white rounded-xl border p-4 transition-all duration-200 ${
-      hasValue
-        ? 'border-gray-200/80 hover:shadow-md hover:border-blue-200/60'
-        : 'border-gray-100 bg-gray-50/50'
+    <div className={`rounded-xl border p-3.5 transition-all duration-150 ${
+      hasValue ? 'border-aed-border bg-white hover:border-blue-200 hover:shadow-sm' : 'border-aed-border bg-aed-base'
     }`}>
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-2.5">
         {icon && (
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-slate-100 to-gray-100 text-gray-500 flex-shrink-0 mt-0.5">
+          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-aed-base border border-aed-border text-slate-400 flex-shrink-0 mt-0.5">
             {icon}
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">{label}</p>
-          <p className={`text-sm font-medium break-words ${hasValue ? 'text-gray-900' : 'text-gray-300 italic'}`}>
+          <p className="section-label mb-0.5">{label}</p>
+          <p className={`text-[13px] font-medium break-words ${hasValue ? 'text-slate-800' : 'text-slate-300 italic'}`}>
             {hasValue ? value : 'Sin dato'}
           </p>
         </div>
@@ -82,13 +79,13 @@ export default function ApartamentoDetalle() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50">
-        <div className="flex items-center gap-3 text-gray-500">
-          <svg className="w-6 h-6 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex items-center gap-2 text-slate-400 text-[13px]">
+          <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
-          <span className="font-medium">Cargando apartamento...</span>
+          Cargando apartamento...
         </div>
       </div>
     );
@@ -96,12 +93,10 @@ export default function ApartamentoDetalle() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50">
+      <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-600 mb-4 font-medium">{error || 'Apartamento no encontrado'}</p>
-          <button onClick={() => navigate(-1)} className="px-5 py-2.5 text-sm font-medium rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-md transition-all">
-            Volver
-          </button>
+          <p className="text-red-500 text-[13px] mb-4">{error || 'Apartamento no encontrado'}</p>
+          <button onClick={() => navigate(-1)} className="btn-primary">Volver</button>
         </div>
       </div>
     );
@@ -112,73 +107,51 @@ export default function ApartamentoDetalle() {
   const movKeys = data.movimientoKeys || [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200/60 sticky top-0 z-20">
-        <div className="max-w-screen-xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button
-            onClick={() => navigate(`/fiducia/${id}/nomenclaturas`)}
-            className="flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-gray-700 transition-all shadow-sm"
-            title="Volver a nomenclaturas"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3H21m-3.75 3H21" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">{nomenclatura}</h1>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {data.encargo?.nombre}
-                  {data.encargo?.codigo && <span className="ml-1 text-blue-600">({data.encargo.codigo})</span>}
-                  <span className="mx-1.5">·</span>
-                  {data.totalMovimientos} movimiento{data.totalMovimientos !== 1 ? 's' : ''}
-                </p>
-              </div>
-            </div>
-          </div>
-          <NavBar />
+    <div className="flex flex-col min-h-screen bg-aed-base">
+      <header className="h-[52px] bg-white border-b border-aed-border flex items-center px-5 gap-3 flex-shrink-0 sticky top-0 z-10">
+        <button
+          onClick={() => navigate(`/fiducia/${id}/nomenclaturas`)}
+          className="w-8 h-8 flex items-center justify-center rounded-lg border border-aed-border hover:bg-aed-base transition-colors"
+          title="Volver"
+        >
+          <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-[15px] font-bold text-slate-800 truncate">{nomenclatura}</h1>
         </div>
+        <span className="text-[11px] text-slate-400">
+          {data.encargo?.nombre}
+          {data.encargo?.codigo && <span className="ml-1 text-blue-400">({data.encargo.codigo})</span>}
+          <span className="mx-1.5">·</span>
+          {data.totalMovimientos} mov.
+        </span>
       </header>
 
-      <main className="max-w-screen-xl mx-auto px-6 py-6 space-y-6">
+      <div className="flex-1 p-5 flex flex-col gap-4">
         {/* Propiedades del inmueble */}
-        <section>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-1 h-5 rounded-full bg-gradient-to-b from-blue-500 to-indigo-600"></div>
-            <h2 className="text-base font-bold text-gray-900">Información del Inmueble</h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div>
+          <p className="section-label mb-3">Información del Inmueble</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {Object.entries(propiedades).map(([key, value]) => (
-              <PropertyCard
-                key={key}
-                label={key}
-                value={value}
-                icon={getIconForKey(key)}
-              />
+              <PropertyCard key={key} label={key} value={value} icon={getIconForKey(key)} />
             ))}
           </div>
-        </section>
+        </div>
 
         {/* Movimientos */}
-        <section>
+        <div>
           <button
             onClick={() => setShowMovimientos(!showMovimientos)}
-            className="flex items-center gap-2 mb-4 group"
+            className="flex items-center gap-2 mb-3 group"
           >
-            <div className="w-1 h-5 rounded-full bg-gradient-to-b from-emerald-500 to-teal-600"></div>
-            <h2 className="text-base font-bold text-gray-900">Movimientos</h2>
-            <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+            <p className="section-label">Movimientos</p>
+            <span className="text-[10px] font-medium text-slate-400 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
               {movimientos.length}
             </span>
             <svg
-              className={`w-4 h-4 text-gray-400 transition-transform ${showMovimientos ? 'rotate-180' : ''}`}
+              className={`w-3 h-3 text-slate-400 transition-transform ${showMovimientos ? 'rotate-180' : ''}`}
               fill="none" viewBox="0 0 24 24" stroke="currentColor"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -186,26 +159,22 @@ export default function ApartamentoDetalle() {
           </button>
 
           {showMovimientos && movimientos.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200/80 overflow-hidden shadow-sm">
+            <div className="card overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-[12px]">
                   <thead>
-                    <tr className="border-b border-gray-200 bg-gradient-to-r from-gray-50 to-slate-50">
-                      <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                        Hoja
-                      </th>
+                    <tr className="border-b border-aed-border bg-aed-base">
+                      <th className="section-label px-4 py-3 text-left whitespace-nowrap">Hoja</th>
                       {movKeys.map((key) => (
-                        <th key={key} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                          {key}
-                        </th>
+                        <th key={key} className="section-label px-4 py-3 text-left whitespace-nowrap">{key}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {movimientos.map((mov, idx) => (
-                      <tr key={mov.id} className={`border-b border-gray-100 hover:bg-blue-50/40 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                    {movimientos.map((mov) => (
+                      <tr key={mov.id} className="border-b border-aed-border hover:bg-blue-50/40 transition-colors">
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                          <span className="text-[10px] font-medium text-slate-500 bg-aed-base border border-aed-border px-2 py-0.5 rounded">
                             {mov.nombreHoja}
                           </span>
                         </td>
@@ -218,8 +187,8 @@ export default function ApartamentoDetalle() {
                             val = formatExcelDate(val) || val;
                           }
                           return (
-                            <td key={key} className="px-4 py-3 text-gray-700 whitespace-nowrap text-sm">
-                              {val != null && val !== '' ? String(val) : <span className="text-gray-300">—</span>}
+                            <td key={key} className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                              {val != null && val !== '' ? String(val) : <span className="text-slate-300">—</span>}
                             </td>
                           );
                         })}
@@ -232,12 +201,12 @@ export default function ApartamentoDetalle() {
           )}
 
           {showMovimientos && movimientos.length === 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
-              <p className="font-medium">Sin movimientos registrados</p>
+            <div className="card p-8 text-center text-slate-400 text-[13px]">
+              Sin movimientos registrados
             </div>
           )}
-        </section>
-      </main>
+        </div>
+      </div>
     </div>
   );
 }

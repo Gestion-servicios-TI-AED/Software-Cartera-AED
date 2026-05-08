@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getNomenclaturas, getEncargo } from '../utils/api';
-import NavBar from '../components/NavBar';
 
 function useDebounce(value, delay = 300) {
   const [debounced, setDebounced] = useState(value);
@@ -63,43 +62,34 @@ export default function EncargoNomenclaturas() {
   const items = result?.data || [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200/60 sticky top-0 z-20">
-        <div className="max-w-screen-xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button
-            onClick={() => navigate('/fiducia')}
-            className="flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-gray-700 transition-all shadow-sm"
-            title="Volver a encargos"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3">
-              <h1 className="text-lg font-bold text-gray-900 truncate">
-                {encargo?.nombre || 'Cargando...'}
-              </h1>
-              {encargo?.codigo && (
-                <span className="text-xs font-mono bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 px-2.5 py-1 rounded-md border border-blue-200 shadow-sm">
-                  {encargo.codigo}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Nomenclaturas de apartamentos · {pagination?.total || 0} unidades
-            </p>
-          </div>
-          <NavBar />
+    <div className="flex flex-col min-h-screen bg-aed-base">
+      <header className="h-[52px] bg-white border-b border-aed-border flex items-center px-5 gap-3 flex-shrink-0 sticky top-0 z-10">
+        <button
+          onClick={() => navigate('/fiducia')}
+          className="w-8 h-8 flex items-center justify-center rounded-lg border border-aed-border hover:bg-aed-base transition-colors"
+          title="Volver"
+        >
+          <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <h1 className="text-[15px] font-bold text-slate-800 truncate">
+            {encargo?.nombre || 'Cargando...'}
+          </h1>
+          {encargo?.codigo && (
+            <span className="text-[10px] font-mono bg-blue-50 text-blue-500 border border-blue-100 px-1.5 py-0.5 rounded">
+              {encargo.codigo}
+            </span>
+          )}
         </div>
+        <span className="text-[11px] text-slate-400">{pagination?.total || 0} unidades</span>
       </header>
 
-      <main className="max-w-screen-xl mx-auto px-6 py-6">
-        {/* Search bar */}
-        <div className="flex items-center gap-4 mb-6">
-          <div className="relative flex-1 max-w-md">
-            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="flex-1 p-5 flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
@@ -107,78 +97,73 @@ export default function EncargoNomenclaturas() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar por nomenclatura..."
-              className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 shadow-sm transition-all"
+              className="input w-full pl-9 pr-4 py-2 text-[13px]"
             />
           </div>
           {pagination && (
-            <span className="text-sm text-gray-500 font-medium">
+            <span className="text-[12px] text-slate-400">
               {pagination.total} apartamento{pagination.total !== 1 ? 's' : ''}
             </span>
           )}
         </div>
 
-        {/* Grid de nomenclaturas */}
         {loading && !result ? (
-          <div className="flex items-center justify-center py-20 text-gray-400">
-            <svg className="w-6 h-6 animate-spin mr-3 text-blue-500" fill="none" viewBox="0 0 24 24">
+          <div className="flex items-center justify-center py-20 text-slate-400 text-[13px] gap-2">
+            <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            <span className="text-sm font-medium">Cargando nomenclaturas...</span>
+            Cargando nomenclaturas...
           </div>
         ) : items.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">
-            <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+            <svg className="w-14 h-14 mb-3 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
             </svg>
-            <p className="font-semibold text-gray-500">Sin nomenclaturas encontradas</p>
-            <p className="text-sm mt-1">Sube un archivo Excel con datos de apartamentos</p>
+            <p className="text-[13px] font-medium">Sin nomenclaturas encontradas</p>
+            <p className="text-[12px] mt-1">Sube un archivo Excel con datos de apartamentos</p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {items.map((item) => (
                 <button
                   key={item.nomenclatura}
                   onClick={() => navigate(`/fiducia/${id}/apartamento/${encodeURIComponent(item.nomenclatura)}`)}
-                  className="group bg-white rounded-xl border border-gray-200/80 p-5 text-left hover:shadow-lg hover:border-blue-300/60 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+                  className="group card p-4 text-left hover:border-blue-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
                 >
-                  {/* Header */}
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/20">
-                        <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3H21m-3.75 3H21" />
                         </svg>
                       </div>
                       <div>
-                        <h3 className="font-bold text-gray-900 text-sm group-hover:text-blue-700 transition-colors">
+                        <h3 className="font-bold text-slate-800 text-[13px] group-hover:text-blue-600 transition-colors">
                           {item.nomenclatura}
                         </h3>
-                        {item.tipo && (
-                          <p className="text-xs text-gray-400 mt-0.5">{item.tipo}</p>
-                        )}
+                        {item.tipo && <p className="text-[11px] text-slate-400 mt-0.5">{item.tipo}</p>}
                       </div>
                     </div>
-                    <svg className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors flex-shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-4 h-4 text-slate-200 group-hover:text-blue-400 transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
 
-                  {/* Info */}
-                  <div className="space-y-2">
+                  <div className="flex flex-col gap-1.5">
                     {item.propietario && (
-                      <div className="flex items-center gap-2 text-xs">
-                        <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <div className="flex items-center gap-1.5 text-[12px]">
+                        <svg className="w-3 h-3 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                         </svg>
-                        <span className="text-gray-600 truncate">{item.propietario}</span>
+                        <span className="text-slate-500 truncate">{item.propietario}</span>
                       </div>
                     )}
                     <div className="flex items-center justify-between">
                       <StatusBadge estado={item.estado} />
-                      <span className="text-xs text-gray-400 font-medium">
-                        {item.totalMovimientos} movimiento{item.totalMovimientos !== 1 ? 's' : ''}
+                      <span className="text-[11px] text-slate-400">
+                        {item.totalMovimientos} mov.
                       </span>
                     </div>
                   </div>
@@ -186,33 +171,28 @@ export default function EncargoNomenclaturas() {
               ))}
             </div>
 
-            {/* Paginación */}
             {pagination && pagination.totalPages > 1 && (
-              <div className="mt-6 flex items-center justify-between">
-                <span className="text-sm text-gray-500">
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] text-slate-400">
                   Página {pagination.page} de {pagination.totalPages}
                 </span>
                 <div className="flex gap-2">
                   <button
                     disabled={pagination.page === 1}
                     onClick={() => { const p = page - 1; setPage(p); load(debouncedSearch, p); }}
-                    className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
-                  >
-                    Anterior
-                  </button>
+                    className="btn-secondary text-[12px] py-1.5 px-3 disabled:opacity-40"
+                  >Anterior</button>
                   <button
                     disabled={pagination.page === pagination.totalPages}
                     onClick={() => { const p = page + 1; setPage(p); load(debouncedSearch, p); }}
-                    className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
-                  >
-                    Siguiente
-                  </button>
+                    className="btn-secondary text-[12px] py-1.5 px-3 disabled:opacity-40"
+                  >Siguiente</button>
                 </div>
               </div>
             )}
           </>
         )}
-      </main>
+      </div>
     </div>
   );
 }

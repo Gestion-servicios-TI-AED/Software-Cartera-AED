@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getEncargo, getHoja } from '../utils/api';
 import { formatDateTime } from '../utils/format';
-import NavBar from '../components/NavBar';
 
 function SheetTable({ encargoId, hoja }) {
   const [data, setData] = useState(null);
@@ -28,8 +27,8 @@ function SheetTable({ encargoId, hoja }) {
 
   if (loading && !data) {
     return (
-      <div className="flex items-center justify-center py-12 text-gray-400">
-        <svg className="w-5 h-5 animate-spin mr-2" fill="none" viewBox="0 0 24 24">
+      <div className="flex items-center justify-center py-12 text-slate-400 text-[13px] gap-2">
+        <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
@@ -38,7 +37,7 @@ function SheetTable({ encargoId, hoja }) {
     );
   }
 
-  if (!data) return <p className="text-gray-400 text-sm py-4">Sin datos</p>;
+  if (!data) return <p className="text-slate-400 text-[12px] py-4">Sin datos</p>;
 
   const columnas = Array.isArray(data.columnas) ? data.columnas : [];
   const filas = Array.isArray(data.filas) ? data.filas : [];
@@ -57,7 +56,7 @@ function SheetTable({ encargoId, hoja }) {
       {/* Controles de hoja */}
       <div className="flex items-center gap-3 mb-3">
         <div className="relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <input
@@ -65,25 +64,22 @@ function SheetTable({ encargoId, hoja }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filtrar en esta hoja..."
-            className="pl-9 pr-4 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="input pl-9 pr-4 py-1.5 text-[12px]"
           />
         </div>
-        <span className="text-xs text-gray-500">
+        <span className="text-[11px] text-slate-400">
           {filteredFilas.length} fila{filteredFilas.length !== 1 ? 's' : ''}
           {data.pagination && data.pagination.totalPages > 1 && ` · página ${data.pagination.page}/${data.pagination.totalPages}`}
         </span>
       </div>
 
       {/* Tabla */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-lg border border-aed-border">
+        <table className="w-full text-[12px]">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
+            <tr className="bg-aed-base border-b border-aed-border">
               {columnas.map((col, i) => (
-                <th
-                  key={i}
-                  className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap"
-                >
+                <th key={i} className="section-label px-3 py-2.5 text-left whitespace-nowrap">
                   {col || `Col ${i + 1}`}
                 </th>
               ))}
@@ -92,7 +88,7 @@ function SheetTable({ encargoId, hoja }) {
           <tbody>
             {filteredFilas.length === 0 ? (
               <tr>
-                <td colSpan={columnas.length || 1} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={columnas.length || 1} className="px-4 py-8 text-center text-slate-400">
                   Sin resultados
                 </td>
               </tr>
@@ -100,9 +96,9 @@ function SheetTable({ encargoId, hoja }) {
               filteredFilas.map((row, ri) => {
                 const cells = Array.isArray(row) ? row : columnas.map((c) => row[c]);
                 return (
-                  <tr key={ri} className="border-b border-gray-100 hover:bg-gray-50">
+                  <tr key={ri} className="border-b border-aed-border hover:bg-blue-50/40">
                     {cells.map((cell, ci) => (
-                      <td key={ci} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                      <td key={ci} className="px-3 py-2 text-slate-600 whitespace-nowrap">
                         {cell != null && cell !== '' ? String(cell) : '—'}
                       </td>
                     ))}
@@ -117,7 +113,7 @@ function SheetTable({ encargoId, hoja }) {
       {/* Paginación */}
       {data.pagination && data.pagination.totalPages > 1 && (
         <div className="mt-3 flex items-center justify-between">
-          <span className="text-xs text-gray-500">
+          <span className="text-[11px] text-slate-400">
             {data.pagination.total} filas totales
           </span>
           <div className="flex gap-2">
@@ -158,9 +154,9 @@ export default function FiduciaDetalle() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="flex items-center gap-2 text-gray-500">
-          <svg className="w-5 h-5 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex items-center gap-2 text-slate-400 text-[13px]">
+          <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
@@ -172,9 +168,9 @@ export default function FiduciaDetalle() {
 
   if (error || !encargo) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-600 mb-4">{error || 'Encargo no encontrado'}</p>
+          <p className="text-red-500 text-[13px] mb-4">{error || 'Encargo no encontrado'}</p>
           <button onClick={() => navigate('/fiducia')} className="btn-primary">Volver</button>
         </div>
       </div>
@@ -182,63 +178,60 @@ export default function FiduciaDetalle() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-screen-xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button onClick={() => navigate('/fiducia')} className="btn-secondary p-2" title="Volver">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-gray-900 truncate">{encargo.nombre}</h1>
-              {encargo.codigo && (
-                <span className="text-xs font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
-                  {encargo.codigo}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {encargo.archivoNombre} · Importado {formatDateTime(encargo.createdAt)}
-            </p>
-          </div>
-          <NavBar />
+    <div className="flex flex-col min-h-screen bg-aed-base">
+      <header className="h-[52px] bg-white border-b border-aed-border flex items-center px-5 gap-3 flex-shrink-0 sticky top-0 z-10">
+        <button
+          onClick={() => navigate('/fiducia')}
+          className="w-8 h-8 flex items-center justify-center rounded-lg border border-aed-border hover:bg-aed-base transition-colors"
+          title="Volver"
+        >
+          <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <h1 className="text-[15px] font-bold text-slate-800 truncate">{encargo.nombre}</h1>
+          {encargo.codigo && (
+            <span className="text-[10px] font-mono bg-blue-50 text-blue-500 border border-blue-100 px-1.5 py-0.5 rounded">
+              {encargo.codigo}
+            </span>
+          )}
         </div>
+        <span className="text-[10px] text-slate-400 hidden sm:block">
+          {encargo.archivoNombre} · {formatDateTime(encargo.createdAt)}
+        </span>
       </header>
 
-      <main className="max-w-screen-xl mx-auto px-6 py-6">
+      <div className="flex-1 p-5">
         {encargo.hojas.length === 0 ? (
-          <p className="text-gray-400 text-sm">Este archivo no tiene hojas con datos.</p>
+          <p className="text-slate-400 text-[13px]">Este archivo no tiene hojas con datos.</p>
         ) : (
           <>
-            {/* Tabs de hojas */}
-            <div className="flex gap-1 mb-4 border-b border-gray-200 overflow-x-auto">
+            <div className="flex gap-1 mb-4 border-b border-aed-border overflow-x-auto">
               {encargo.hojas.map((hoja) => (
                 <button
                   key={hoja.id}
                   onClick={() => setActiveHoja(hoja)}
-                  className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                  className={`px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors ${
                     activeHoja?.id === hoja.id
-                      ? 'border-blue-600 text-blue-700'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-200'
                   }`}
                 >
                   {hoja.nombreHoja}
-                  <span className="ml-1.5 text-xs text-gray-400">({hoja.totalFilas})</span>
+                  <span className="ml-1.5 text-[11px] text-slate-400">({hoja.totalFilas})</span>
                 </button>
               ))}
             </div>
 
-            {/* Contenido de hoja activa */}
             {activeHoja && (
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <div className="card p-4">
                 <SheetTable encargoId={id} hoja={activeHoja} />
               </div>
             )}
           </>
         )}
-      </main>
+      </div>
     </div>
   );
 }
