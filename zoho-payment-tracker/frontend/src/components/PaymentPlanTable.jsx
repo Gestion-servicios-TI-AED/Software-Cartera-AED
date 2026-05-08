@@ -17,12 +17,12 @@ const columns = [
   columnHelper.accessor('dealName', {
     header: 'Oportunidad',
     cell: (info) => (
-      <span className="font-medium text-gray-900">{info.getValue()}</span>
+      <span className="font-medium text-slate-800">{info.getValue()}</span>
     ),
   }),
   columnHelper.accessor('contactName', {
     header: 'Contacto',
-    cell: (info) => info.getValue() || <span className="text-gray-400">—</span>,
+    cell: (info) => info.getValue() || <span className="text-slate-300">—</span>,
   }),
   columnHelper.accessor('stage', {
     header: 'Etapa',
@@ -31,7 +31,7 @@ const columns = [
   columnHelper.accessor('pagoSeparacion', {
     header: 'Pago Separación',
     cell: (info) => (
-      <span className="font-mono text-sm">{formatDate(info.getValue())}</span>
+      <span className="font-mono text-[12px] text-slate-600">{formatDate(info.getValue())}</span>
     ),
   }),
   columnHelper.accessor('camposFinancieros', {
@@ -40,7 +40,7 @@ const columns = [
       const campos = info.getValue();
       const amount = campos?.Amount ?? info.row.original.Amount;
       return (
-        <span className="font-mono text-sm">{formatCOP(amount)}</span>
+        <span className="font-mono text-[12px] text-slate-700 font-semibold">{formatCOP(amount)}</span>
       );
     },
   }),
@@ -48,17 +48,17 @@ const columns = [
     header: 'Ref. Recaudo',
     cell: (info) =>
       info.getValue() ? (
-        <span className="font-mono text-xs bg-amber-50 text-amber-800 px-2 py-0.5 rounded">
+        <span className="font-mono text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-100">
           {info.getValue()}
         </span>
       ) : (
-        <span className="text-gray-400">—</span>
+        <span className="text-slate-300">—</span>
       ),
   }),
   columnHelper.accessor('lastSyncedAt', {
     header: 'Última Sync',
     cell: (info) => (
-      <span className="text-xs text-gray-500">{formatDateTime(info.getValue())}</span>
+      <span className="text-[11px] text-slate-400">{formatDateTime(info.getValue())}</span>
     ),
   }),
 ];
@@ -124,11 +124,11 @@ export default function PaymentPlanTable() {
           <table className="w-full text-sm">
             <thead>
               {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id} className="border-b border-gray-200 bg-gray-50">
+                <tr key={headerGroup.id} className="border-b border-aed-border bg-aed-base">
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                      className="section-label px-4 py-3 text-left"
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                     </th>
@@ -139,9 +139,9 @@ export default function PaymentPlanTable() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={columns.length} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={columns.length} className="px-4 py-12 text-center text-slate-400">
                     <div className="flex justify-center items-center gap-2">
-                      <svg className="w-5 h-5 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
@@ -151,7 +151,7 @@ export default function PaymentPlanTable() {
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={columns.length} className="px-4 py-12 text-center text-slate-400">
                     No se encontraron oportunidades
                   </td>
                 </tr>
@@ -160,7 +160,7 @@ export default function PaymentPlanTable() {
                   <tr
                     key={row.id}
                     onClick={() => navigate(`/opportunity/${row.original.id}`)}
-                    className="border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors"
+                    className="border-b border-aed-border hover:bg-blue-50/60 cursor-pointer transition-colors"
                   >
                     {row.getVisibleCells().map((cell) => (
                       <td key={cell.id} className="px-4 py-3">
@@ -176,8 +176,8 @@ export default function PaymentPlanTable() {
 
         {/* Paginación */}
         {pagination.totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
-            <p className="text-sm text-gray-500">
+          <div className="px-4 py-3 border-t border-aed-border flex items-center justify-between">
+            <p className="text-[12px] text-slate-400">
               {pagination.total} registros · Página {pagination.page} de {pagination.totalPages}
             </p>
             <div className="flex gap-2">
