@@ -1,6 +1,6 @@
 const express = require('express');
 const axios = require('axios');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient, Prisma } = require('@prisma/client');
 const { syncOpportunitiesFromZoho } = require('../services/zohoSync');
 const { getAccessToken } = require('../services/zohoAuth');
 const zohoConfig = require('../config/zoho');
@@ -57,8 +57,39 @@ router.get('/', async (req, res) => {
       }),
     ]);
 
+    // Totales recaudados por oportunidad (suma de movimientos de pago)
+    const ids = records.map((r) => r.id);
+    let totalesMap = {};
+    if (ids.length > 0) {
+      try {
+        const totales = await prisma.$queryRaw`
+          SELECT
+            "opportunityId"::text AS id,
+            SUM(COALESCE(
+              NULLIF(datos->>'monto',  '')::numeric,
+              NULLIF(datos->>'valor',  '')::numeric,
+              NULLIF(datos->>'Amount', '')::numeric,
+              0
+            )) AS "totalRecaudado"
+          FROM "PagoMovimiento"
+          WHERE "opportunityId"::text = ANY(${ids})
+          GROUP BY "opportunityId"
+        `;
+        totalesMap = Object.fromEntries(
+          totales.map((t) => [t.id, Number(t.totalRecaudado)])
+        );
+      } catch (_) {
+        // Si la query falla (datos mal formateados), dejamos totales en 0
+      }
+    }
+
+    const enriched = records.map((r) => ({
+      ...r,
+      totalRecaudado: totalesMap[r.id] ?? 0,
+    }));
+
     res.json({
-      data: records,
+      data: enriched,
       pagination: {
         total,
         page: pageNum,

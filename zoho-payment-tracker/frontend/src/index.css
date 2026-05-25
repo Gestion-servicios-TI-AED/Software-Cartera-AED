@@ -3,8 +3,14 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --aed-base: #f8faff;
+    --aed-border: #e8f0fe;
+  }
+
   body {
-    @apply bg-aed-base text-slate-900 antialiased;
+    background-color: var(--aed-base);
+    @apply text-slate-900 antialiased;
   }
 }
 
@@ -16,16 +22,24 @@
     @apply btn bg-blue-500 text-white hover:bg-blue-600 focus:ring-blue-500;
   }
   .btn-secondary {
-    @apply btn bg-white text-slate-700 border border-aed-border hover:bg-aed-base focus:ring-blue-500;
+    @apply btn bg-white text-slate-700 border;
+    border-color: var(--aed-border);
+    &:hover {
+      background-color: var(--aed-base);
+    }
+    @apply focus:ring-blue-500;
   }
   .card {
-    @apply bg-white rounded-xl border border-aed-border shadow-sm;
+    @apply bg-white rounded-xl border shadow-sm;
+    border-color: var(--aed-border);
   }
   .badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
   .input {
-    @apply block w-full rounded-lg border border-aed-border bg-aed-base px-3 py-2 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
+    @apply block w-full rounded-lg border px-3 py-2 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
+    border-color: var(--aed-border);
+    background-color: var(--aed-base);
   }
   .section-label {
     @apply text-[9px] font-bold uppercase tracking-[0.7px] text-slate-400;

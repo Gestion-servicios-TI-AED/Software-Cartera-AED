@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import ProgressBar from './ProgressBar';
 import {
   useReactTable,
   getCoreRowModel,
@@ -60,6 +62,21 @@ const columns = [
     cell: (info) => (
       <span className="text-[11px] text-slate-400">{formatDateTime(info.getValue())}</span>
     ),
+  }),
+  columnHelper.display({
+    id: 'avance',
+    header: 'Avance',
+    cell: ({ row }) => {
+      const amount = row.original.camposFinancieros?.Amount || 0;
+      const recaudado = row.original.totalRecaudado || 0;
+      if (!amount) return <span className="text-slate-300 text-[11px]">—</span>;
+      const pct = Math.round((recaudado / amount) * 100);
+      return (
+        <div className="w-28">
+          <ProgressBar pct={pct} leftLabel="Recaudado" />
+        </div>
+      );
+    },
   }),
 ];
 
@@ -184,16 +201,16 @@ export default function PaymentPlanTable() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="btn-secondary px-3 py-1.5 text-xs"
+                className="btn-secondary px-3 py-1.5 text-xs flex items-center gap-1"
               >
-                ← Anterior
+                <ChevronLeft size={13} /> Anterior
               </button>
               <button
                 onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
                 disabled={page === pagination.totalPages}
-                className="btn-secondary px-3 py-1.5 text-xs"
+                className="btn-secondary px-3 py-1.5 text-xs flex items-center gap-1"
               >
-                Siguiente →
+                Siguiente <ChevronRight size={13} />
               </button>
             </div>
           </div>

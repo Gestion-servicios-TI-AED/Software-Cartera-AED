@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { BarChart2, Clock, Wallet, Landmark } from 'lucide-react';
 import PaymentPlanTable from '../components/PaymentPlanTable';
 import SyncStatus from '../components/SyncStatus';
 import EmailSyncStatus from '../components/EmailSyncStatus';
@@ -56,27 +57,31 @@ export default function Dashboard() {
         {/* KPIs */}
         <div className="grid grid-cols-4 gap-3">
           <KpiCard
-            icon="📊"
+            icon={BarChart2}
             iconBg="#eff6ff"
+            iconColor="#3b82f6"
             label="Total oportunidades"
             value={kpis.total !== null ? kpis.total : '—'}
           />
           <KpiCard
-            icon="⏳"
+            icon={Clock}
             iconBg="#fffbeb"
+            iconColor="#d97706"
             label="En negociación"
             value={kpis.enNegociacion !== null ? kpis.enNegociacion : '—'}
           />
           <KpiCard
-            icon="💰"
+            icon={Wallet}
             iconBg="#f0fdf4"
+            iconColor="#16a34a"
             label="Total recaudado"
             value="—"
             sub="Ver detalle por oportunidad"
           />
           <KpiCard
-            icon="🏛️"
+            icon={Landmark}
             iconBg="#faf5ff"
+            iconColor="#7c3aed"
             label="Encargos activos"
             value={kpis.encargos !== null ? kpis.encargos : '—'}
           />

@@ -173,41 +173,142 @@ router.patch('/encargos/:id', async (req, res) => {
 });
 
 // GET /api/fiducia/movimientos — todos los movimientos con filtros
+// Params: encargId, codigo, propietario, hoja, search,
+//         fechaDesde, fechaHasta (ISO: YYYY-MM-DD, filtra 'Fecha Contable' DD/MM/YYYY),
+//         sortField (propietario|hoja|createdAt), sortDir (asc|desc),
+//         page, limit
 router.get('/movimientos', async (req, res) => {
   try {
-    const { encargId, propietario, hoja, search, page = '1', limit = '50' } = req.query;
+    const {
+      encargId: rawEncargId, codigo, propietario, hoja, search,
+      page = '1', limit = '50',
+      fechaDesde, fechaHasta,
+      sortField, sortDir,
+    } = req.query;
+
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
+    const skip = (pageNum - 1) * limitNum;
 
-    const where = {};
-    if (encargId) where.encargId = encargId;
-    if (hoja) where.nombreHoja = hoja;
-    if (propietario) where.propietario = { contains: propietario, mode: 'insensitive' };
-    if (search) {
-      where.OR = [
-        { propietario: { contains: search, mode: 'insensitive' } },
-        { datos: { path: [], string_contains: search } },
-      ];
+    // Resolver encargId desde código si no viene el UUID directo
+    let encargId = rawEncargId;
+    if (!encargId && codigo) {
+      const enc = await prisma.encargFiduciario.findFirst({
+        where: { codigo: { contains: codigo, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      if (enc) encargId = enc.id;
     }
 
-    const [total, records] = await Promise.all([
-      prisma.movimientoFiduciario.count({ where }),
-      prisma.movimientoFiduciario.findMany({
-        where,
-        skip: (pageNum - 1) * limitNum,
-        take: limitNum,
-        orderBy: [{ propietario: 'asc' }, { createdAt: 'asc' }],
-        select: {
-          id: true,
-          encargId: true,
-          hojaId: true,
-          nombreHoja: true,
-          propietario: true,
-          datos: true,
-          encargo: { select: { nombre: true, codigo: true, archivoNombre: true } },
-        },
-      }),
-    ]);
+    const ALLOWED_SORT = { propietario: 'propietario', hoja: 'nombreHoja', createdAt: 'createdAt' };
+    const resolvedSort = ALLOWED_SORT[sortField] || 'propietario';
+    const resolvedDir = sortDir === 'desc' ? 'desc' : 'asc';
+
+    let total, records;
+
+    if (fechaDesde || fechaHasta) {
+      // Filtro por fecha en campo JSON 'Fecha Contable' (formato DD/MM/YYYY)
+      // Usa $queryRawUnsafe con parámetros posicionales para seguridad
+      const sqlConds = [];
+      const params = [];
+      let idx = 1;
+
+      if (encargId) {
+        sqlConds.push(`m."encargId" = $${idx++}::uuid`);
+        params.push(encargId);
+      }
+      if (hoja) {
+        sqlConds.push(`m."nombreHoja" = $${idx++}`);
+        params.push(hoja);
+      }
+      if (propietario) {
+        sqlConds.push(`m.propietario ILIKE $${idx++}`);
+        params.push(`%${propietario}%`);
+      }
+      if (search) {
+        sqlConds.push(`(m.propietario ILIKE $${idx} OR m.datos::text ILIKE $${idx + 1})`);
+        params.push(`%${search}%`, `%${search}%`);
+        idx += 2;
+      }
+      if (fechaDesde) {
+        sqlConds.push(
+          `(m.datos->>'Fecha Contable' ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'` +
+          ` AND to_date(m.datos->>'Fecha Contable', 'DD/MM/YYYY') >= $${idx++}::date)`
+        );
+        params.push(fechaDesde);
+      }
+      if (fechaHasta) {
+        sqlConds.push(
+          `(m.datos->>'Fecha Contable' ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'` +
+          ` AND to_date(m.datos->>'Fecha Contable', 'DD/MM/YYYY') <= $${idx++}::date)`
+        );
+        params.push(fechaHasta);
+      }
+
+      const whereSQL = sqlConds.length ? `WHERE ${sqlConds.join(' AND ')}` : '';
+      const limitIdx = idx++;
+      const skipIdx = idx++;
+
+      const [countRows, rawRecords] = await Promise.all([
+        prisma.$queryRawUnsafe(
+          `SELECT COUNT(*)::int AS count FROM "MovimientoFiduciario" m ${whereSQL}`,
+          ...params
+        ),
+        prisma.$queryRawUnsafe(
+          `SELECT m.id, m."encargId", m."hojaId", m."nombreHoja", m.propietario, m.datos, m."createdAt",
+                  e.nombre AS encargo_nombre, e.codigo AS encargo_codigo, e."archivoNombre" AS encargo_archivo
+           FROM "MovimientoFiduciario" m
+           LEFT JOIN "EncargFiduciario" e ON m."encargId" = e.id
+           ${whereSQL}
+           ORDER BY m.propietario ASC, m."createdAt" ASC
+           LIMIT $${limitIdx} OFFSET $${skipIdx}`,
+          ...params, limitNum, skip
+        ),
+      ]);
+
+      total = Number(countRows[0]?.count || 0);
+      records = rawRecords.map((r) => ({
+        id: r.id,
+        encargId: r.encargId,
+        hojaId: r.hojaId,
+        nombreHoja: r.nombreHoja,
+        propietario: r.propietario,
+        datos: r.datos,
+        createdAt: r.createdAt,
+        encargo: { nombre: r.encargo_nombre, codigo: r.encargo_codigo, archivoNombre: r.encargo_archivo },
+      }));
+    } else {
+      // Consulta normal con Prisma ORM
+      const where = {};
+      if (encargId) where.encargId = encargId;
+      if (hoja) where.nombreHoja = hoja;
+      if (propietario) where.propietario = { contains: propietario, mode: 'insensitive' };
+      if (search) {
+        where.OR = [
+          { propietario: { contains: search, mode: 'insensitive' } },
+          { datos: { path: [], string_contains: search } },
+        ];
+      }
+
+      [total, records] = await Promise.all([
+        prisma.movimientoFiduciario.count({ where }),
+        prisma.movimientoFiduciario.findMany({
+          where,
+          skip,
+          take: limitNum,
+          orderBy: [{ [resolvedSort]: resolvedDir }],
+          select: {
+            id: true,
+            encargId: true,
+            hojaId: true,
+            nombreHoja: true,
+            propietario: true,
+            datos: true,
+            encargo: { select: { nombre: true, codigo: true, archivoNombre: true } },
+          },
+        }),
+      ]);
+    }
 
     res.json({
       data: records,
@@ -298,20 +399,31 @@ router.get('/encargos/:id/nomenclaturas', async (req, res) => {
 
       // Detectar otras columnas
       if (nomenclaturaIdx !== -1) {
+        // Buscar propietario en dos pasadas:
+        // 1) coincidencia exacta con alguna keyword (evita "Nro ID Propietario 1")
+        // 2) coincidencia parcial como fallback
         for (let i = 0; i < columnas.length; i++) {
           if (i === nomenclaturaIdx) continue;
           const cl = (columnas[i] || '').toLowerCase().trim();
           if (estadoIdx === -1 && ESTADO_KEYS.some((ek) => cl === ek)) {
-            estadoIdx = i;
-            estadoKey = columnas[i];
+            estadoIdx = i; estadoKey = columnas[i];
           }
-          if (propIdx === -1 && PROPIETARIO_KEYS_DET.some((pk) => cl.includes(pk))) {
-            propIdx = i;
-            propKey = columnas[i];
+          if (propIdx === -1 && PROPIETARIO_KEYS_DET.some((pk) => cl === pk)) {
+            propIdx = i; propKey = columnas[i];
           }
           if (tipoIdx === -1 && TIPO_KEYS.some((tk) => cl === tk)) {
-            tipoIdx = i;
-            tipoKey = columnas[i];
+            tipoIdx = i; tipoKey = columnas[i];
+          }
+        }
+        // Fallback para propietario: coincidencia parcial excluyendo columnas de ID
+        if (propIdx === -1) {
+          for (let i = 0; i < columnas.length; i++) {
+            if (i === nomenclaturaIdx) continue;
+            const cl = (columnas[i] || '').toLowerCase().trim();
+            const isId = cl.startsWith('nro') || cl.startsWith('id ') || cl.includes(' id ');
+            if (!isId && PROPIETARIO_KEYS_DET.some((pk) => cl.includes(pk))) {
+              propIdx = i; propKey = columnas[i]; break;
+            }
           }
         }
         targetHoja = hoja;

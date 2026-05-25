@@ -1,13 +1,14 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { LayoutDashboard, FolderOpen, ArrowLeftRight, Settings } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { to: '/', icon: '📊', label: 'Oportunidades', exact: true },
-  { to: '/fiducia', icon: '📁', label: 'Encargos' },
-  { to: '/fiducia/movimientos', icon: '💳', label: 'Movimientos' },
+  { to: '/', Icon: LayoutDashboard, label: 'Oportunidades', exact: true },
+  { to: '/fiducia', Icon: FolderOpen, label: 'Encargos' },
+  { to: '/fiducia/movimientos', Icon: ArrowLeftRight, label: 'Movimientos' },
 ];
 
-function SidebarItem({ to, icon, label, exact }) {
+function SidebarItem({ to, Icon, label, exact }) {
   const location = useLocation();
   const isActive = exact
     ? location.pathname === to
@@ -22,13 +23,13 @@ function SidebarItem({ to, icon, label, exact }) {
       <NavLink
         to={to}
         title={label}
-        className={`w-10 h-10 rounded-[10px] flex items-center justify-center text-lg transition-colors ${
+        className={`w-10 h-10 rounded-[10px] flex items-center justify-center transition-colors ${
           isActive
             ? 'bg-blue-50 text-blue-500'
             : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
         }`}
       >
-        {icon}
+        <Icon size={18} strokeWidth={1.75} />
       </NavLink>
     </div>
   );
@@ -47,8 +48,8 @@ export default function Sidebar() {
 
       <div className="w-7 h-px bg-slate-100 my-1" />
 
-      <div className="w-10 h-10 rounded-[10px] flex items-center justify-center text-lg text-slate-400 hover:bg-slate-50 cursor-pointer">
-        ⚙️
+      <div className="w-10 h-10 rounded-[10px] flex items-center justify-center text-slate-400 hover:bg-slate-50 hover:text-slate-600 cursor-pointer transition-colors">
+        <Settings size={18} strokeWidth={1.75} />
       </div>
 
       <div className="mt-auto w-8 h-8 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center text-[11px] font-bold text-indigo-700 flex-shrink-0">

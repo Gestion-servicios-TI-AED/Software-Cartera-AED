@@ -4,6 +4,7 @@ import { getOpportunity, getFieldsMetadata, getSubforms, getMovimientos } from '
 import { formatCOP, formatDate, formatDateTime } from '../utils/format';
 import StageBadge from '../components/StageBadge';
 import MovimientoTimeline from '../components/MovimientoTimeline';
+import ProgressBar from '../components/ProgressBar';
 
 function InfoRow({ label, children }) {
   return (
@@ -252,6 +253,24 @@ export default function OpportunityDetail() {
 
         {/* CENTER — Financial */}
         <div className="flex flex-col gap-3">
+          {/* Progreso de recaudo */}
+          {(() => {
+            const amount = opportunity.camposFinancieros?.Amount || 0;
+            const totalRecaudado = movimientos.reduce((sum, m) => sum + (m.valor || 0), 0);
+            if (!amount) return null;
+            const pct = Math.round((totalRecaudado / amount) * 100);
+            return (
+              <div className="card p-4">
+                <p className="section-label mb-3">Recaudo</p>
+                <ProgressBar
+                  pct={pct}
+                  leftLabel={`Recaudado: ${formatCOP(totalRecaudado)}`}
+                  rightLabel={`Total: ${formatCOP(amount)}`}
+                />
+              </div>
+            );
+          })()}
+
           {/* Plan de Pagos */}
           <div className="card p-4 flex flex-col gap-3">
             <p className="section-label">Plan de Pagos</p>
