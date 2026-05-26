@@ -1,29 +1,11 @@
 services:
 
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: zoho_tracker
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   backend:
     build:
       context: ./backend
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/zoho_tracker
+      DATABASE_URL: ${DATABASE_URL}
       PORT: 3001
       FRONTEND_URL: ${FRONTEND_URL}
       ZOHO_CLIENT_ID: ${ZOHO_CLIENT_ID}
@@ -46,5 +28,3 @@ services:
     ports:
       - "80:80"
 
-volumes:
-  postgres_data:
