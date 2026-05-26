@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const cron = require('node-cron');
 const { PrismaClient } = require('@prisma/client');
 const { syncOpportunitiesFromZoho } = require('./services/zohoSync');
@@ -46,6 +47,13 @@ app.post('/api/sync', async (req, res) => {
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Servir el frontend en producción
+const frontendDist = path.join(__dirname, '../../frontend/dist');
+app.use(express.static(frontendDist));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
 // Sincronización Zoho CRM — cada hora
