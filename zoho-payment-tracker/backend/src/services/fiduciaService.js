@@ -97,6 +97,17 @@ async function procesarArchivoFiducia(buffer, filename, metadata = {}) {
     }
   }
 
+  // Deduplicación: si viene emailId y ya existe un encargo con ese correo+archivo, no reimportar
+  if (metadata.emailId) {
+    const existing = await prisma.encargFiduciario.findFirst({
+      where: { emailId: metadata.emailId, archivoNombre: filename },
+    });
+    if (existing) {
+      console.log(`[fiducia] Archivo "${filename}" del correo ${metadata.emailId} ya existe, omitiendo`);
+      return { encargo: existing, hojas: [], skipped: true };
+    }
+  }
+
   const nombre = metadata.nombre || filename.replace(/\.[^.]+$/, '');
   const codigo = metadata.codigo || extractCodigo(filename);
 

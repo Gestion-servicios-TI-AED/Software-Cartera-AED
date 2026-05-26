@@ -12,12 +12,18 @@ router.post('/upload', upload.single('archivo'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se recibió archivo' });
 
-    const { nombre, codigo } = req.body;
+    const { nombre, codigo, emailId, emailAsunto, emailFecha } = req.body;
     const result = await procesarArchivoFiducia(req.file.buffer, req.file.originalname, {
       nombre: nombre || undefined,
       codigo: codigo || undefined,
+      emailId: emailId || undefined,
+      emailAsunto: emailAsunto || undefined,
+      emailFecha: emailFecha || undefined,
     });
 
+    if (result.skipped) {
+      return res.status(200).json({ message: 'Archivo ya importado anteriormente, omitido', encargo: result.encargo });
+    }
     res.status(201).json({
       message: 'Archivo procesado correctamente',
       encargo: result.encargo,
