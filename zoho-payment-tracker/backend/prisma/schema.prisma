@@ -31,41 +31,10 @@ model Opportunity {
   formaPago          Json?
   propuestaPago      Json?
 
-  // Movimientos de pago desde correo
-  pagosMovimientos   PagoMovimiento[]
-
   // Control de sincronización
   lastSyncedAt       DateTime  @default(now())
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
-}
-
-model PagoMovimiento {
-  id             String       @id @default(uuid())
-  opportunityId  String?
-  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id])
-  emailId        String       // Graph message ID — clave de deduplicación
-  emailSubject   String?
-  emailFecha     DateTime?
-  archivoNombre  String?
-  referencia     String?      // referencia recaudo extraída de la fila
-  datos          Json         // fila completa del Excel como JSON
-  matched        Boolean      @default(false)
-  createdAt      DateTime     @default(now())
-
-  @@index([opportunityId])
-  @@index([referencia])
-  @@index([emailId])
-}
-
-model EmailSyncLog {
-  id                 String    @id @default(uuid())
-  startedAt          DateTime  @default(now())
-  finishedAt         DateTime?
-  status             String    // 'success' | 'error' | 'running'
-  emailsProcessed    Int       @default(0)
-  movimientosCreados Int       @default(0)
-  errorMsg           String?
 }
 
 model EncargFiduciario {
@@ -111,6 +80,49 @@ model MovimientoFiduciario {
   @@index([encargId])
   @@index([propietario])
   @@index([encargId, propietario])
+}
+
+model Negocio {
+  id          String             @id @default(uuid())
+  referencia  String             @unique
+  estado      String?
+  datos       Json?
+  saldoActual Float?
+  compradores NegocioComprador[]
+  movimientos NegocioMovimiento[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([estado])
+  @@index([saldoActual])
+}
+
+model NegocioComprador {
+  id         String  @id @default(uuid())
+  negocioId  String
+  negocio    Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+  nombre     String
+  nroId      String?
+  porcentaje Float?
+  orden      Int     @default(0)
+
+  @@index([negocioId])
+  @@index([nombre])
+}
+
+model NegocioMovimiento {
+  id            String    @id @default(uuid())
+  negocioId     String
+  negocio       Negocio   @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+  referencia    String
+  idMovimiento  String?   @unique
+  fechaContable DateTime?
+  datos         Json
+  createdAt     DateTime  @default(now())
+
+  @@index([negocioId])
+  @@index([referencia])
+  @@index([fechaContable])
 }
 
 model ZohoFieldMetadata {

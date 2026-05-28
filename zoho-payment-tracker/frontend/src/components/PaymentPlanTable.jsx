@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import ProgressBar from './ProgressBar';
 import {
   useReactTable,
   getCoreRowModel,
@@ -62,21 +61,6 @@ const columns = [
     cell: (info) => (
       <span className="text-[11px] text-slate-400">{formatDateTime(info.getValue())}</span>
     ),
-  }),
-  columnHelper.display({
-    id: 'avance',
-    header: 'Avance',
-    cell: ({ row }) => {
-      const amount = row.original.camposFinancieros?.Amount || 0;
-      const recaudado = row.original.totalRecaudado || 0;
-      if (!amount) return <span className="text-slate-300 text-[11px]">—</span>;
-      const pct = Math.round((recaudado / amount) * 100);
-      return (
-        <div className="w-28">
-          <ProgressBar pct={pct} leftLabel="Recaudado" />
-        </div>
-      );
-    },
   }),
 ];
 

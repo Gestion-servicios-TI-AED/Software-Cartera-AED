@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { BarChart2, Clock, Wallet, Landmark } from 'lucide-react';
 import PaymentPlanTable from '../components/PaymentPlanTable';
 import SyncStatus from '../components/SyncStatus';
-import EmailSyncStatus from '../components/EmailSyncStatus';
 import KpiCard from '../components/KpiCard';
 import { getOpportunities, getEncargos, getStages } from '../utils/api';
 import { formatCOP } from '../utils/format';
@@ -48,7 +47,6 @@ export default function Dashboard() {
         <h1 className="text-[15px] font-bold text-slate-800">Oportunidades</h1>
         <span className="text-xs text-slate-400">CRM Zoho</span>
         <div className="flex items-center gap-4 ml-1">
-          <EmailSyncStatus />
           <SyncStatus />
         </div>
       </header>

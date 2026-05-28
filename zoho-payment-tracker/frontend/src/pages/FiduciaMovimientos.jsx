@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, X, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
-import { getMovimientosFiducia, getPropietarios, getEncargos } from '../utils/api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Search, X, ChevronRight } from 'lucide-react';
+import { getAllNegocioMovimientos } from '../utils/api';
+import { formatExcelDate } from '../utils/format';
 
 function useDebounce(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
@@ -12,175 +12,201 @@ function useDebounce(value, delay = 350) {
   return debounced;
 }
 
-// Parsea números en formato colombiano: "1.234.567,89" → 1234567.89
-function parseColombian(str) {
-  if (str == null || str === '') return null;
-  const s = String(str).trim().replace(/[$\s]/g, '');
-  const normalized = s.replace(/\./g, '').replace(',', '.');
-  const n = parseFloat(normalized);
-  return isNaN(n) ? null : n;
+function formatCOP(val) {
+  if (val == null || val === '') return null;
+  const n = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
+  if (isNaN(n)) return null;
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n);
 }
 
-function formatCOP(n) {
-  if (n == null) return '—';
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
-}
-
-// Detecta qué columnas de datos son numéricas mirando la primera fila
-function detectNumericCols(data, columnas) {
-  const numeric = new Set();
-  for (const col of columnas) {
-    const sample = data.slice(0, 20).map((r) => r.datos?.[col]).filter((v) => v != null && v !== '');
-    if (sample.length > 0 && sample.every((v) => parseColombian(v) !== null)) {
-      numeric.add(col);
-    }
+function formatCell(key, value) {
+  if (value == null || value === '') return null;
+  const k = (key || '').toLowerCase();
+  if (k.includes('fecha')) {
+    const f = formatExcelDate(value);
+    return f !== '—' ? f : String(value);
   }
-  return numeric;
+  if (
+    k.includes('valor') || k.includes('monto') || k.includes('saldo') ||
+    k.includes('cuota') || k.includes('capital') || k.includes('abono') ||
+    k.includes('descuento') || k.includes('credito') || k.includes('crédito') ||
+    k.includes('aporte') || k.includes('importe') || k.includes('acreditacion') ||
+    k.includes('acreditación') || k.includes('anticipo') || k.includes('canje')
+  ) {
+    const cop = formatCOP(value);
+    return cop !== null ? cop : String(value);
+  }
+  return String(value);
 }
 
-function SortIcon({ col, sortCol, sortDir }) {
-  if (sortCol !== col) return <ChevronsUpDown size={12} className="text-slate-300 ml-0.5" />;
-  return sortDir === 'asc'
-    ? <ChevronUp size={12} className="text-blue-500 ml-0.5" />
-    : <ChevronDown size={12} className="text-blue-500 ml-0.5" />;
+function estadoNegocioColor(estado) {
+  if (!estado) return 'bg-slate-100 text-slate-500';
+  const e = estado.toLowerCase();
+  if (e.includes('escriturado') || e.includes('activo') || e.includes('vigente') || e.includes('prometido'))
+    return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+  if (e.includes('cancel') || e.includes('rescili') || e.includes('anulado'))
+    return 'bg-red-50 text-red-700 border border-red-200';
+  if (e.includes('mora') || e.includes('vencido') || e.includes('pendiente'))
+    return 'bg-amber-50 text-amber-700 border border-amber-200';
+  if (e.includes('promesa') || e.includes('proceso') || e.includes('tramite') || e.includes('libre'))
+    return 'bg-blue-50 text-blue-700 border border-blue-200';
+  return 'bg-slate-100 text-slate-500';
+}
+
+function estadoMovColor(estado) {
+  if (!estado) return 'text-slate-600 bg-slate-100';
+  const e = estado.toLowerCase();
+  if (e.includes('aplicado')) return 'text-emerald-700 bg-emerald-50';
+  if (e.includes('pendiente') || e.includes('reversado')) return 'text-amber-700 bg-amber-50';
+  return 'text-slate-600 bg-slate-100';
+}
+
+function cleanNombre(nombre) {
+  if (!nombre) return null;
+  return nombre.replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, '');
+}
+
+function shortFideicomiso(raw) {
+  if (!raw) return null;
+  return String(raw).replace(/^\d+[\s-]+/, '').replace(/^P\.?A\.?\s*/i, '').trim();
+}
+
+function MovimientoRow({ mov }) {
+  const [expanded, setExpanded] = useState(false);
+  const datos = mov.datos || {};
+  const neg = mov.negocio;
+
+  const fecha    = datos['Fecha Contable'] ? formatExcelDate(datos['Fecha Contable']) : null;
+  const tipo     = datos['Tipo Movimiento'] || datos['Concepto'] || null;
+  const valor    = datos['Valor'] ? formatCOP(datos['Valor']) : null;
+  const estadoMov = datos['Estado'];
+
+  const compradorPrincipal = cleanNombre(neg?.compradores?.[0]?.nombre);
+  const extraCompradores   = (neg?.compradores?.length ?? 0) - 1;
+  const allFields          = Object.keys(datos);
+
+  return (
+    <>
+      <tr
+        onClick={() => setExpanded((e) => !e)}
+        className="border-b border-aed-border hover:bg-blue-50/40 cursor-pointer transition-colors"
+      >
+        <td className="pl-4 pr-2 py-2.5 w-6">
+          <ChevronRight
+            size={12}
+            strokeWidth={2.5}
+            className={`text-slate-400 transition-transform ${expanded ? 'rotate-90 text-blue-500' : ''}`}
+          />
+        </td>
+        <td className="px-3 py-2.5 whitespace-nowrap">
+          <span className="font-mono text-[12px] font-semibold text-slate-700">{mov.referencia}</span>
+        </td>
+        <td className="px-3 py-2.5 text-[11px] text-slate-500 max-w-[160px]">
+          {neg?.fideicomiso
+            ? <span className="line-clamp-1">{shortFideicomiso(neg.fideicomiso)}</span>
+            : <span className="text-slate-300">—</span>}
+        </td>
+        <td className="px-3 py-2.5 whitespace-nowrap text-[11px] text-slate-500">
+          {neg?.nomenclatura ?? <span className="text-slate-300">—</span>}
+        </td>
+        <td className="px-3 py-2.5 text-[11px] text-slate-500 max-w-[180px]">
+          {compradorPrincipal
+            ? (
+              <span className="line-clamp-1">
+                {compradorPrincipal}
+                {extraCompradores > 0 && <span className="ml-1 text-slate-300">+{extraCompradores}</span>}
+              </span>
+            )
+            : <span className="text-slate-300">—</span>}
+        </td>
+        <td className="px-3 py-2.5 whitespace-nowrap">
+          {neg?.estado
+            ? <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${estadoNegocioColor(neg.estado)}`}>{neg.estado}</span>
+            : <span className="text-slate-300 text-[11px]">—</span>}
+        </td>
+        <td className="px-3 py-2.5 whitespace-nowrap text-[11px] text-slate-500">
+          {fecha ?? <span className="text-slate-300">—</span>}
+        </td>
+        <td className="px-3 py-2.5 text-[12px] text-slate-700 max-w-[200px]">
+          <span className="line-clamp-1">{tipo ?? <span className="text-slate-300">—</span>}</span>
+        </td>
+        <td className="px-3 py-2.5 whitespace-nowrap text-[12px] text-right font-medium text-slate-700">
+          {valor ?? <span className="text-slate-300">—</span>}
+        </td>
+        <td className="px-3 py-2.5 whitespace-nowrap text-right">
+          {estadoMov && (
+            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${estadoMovColor(estadoMov)}`}>
+              {estadoMov}
+            </span>
+          )}
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="bg-blue-50/30 border-b border-aed-border">
+          <td colSpan={10} className="px-5 py-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-6 gap-y-2.5">
+              {allFields.map((col) => {
+                const v = datos[col];
+                const display = v != null && v !== '' ? (formatCell(col, v) ?? String(v)) : null;
+                return (
+                  <div key={col}>
+                    <p className="section-label mb-0.5">{col}</p>
+                    <p className="text-[11px] text-slate-700 break-words">
+                      {display ?? <span className="text-slate-300 italic">—</span>}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
 }
 
 export default function FiduciaMovimientos() {
-  const navigate = useNavigate();
-
-  // — Datos —
-  const [movimientos, setMovimientos] = useState(null);
-  const [propietarios, setPropietarios] = useState([]);
-  const [encargos, setEncargos] = useState([]);
+  const [result, setResult]   = useState(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage]       = useState(1);
 
-  // — Filtros —
-  const [search, setSearch] = useState('');
-  const [propietario, setPropietario] = useState('');
-  const [encargId, setEncargId] = useState('');
-  const [codigoInput, setCodigoInput] = useState('');
-  const [fechaDesde, setFechaDesde] = useState('');
-  const [fechaHasta, setFechaHasta] = useState('');
-  const [page, setPage] = useState(1);
-
-  // — Ordenamiento local (columnas datos) —
-  const [sortCol, setSortCol] = useState(null);
-  const [sortDir, setSortDir] = useState('asc');
+  const [search,           setSearch]           = useState('');
+  const [fideicomisoFilter, setFideicomisoFilter] = useState('');
+  const [estadoFilter,     setEstadoFilter]     = useState('');
+  const [fechaDesde,       setFechaDesde]       = useState('');
+  const [fechaHasta,       setFechaHasta]       = useState('');
 
   const debouncedSearch = useDebounce(search);
 
-  // Usamos ref para siempre leer los valores actuales sin re-crear la función
   const filtersRef = useRef({});
-  filtersRef.current = { debouncedSearch, propietario, encargId, fechaDesde, fechaHasta };
+  filtersRef.current = { debouncedSearch, fideicomisoFilter, estadoFilter, fechaDesde, fechaHasta };
 
-  async function loadMovimientos(overrides = {}) {
-    const f = filtersRef.current;
+  const fetchData = useCallback((p = 1) => {
+    const { debouncedSearch: s, fideicomisoFilter: f, estadoFilter: e, fechaDesde: fd, fechaHasta: fh } = filtersRef.current;
     setLoading(true);
-    try {
-      const params = {
-        search:      (overrides.search      ?? f.debouncedSearch) || undefined,
-        propietario: (overrides.propietario ?? f.propietario)     || undefined,
-        encargId:    (overrides.encargId    ?? f.encargId)        || undefined,
-        fechaDesde:  (overrides.fechaDesde  ?? f.fechaDesde)      || undefined,
-        fechaHasta:  (overrides.fechaHasta  ?? f.fechaHasta)      || undefined,
-        page:        overrides.page ?? page,
-        limit:       50,
-      };
-      const res = await getMovimientosFiducia(params);
-      setMovimientos(res);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    getEncargos({ limit: 200 }).then((r) => setEncargos(r.data || []));
-    getPropietarios().then(setPropietarios);
+    getAllNegocioMovimientos({
+      search:      s  || undefined,
+      fideicomiso: f  || undefined,
+      estado:      e  || undefined,
+      fechaDesde:  fd || undefined,
+      fechaHasta:  fh || undefined,
+      page:        p,
+      limit:       50,
+    })
+      .then((res) => { setResult(res); setPage(p); })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    setPage(1);
-    loadMovimientos({ page: 1 });
-  }, [debouncedSearch, propietario, encargId, fechaDesde, fechaHasta]); // eslint-disable-line
+  useEffect(() => { fetchData(1); }, [debouncedSearch, fideicomisoFilter, estadoFilter, fechaDesde, fechaHasta, fetchData]);
 
-  // Cuando cambia el código escrito, busca en la lista local de encargos
-  function handleCodigoInput(val) {
-    setCodigoInput(val);
-    if (!val.trim()) {
-      setEncargId('');
-      return;
-    }
-    const match = encargos.find(
-      (e) => e.codigo && e.codigo.toLowerCase() === val.trim().toLowerCase()
-    );
-    if (match) setEncargId(match.id);
-    else setEncargId('');
-  }
+  const clearAll  = () => { setSearch(''); setFideicomisoFilter(''); setEstadoFilter(''); setFechaDesde(''); setFechaHasta(''); };
+  const hasFilters = search || fideicomisoFilter || estadoFilter || fechaDesde || fechaHasta;
 
-  function clearAll() {
-    setSearch('');
-    setPropietario('');
-    setEncargId('');
-    setCodigoInput('');
-    setFechaDesde('');
-    setFechaHasta('');
-    setPage(1);
-  }
-
-  const hasFilters = search || propietario || encargId || fechaDesde || fechaHasta;
-
-  // — Columnas dinámicas desde el primer registro —
-  // Columnas cuyo nombre empieza con "propietario" van primero
-  const columnas = useMemo(() => {
-    if (!movimientos?.data?.length) return [];
-    const keys = Object.keys(movimientos.data[0].datos || {});
-    const isProp = (k) => k.toLowerCase().trimStart().startsWith('propietario');
-    return [...keys.filter(isProp), ...keys.filter((k) => !isProp(k))];
-  }, [movimientos]);
-
-  // Detectar columnas numéricas para totales
-  const numericCols = useMemo(
-    () => detectNumericCols(movimientos?.data || [], columnas),
-    [movimientos, columnas]
-  );
-
-  // — Ordenamiento local sobre la página actual —
-  const sortedData = useMemo(() => {
-    const rows = movimientos?.data || [];
-    if (!sortCol) return rows;
-    return [...rows].sort((a, b) => {
-      const av = a.datos?.[sortCol] ?? '';
-      const bv = b.datos?.[sortCol] ?? '';
-      const an = parseColombian(av);
-      const bn = parseColombian(bv);
-      let cmp;
-      if (an !== null && bn !== null) {
-        cmp = an - bn;
-      } else {
-        cmp = String(av).localeCompare(String(bv), 'es-CO');
-      }
-      return sortDir === 'asc' ? cmp : -cmp;
-    });
-  }, [movimientos, sortCol, sortDir]);
-
-  // — Totales de la página visible —
-  const totales = useMemo(() => {
-    const result = {};
-    for (const col of numericCols) {
-      result[col] = sortedData.reduce((sum, row) => {
-        const v = parseColombian(row.datos?.[col]);
-        return sum + (v ?? 0);
-      }, 0);
-    }
-    return result;
-  }, [sortedData, numericCols]);
-
-  function toggleSort(col) {
-    if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortCol(col); setSortDir('asc'); }
-  }
-
-  const pagination = movimientos?.pagination;
+  const pagination   = result?.pagination;
+  const movimientos  = result?.data        || [];
+  const fideicomisos = result?.fideicomisos || [];
+  const estados      = result?.estados      || [];
 
   return (
     <div className="flex flex-col min-h-screen bg-aed-base">
@@ -188,19 +214,23 @@ export default function FiduciaMovimientos() {
         <h1 className="text-[15px] font-bold text-slate-800">Movimientos Fiduciarios</h1>
         {pagination && (
           <span className="text-xs text-slate-400">
-            {pagination.total.toLocaleString('es-CO')} registros
+            {pagination.total.toLocaleString('es-CO')} movimientos
           </span>
+        )}
+        {loading && result && (
+          <svg className="w-4 h-4 animate-spin text-blue-400 ml-1" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
         )}
       </header>
 
       <div className="flex-1 p-5 flex flex-col gap-4">
-
         {/* ── Filtros ── */}
         <div className="card p-4 flex flex-col gap-3">
           <div className="flex flex-wrap gap-3 items-end">
-
-            {/* Búsqueda general */}
-            <div className="flex-1 min-w-44">
+            {/* Búsqueda */}
+            <div className="flex-1 min-w-52">
               <label className="section-label block mb-1">Buscar</label>
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -208,71 +238,48 @@ export default function FiduciaMovimientos() {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar en todos los campos..."
-                  className="input w-full pl-9 pr-3 py-2 text-[13px]"
+                  placeholder="Referencia, comprador o cédula…"
+                  className="input w-full pl-9 pr-8 py-2 text-[13px]"
                 />
+                {search && (
+                  <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <X size={12} />
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Filtro por código de encargo */}
-            <div className="min-w-36">
-              <label className="section-label block mb-1">Código encargo</label>
-              <input
-                type="text"
-                value={codigoInput}
-                onChange={(e) => handleCodigoInput(e.target.value)}
-                placeholder="ej. 99289"
-                className={`input w-full py-2 px-3 text-[13px] font-mono ${
-                  codigoInput && !encargId ? 'border-amber-300 bg-amber-50' : ''
-                }`}
-              />
-              {codigoInput && !encargId && (
-                <p className="text-[10px] text-amber-500 mt-0.5">Sin coincidencia</p>
-              )}
-              {codigoInput && encargId && (
-                <p className="text-[10px] text-emerald-600 mt-0.5">
-                  ✓ {encargos.find((e) => e.id === encargId)?.nombre}
-                </p>
-              )}
-            </div>
+            {/* Proyecto / Fideicomiso */}
+            {fideicomisos.length > 0 && (
+              <div className="min-w-52">
+                <label className="section-label block mb-1">Proyecto / Fideicomiso</label>
+                <select
+                  value={fideicomisoFilter}
+                  onChange={(e) => setFideicomisoFilter(e.target.value)}
+                  className="input w-full py-2 px-3 text-[13px]"
+                >
+                  <option value="">Todos los proyectos</option>
+                  {fideicomisos.map((f) => (
+                    <option key={f} value={f}>{shortFideicomiso(f)}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            {/* Dropdown encargo (para buscar por nombre) */}
-            <div className="min-w-52">
-              <label className="section-label block mb-1">Encargo fiduciario</label>
-              <select
-                value={encargId}
-                onChange={(e) => {
-                  setEncargId(e.target.value);
-                  const enc = encargos.find((en) => en.id === e.target.value);
-                  setCodigoInput(enc?.codigo || '');
-                }}
-                className="input w-full py-2 px-3 text-[13px]"
-              >
-                <option value="">Todos los encargos</option>
-                {encargos.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.codigo ? `[${e.codigo}] ` : ''}{e.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Propietario */}
-            <div className="min-w-48">
-              <label className="section-label block mb-1">Propietario</label>
-              <select
-                value={propietario}
-                onChange={(e) => setPropietario(e.target.value)}
-                className="input w-full py-2 px-3 text-[13px]"
-              >
-                <option value="">Todos los propietarios</option>
-                {propietarios.map((p) => (
-                  <option key={p.propietario} value={p.propietario}>
-                    {p.propietario} ({p.total})
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Estado negocio */}
+            {estados.length > 0 && (
+              <div className="min-w-44">
+                <label className="section-label block mb-1">Estado negocio</label>
+                <select
+                  value={estadoFilter}
+                  onChange={(e) => setEstadoFilter(e.target.value)}
+                  className="input w-full py-2 px-3 text-[13px]"
+                >
+                  <option value="">Todos los estados</option>
+                  {estados.map((e) => <option key={e} value={e}>{e}</option>)}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Rango de fechas */}
@@ -295,15 +302,10 @@ export default function FiduciaMovimientos() {
                 className="input py-2 px-3 text-[13px]"
               />
             </div>
-            {(fechaDesde || fechaHasta) && (
-              <p className="text-[10px] text-slate-400 self-center">
-                Filtra por columna "Fecha Contable" (DD/MM/YYYY) en los reportes
-              </p>
-            )}
             {hasFilters && (
               <button
                 onClick={clearAll}
-                className="btn-secondary text-[12px] py-2 px-3 flex items-center gap-1 ml-auto"
+                className="btn-secondary text-[12px] py-2 px-3 flex items-center gap-1 ml-auto self-end"
               >
                 <X size={13} /> Limpiar filtros
               </button>
@@ -312,21 +314,20 @@ export default function FiduciaMovimientos() {
         </div>
 
         {/* ── Tabla ── */}
-        {loading && !movimientos ? (
+        {loading && !result ? (
           <div className="flex items-center justify-center py-16 text-slate-400 text-[13px] gap-2">
             <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            Cargando...
+            Cargando…
           </div>
-        ) : !sortedData.length ? (
+        ) : movimientos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-            <svg className="w-12 h-12 mb-3 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
             <p className="text-[13px] font-medium">Sin movimientos</p>
-            <p className="text-[12px] mt-1">Ajusta los filtros o importa un Excel desde Encargos</p>
+            <p className="text-[12px] mt-1">
+              {hasFilters ? 'Ajusta los filtros para ver resultados.' : 'Sincroniza los datos desde el módulo Negocios.'}
+            </p>
           </div>
         ) : (
           <div className="card overflow-hidden">
@@ -334,83 +335,23 @@ export default function FiduciaMovimientos() {
               <table className="w-full text-[12px]">
                 <thead>
                   <tr className="border-b border-aed-border bg-aed-base">
-                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Propietario</th>
-                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Encargo</th>
-                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Hoja</th>
-                    {columnas.map((col) => (
-                      <th
-                        key={col}
-                        onClick={() => toggleSort(col)}
-                        className="section-label px-3 py-2.5 text-left whitespace-nowrap cursor-pointer hover:text-slate-700 select-none"
-                      >
-                        <span className="inline-flex items-center gap-0.5">
-                          {col}
-                          <SortIcon col={col} sortCol={sortCol} sortDir={sortDir} />
-                        </span>
-                      </th>
-                    ))}
+                    <th className="w-6" />
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Referencia</th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Proyecto</th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Nomenclatura</th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Comprador</th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Estado negocio</th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Fecha contable</th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Tipo movimiento</th>
+                    <th className="section-label px-3 py-2.5 text-right whitespace-nowrap">Valor</th>
+                    <th className="section-label px-3 py-2.5 text-right whitespace-nowrap">Estado mov.</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedData.map((mov) => (
-                    <tr
-                      key={mov.id}
-                      className="border-b border-aed-border hover:bg-blue-50/60 cursor-pointer transition-colors"
-                      onClick={() => navigate(`/fiducia/propietario/${encodeURIComponent(mov.propietario || '')}`)}
-                    >
-                      <td className="px-3 py-2.5">
-                        {mov.propietario
-                          ? <span className="font-medium text-blue-500">{mov.propietario}</span>
-                          : <span className="text-slate-300 italic">—</span>}
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">
-                        {mov.encargo?.nombre || '—'}
-                        {mov.encargo?.codigo && (
-                          <span className="ml-1 text-[10px] font-mono text-blue-400">({mov.encargo.codigo})</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{mov.nombreHoja}</td>
-                      {columnas.map((col) => {
-                        const val = mov.datos?.[col];
-                        const isNum = numericCols.has(col);
-                        const n = isNum ? parseColombian(val) : null;
-                        return (
-                          <td
-                            key={col}
-                            className={`px-3 py-2.5 whitespace-nowrap ${isNum ? 'text-right font-mono text-slate-700' : 'text-slate-600'}`}
-                          >
-                            {isNum && n !== null ? formatCOP(n) : (val ?? '—')}
-                          </td>
-                        );
-                      })}
-                    </tr>
+                  {movimientos.map((mov) => (
+                    <MovimientoRow key={mov.id} mov={mov} />
                   ))}
                 </tbody>
-
-                {/* Fila de totales (sólo columnas numéricas) */}
-                {Object.keys(totales).length > 0 && (
-                  <tfoot>
-                    <tr className="border-t-2 border-aed-border bg-blue-50/60">
-                      <td className="px-3 py-2.5 font-semibold text-slate-600 text-[11px] whitespace-nowrap">
-                        Totales {pagination && `(pág. ${pagination.page}/${pagination.totalPages})`}
-                      </td>
-                      <td className="px-3 py-2.5" />
-                      <td className="px-3 py-2.5" />
-                      {columnas.map((col) => (
-                        <td
-                          key={col}
-                          className={`px-3 py-2.5 whitespace-nowrap ${
-                            numericCols.has(col)
-                              ? 'text-right font-mono font-semibold text-slate-800 text-[12px]'
-                              : ''
-                          }`}
-                        >
-                          {numericCols.has(col) ? formatCOP(totales[col]) : ''}
-                        </td>
-                      ))}
-                    </tr>
-                  </tfoot>
-                )}
               </table>
             </div>
 
@@ -418,19 +359,23 @@ export default function FiduciaMovimientos() {
             {pagination && pagination.totalPages > 1 && (
               <div className="px-4 py-3 border-t border-aed-border flex items-center justify-between">
                 <span className="text-[11px] text-slate-400">
-                  {pagination.total.toLocaleString('es-CO')} registros · Pág. {pagination.page} de {pagination.totalPages}
+                  {pagination.total.toLocaleString('es-CO')} movimientos · Pág. {pagination.page} de {pagination.totalPages}
                 </span>
                 <div className="flex gap-2">
                   <button
                     disabled={pagination.page === 1 || loading}
-                    onClick={() => { const p = page - 1; setPage(p); loadMovimientos({ page: p }); }}
+                    onClick={() => fetchData(page - 1)}
                     className="btn-secondary text-[11px] py-1 px-3 disabled:opacity-40"
-                  >Anterior</button>
+                  >
+                    Anterior
+                  </button>
                   <button
                     disabled={pagination.page === pagination.totalPages || loading}
-                    onClick={() => { const p = page + 1; setPage(p); loadMovimientos({ page: p }); }}
+                    onClick={() => fetchData(page + 1)}
                     className="btn-secondary text-[11px] py-1 px-3 disabled:opacity-40"
-                  >Siguiente</button>
+                  >
+                    Siguiente
+                  </button>
                 </div>
               </div>
             )}

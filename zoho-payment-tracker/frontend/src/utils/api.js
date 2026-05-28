@@ -40,21 +40,6 @@ export async function getSubforms(id) {
   return data;
 }
 
-export async function getMovimientos(opportunityId, page = 1) {
-  const { data } = await api.get('/pagos/movimientos', { params: { opportunityId, page, limit: 100 } });
-  return data;
-}
-
-export async function getEmailSyncStatus() {
-  const { data } = await api.get('/pagos/email-sync/status');
-  return data;
-}
-
-export async function triggerEmailSync() {
-  const { data } = await api.post('/pagos/email-sync');
-  return data;
-}
-
 // ── Fiducia ────────────────────────────────────────────────
 export async function uploadFiducia(formData) {
   const { data } = await api.post('/fiducia/upload', formData, {
@@ -96,10 +81,6 @@ export async function getMovimientosFiducia(params = {}) {
   return data;
 }
 
-export async function getPropietarios(params = {}) {
-  const { data } = await api.get('/fiducia/propietarios', { params });
-  return data;
-}
 
 export async function getNomenclaturas(encargoId, params = {}) {
   const { data } = await api.get(`/fiducia/encargos/${encargoId}/nomenclaturas`, { params });
@@ -108,5 +89,41 @@ export async function getNomenclaturas(encargoId, params = {}) {
 
 export async function getNomenclaturaDetail(encargoId, nomenclatura) {
   const { data } = await api.get(`/fiducia/encargos/${encargoId}/nomenclaturas/${encodeURIComponent(nomenclatura)}`);
+  return data;
+}
+
+// ── Negocios ───────────────────────────────────────────────
+export async function getNegocios(params = {}) {
+  const { data } = await api.get('/negocios', { params });
+  return data;
+}
+
+export async function getNegocio(referencia) {
+  const { data } = await api.get(`/negocios/${encodeURIComponent(referencia)}`);
+  return data;
+}
+
+export async function getNegocioMovimientos(referencia, params = {}) {
+  const { data } = await api.get(`/negocios/${encodeURIComponent(referencia)}/movimientos`, { params });
+  return data;
+}
+
+export async function getAllNegocioMovimientos(params = {}) {
+  const { data } = await api.get('/negocios/movimientos', { params });
+  return data;
+}
+
+export async function getNegociosStats() {
+  const { data } = await api.get('/negocios/stats');
+  return data;
+}
+
+export async function triggerNegociosBackfill() {
+  const { data } = await api.post('/negocios/backfill');
+  return data;
+}
+
+export async function getNegociosBackfillStatus() {
+  const { data } = await api.get('/negocios/backfill/status');
   return data;
 }

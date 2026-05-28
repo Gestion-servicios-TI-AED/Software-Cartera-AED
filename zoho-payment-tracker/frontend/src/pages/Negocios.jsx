@@ -1,0 +1,1108 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Search, X, ChevronDown, ChevronRight, User, Building2, BarChart3, History, RefreshCw, Download } from 'lucide-react';
+import { getNegocios, getNegocio, getNegocioMovimientos, triggerNegociosBackfill, getNegociosBackfillStatus, getNegociosStats } from '../utils/api';
+import { formatExcelDate } from '../utils/format';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function useDebounce(value, delay = 350) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
+function estadoColor(estado) {
+  if (!estado) return 'bg-slate-100 text-slate-500';
+  const e = estado.toLowerCase();
+  if (e.includes('escriturado') || e.includes('activo') || e.includes('vigente') || e.includes('prometido'))
+    return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+  if (e.includes('cancel') || e.includes('rescili') || e.includes('anulado'))
+    return 'bg-red-50 text-red-700 border border-red-200';
+  if (e.includes('mora') || e.includes('vencido') || e.includes('pendiente'))
+    return 'bg-amber-50 text-amber-700 border border-amber-200';
+  if (e.includes('promesa') || e.includes('proceso') || e.includes('tramite') || e.includes('libre'))
+    return 'bg-blue-50 text-blue-700 border border-blue-200';
+  return 'bg-slate-100 text-slate-500';
+}
+
+function formatCOP(val) {
+  if (val == null || val === '') return null;
+  const n = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
+  if (isNaN(n)) return null;
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n);
+}
+
+function formatSaldoCompact(val) {
+  if (val == null || val === '') return null;
+  const n = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
+  if (isNaN(n) || n === 0) return null;
+  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(n) >= 1_000) return `$${Math.round(n / 1_000)}K`;
+  return `$${Math.round(n)}`;
+}
+
+const MONTH_MAP = { ene:0, feb:1, mar:2, abr:3, may:4, jun:5, jul:6, ago:7, sep:8, oct:9, nov:10, dic:11 };
+
+function getSaldoActual(datos) {
+  if (!datos) return null;
+  if (datos['Saldo Actual'] != null && datos['Saldo Actual'] !== '') return datos['Saldo Actual'];
+  // Fallback: most recent dated saldo key by chronological comparison
+  const keys = Object.keys(datos).filter((k) => /^saldo\s+\w+\s+\d{4}$/i.test(k));
+  let best = null, bestDate = null;
+  for (const k of keys) {
+    const parts = k.match(/^saldo\s+(\w+)\s+(\d{4})$/i);
+    if (!parts) continue;
+    const mo = MONTH_MAP[parts[1].toLowerCase().slice(0, 3)];
+    if (mo === undefined) continue;
+    const d = new Date(+parts[2], mo, 1);
+    if (!bestDate || d > bestDate) {
+      const v = datos[k];
+      if (v != null && v !== '') { best = v; bestDate = d; }
+    }
+  }
+  return best;
+}
+
+const UNIDAD_LABELS = {
+  'PARQ':    'Parqueadero',
+  'PARQ.':   'Parqueadero',
+  'C.UTIL':  'Depósito',
+  'C.UTIL.': 'Depósito',
+  'DEP':     'Depósito',
+  'DEP.':    'Depósito',
+  'BOD':     'Bodega',
+  'BOD.':    'Bodega',
+  'LOC':     'Local',
+  'LOC.':    'Local',
+  'GAR':     'Garaje',
+  'GAR.':    'Garaje',
+};
+
+function formatUnidadesAdicionales(raw) {
+  const results = [];
+  const groupRe = /\(([^)]+)\)/g;
+  let m;
+  while ((m = groupRe.exec(raw)) !== null) {
+    for (const part of m[1].split('|')) {
+      const eq = part.indexOf('=');
+      if (eq === -1) continue;
+      const code = part.slice(0, eq).trim();
+      const val  = part.slice(eq + 1).trim();
+      if (!val) continue;
+      if (/INM|MATR/i.test(code)) continue; // skip Matrícula
+      const label = UNIDAD_LABELS[code] || UNIDAD_LABELS[code.toUpperCase()] || code.replace(/\.$/, '');
+      results.push(`${label} ${val}`);
+      break;
+    }
+  }
+  return results.length > 0 ? results.join('  ·  ') : null;
+}
+
+function formatCell(key, value) {
+  if (value == null || value === '') return null;
+  const k = (key || '').toLowerCase();
+  if (k.includes('unidades adicionales')) {
+    return formatUnidadesAdicionales(String(value)) ?? String(value);
+  }
+  if (k.includes('fecha')) {
+    const formatted = formatExcelDate(value);
+    return formatted !== '—' ? formatted : String(value);
+  }
+  if (k.includes('valor') || k.includes('monto') || k.includes('saldo') || k.includes('precio') ||
+      k.includes('cuota') || k.includes('capital') || k.includes('deuda') || k.includes('abono') ||
+      k.includes('descuento') || k.includes('credito') || k.includes('crédito') || k.includes('subsidio') ||
+      k.includes('anticipo') || k.includes('importe') || k.includes('acreditacion') || k.includes('acreditación') ||
+      k.includes('escritura') || k.includes('factura') || k.includes('aporte') || k.includes('canje') ||
+      k.endsWith(' +') || k.endsWith(' (-)') || k.includes('movimiento posterior')) {
+    const cop = formatCOP(value);
+    return cop !== null ? cop : String(value);
+  }
+  if (k.includes('area') || k.includes('área')) {
+    const n = parseFloat(String(value));
+    if (!isNaN(n)) return `${n} m²`;
+  }
+  return String(value);
+}
+
+// Classify datos fields into apartment vs financial vs other
+const APTO_KEYS = [
+  'nomenclatura', 'area', 'área', 'm2', 'm²', 'tipo inmueble', 'categoria', 'categoría',
+  'inventario', 'fideicomiso', 'etapa', 'torre', 'bloque', 'edificio',
+  'matricula', 'matrícula', 'folio', 'parqueadero', 'garaje', 'parking',
+  'deposito', 'depósito', 'bodega', 'notaria', 'notaría', 'escritura',
+  'unidad', 'piso', 'interior', 'proyecto', 'fecha contrato', 'número escritura',
+  'numero escritura', 'unidades adicionales',
+];
+const FIN_KEYS = [
+  'valor venta', 'cuota inicial', 'credito', 'crédito', 'subsidio', 'descuento',
+  'saldo actual', 'saldo inicial', 'valor factura', 'valor escritura', 'aportes',
+  'valor acreditacion', 'valor acreditación', 'saldo may', 'saldo jun', 'saldo jul',
+  'saldo ago', 'saldo sep', 'saldo oct', 'saldo nov', 'saldo dic', 'saldo ene',
+  'saldo feb', 'saldo mar', 'saldo abr', 'saldo ',
+  'canje', 'cumple', 'movimiento posterior', 'número factura', 'numero factura',
+  ' +', ' (-)', 'fecha autoriz', 'fecha envío', 'fecha factura',
+];
+
+function categorizeDatos(datos) {
+  const apto = {}, financiero = {}, otros = {};
+  for (const [key, value] of Object.entries(datos || {})) {
+    if (value == null || String(value).trim() === '') continue;
+    const k = key.toLowerCase();
+    if (APTO_KEYS.some((ak) => k === ak || k.includes(ak))) apto[key] = value;
+    else if (FIN_KEYS.some((fk) => k === fk || k.includes(fk))) financiero[key] = value;
+    else otros[key] = value;
+  }
+  return { apto, financiero, otros };
+}
+
+// ── Sub-components ──────────────────────────────────────────────────────────
+
+function Accordion({ icon: Icon, title, badge, children, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="card overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-aed-base transition-colors"
+      >
+        {Icon && <Icon size={14} className="text-slate-400 flex-shrink-0" strokeWidth={1.75} />}
+        <span className="text-[12px] font-semibold text-slate-700 flex-1 text-left">{title}</span>
+        {badge != null && badge !== 0 && (
+          <span className="text-[10px] font-medium text-slate-400 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
+            {badge}
+          </span>
+        )}
+        <ChevronDown
+          size={13}
+          strokeWidth={2}
+          className={`text-slate-400 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && <div className="border-t border-aed-border">{children}</div>}
+    </div>
+  );
+}
+
+function DataGrid({ entries }) {
+  if (!entries || entries.length === 0) {
+    return <p className="px-4 py-4 text-[12px] text-slate-400 italic">Sin datos</p>;
+  }
+  return (
+    <div className="grid grid-cols-2 gap-px bg-aed-border">
+      {entries.map(([key, value]) => (
+        <div key={key} className="bg-white px-4 py-3">
+          <p className="section-label mb-0.5">{key}</p>
+          <p className="text-[12px] font-medium text-slate-800 break-words">
+            {formatCell(key, value) ?? <span className="text-slate-300 italic">—</span>}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MovimientoRow({ mov, fields }) {
+  const [expanded, setExpanded] = useState(false);
+  const datos = mov.datos || {};
+
+  // Pick the best "fecha", "tipo/concepto", "valor" values from the movement datos
+  const fecha = datos['Fecha Contable'] ? formatExcelDate(datos['Fecha Contable']) : null;
+  const tipo = datos['Tipo Movimiento'] || datos['Concepto'] || null;
+  const valor = datos['Valor'] ? formatCOP(datos['Valor']) : null;
+  const estado = datos['Estado'];
+
+  function estadoBadgeColor(e) {
+    if (!e) return '';
+    const el = e.toLowerCase();
+    if (el.includes('aplicado')) return 'text-emerald-700 bg-emerald-50';
+    if (el.includes('pendiente') || el.includes('reversado')) return 'text-amber-700 bg-amber-50';
+    return 'text-slate-600 bg-slate-100';
+  }
+
+  return (
+    <>
+      <tr
+        onClick={() => setExpanded((e) => !e)}
+        className="border-b border-aed-border hover:bg-blue-50/40 cursor-pointer transition-colors"
+      >
+        <td className="pl-4 pr-2 py-2.5 w-6">
+          <ChevronRight
+            size={12}
+            strokeWidth={2.5}
+            className={`text-slate-400 transition-transform ${expanded ? 'rotate-90 text-blue-500' : ''}`}
+          />
+        </td>
+        <td className="px-3 py-2.5 whitespace-nowrap text-[11px] text-slate-500">
+          {fecha ?? <span className="text-slate-300">—</span>}
+        </td>
+        <td className="px-3 py-2.5 text-[12px] text-slate-700 max-w-[200px]">
+          <span className="line-clamp-1">{tipo ?? <span className="text-slate-300">—</span>}</span>
+        </td>
+        <td className="px-3 py-2.5 whitespace-nowrap text-[12px] text-right font-medium text-slate-700">
+          {valor ?? <span className="text-slate-300">—</span>}
+        </td>
+        <td className="px-3 py-2.5 whitespace-nowrap text-right">
+          {estado && (
+            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${estadoBadgeColor(estado)}`}>
+              {estado}
+            </span>
+          )}
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="bg-blue-50/30 border-b border-aed-border">
+          <td colSpan={5} className="px-5 py-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2.5">
+              {fields.map((col) => {
+                const v = datos[col];
+                const display = v != null && v !== '' ? (formatCell(col, v) ?? String(v)) : null;
+                return (
+                  <div key={col}>
+                    <p className="section-label mb-0.5">{col}</p>
+                    <p className="text-[11px] text-slate-700 break-words">
+                      {display ?? <span className="text-slate-300 italic">—</span>}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function MovimientosSection({ referencia }) {
+  const [movimientos, setMovimientos] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(
+    (p = 1) => {
+      setLoading(true);
+      getNegocioMovimientos(referencia, { page: p, limit: 50 })
+        .then((res) => {
+          setMovimientos(res.data);
+          setPagination(res.pagination);
+          setPage(p);
+        })
+        .finally(() => setLoading(false));
+    },
+    [referencia]
+  );
+
+  useEffect(() => { load(1); }, [load]);
+
+  const fields =
+    movimientos && movimientos.length > 0
+      ? Object.keys(movimientos[0].datos || {})
+      : [];
+
+  return (
+    <div>
+      {loading && (
+        <div className="flex items-center gap-2 px-4 py-4 text-[12px] text-slate-400">
+          <svg className="w-4 h-4 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Cargando movimientos...
+        </div>
+      )}
+
+      {!loading && movimientos && movimientos.length === 0 && (
+        <p className="px-4 py-4 text-[12px] text-slate-400 italic">Sin movimientos registrados</p>
+      )}
+
+      {!loading && movimientos && movimientos.length > 0 && (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="bg-aed-base border-b border-aed-border">
+                  <th className="w-6" />
+                  <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Fecha</th>
+                  <th className="section-label px-3 py-2.5 text-left">Tipo movimiento</th>
+                  <th className="section-label px-3 py-2.5 text-right whitespace-nowrap">Valor</th>
+                  <th className="section-label px-3 py-2.5 text-right whitespace-nowrap">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movimientos.map((mov) => (
+                  <MovimientoRow key={mov.id} mov={mov} fields={fields} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {pagination && pagination.totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-2.5 border-t border-aed-border bg-aed-base">
+              <span className="text-[11px] text-slate-400">
+                {pagination.total} movimientos · pág. {pagination.page}/{pagination.totalPages}
+              </span>
+              <div className="flex gap-1">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => load(page - 1)}
+                  className="px-2.5 py-1 rounded text-[11px] border border-aed-border bg-white hover:bg-aed-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  ← Anterior
+                </button>
+                <button
+                  disabled={page >= pagination.totalPages}
+                  onClick={() => load(page + 1)}
+                  className="px-2.5 py-1 rounded text-[11px] border border-aed-border bg-white hover:bg-aed-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Siguiente →
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function NegocioDetalle({ referencia }) {
+  const [negocio, setNegocio] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    getNegocio(referencia)
+      .then(setNegocio)
+      .catch((err) => setError(err.response?.data?.error || err.message))
+      .finally(() => setLoading(false));
+  }, [referencia]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[200px]">
+        <div className="flex items-center gap-2 text-slate-400 text-[13px]">
+          <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Cargando...
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !negocio) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[200px]">
+        <p className="text-red-500 text-[13px]">{error || 'Negocio no encontrado'}</p>
+      </div>
+    );
+  }
+
+  const { apto, financiero } = categorizeDatos(negocio.datos || {});
+  const aptoEntries = Object.entries(apto);
+  const finEntries = Object.entries(financiero);
+
+  const nomenclatura = negocio.datos?.Nomenclatura;
+  const inventario = negocio.datos?.Inventario;
+  const saldo = negocio.saldoActual ?? null;
+  const saldoFmt = saldo != null ? formatCOP(saldo) : null;
+
+  return (
+    <div className="flex flex-col gap-3 p-5">
+      {/* Header */}
+      <div className="card px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] text-slate-400 mb-0.5">Referencia</p>
+            <h2 className="text-[16px] font-bold text-slate-800 font-mono">{negocio.referencia}</h2>
+            {(nomenclatura || inventario) && (
+              <p className="text-[12px] text-slate-500 mt-0.5">
+                {nomenclatura && <span className="font-medium">Apto {nomenclatura}</span>}
+                {nomenclatura && inventario && <span className="mx-1.5 text-slate-300">·</span>}
+                {inventario && <span>{inventario}</span>}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              {negocio.estado && (
+                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${estadoColor(negocio.estado)}`}>
+                  {negocio.estado}
+                </span>
+              )}
+              <span className="text-[11px] text-slate-400 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
+                {negocio.totalMovimientos} mov.
+              </span>
+            </div>
+            {saldoFmt && (
+              <div className="text-right">
+                <p className="text-[9px] text-slate-400 uppercase tracking-wide">Saldo actual</p>
+                <p className={`text-[14px] font-bold tabular-nums ${saldo > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                  {saldoFmt}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 1. Comprador */}
+      <Accordion icon={User} title="Comprador" badge={negocio.compradores?.length} defaultOpen>
+        {negocio.compradores && negocio.compradores.length > 0 ? (
+          <div className="divide-y divide-aed-border">
+            {negocio.compradores.map((c, i) => {
+              const nombre = c.nombre.replace(/^\|+\s*/, '').replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, '');
+              return (
+              <div key={c.id ?? i} className="flex items-center gap-3 px-4 py-3">
+                <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-[11px] font-bold text-blue-600 flex-shrink-0">
+                  {nombre.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-slate-800">{nombre}</p>
+                  {c.nroId && <p className="text-[11px] text-slate-400 mt-0.5">{c.nroId}</p>}
+                </div>
+                {c.porcentaje != null && (
+                  <span className="text-[12px] font-semibold text-slate-500 flex-shrink-0">{c.porcentaje}%</span>
+                )}
+              </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="px-4 py-4 text-[12px] text-slate-400 italic">Sin compradores registrados</p>
+        )}
+      </Accordion>
+
+      {/* 2. Apartamento */}
+      <Accordion icon={Building2} title="Info del apartamento" badge={aptoEntries.length} defaultOpen>
+        {aptoEntries.length > 0 ? (
+          <DataGrid entries={aptoEntries} />
+        ) : (
+          <p className="px-4 py-4 text-[12px] text-slate-400 italic">Sin datos del apartamento</p>
+        )}
+      </Accordion>
+
+      {/* 3. Estructura financiera */}
+      <Accordion icon={BarChart3} title="Estructura financiera y saldos" badge={finEntries.length} defaultOpen>
+        {finEntries.length > 0 ? (
+          <DataGrid entries={finEntries} />
+        ) : (
+          <p className="px-4 py-4 text-[12px] text-slate-400 italic">Sin datos financieros en este archivo</p>
+        )}
+      </Accordion>
+
+      {/* 4. Movimientos */}
+      <Accordion icon={History} title="Historial de movimientos" badge={negocio.totalMovimientos} defaultOpen={false}>
+        <MovimientosSection key={referencia} referencia={referencia} />
+      </Accordion>
+    </div>
+  );
+}
+
+// ── CSV export ─────────────────────────────────────────────────────────────
+
+function escapeCSV(v) {
+  if (v == null) return '';
+  const s = String(v).replace(/"/g, '""');
+  return /[,"\n]/.test(s) ? `"${s}"` : s;
+}
+
+function toCSV(negocios) {
+  const headers = [
+    'Referencia', 'Estado', 'Fideicomiso', 'Nomenclatura', 'Área',
+    'Inventario', 'Compradores', 'Cédulas', 'Saldo Actual', 'Valor Venta', 'Movimientos',
+  ];
+  const rows = negocios.map((n) => {
+    const compradores = (n.compradores || [])
+      .map((c) => c.nombre.replace(/^\|+\s*/, '').replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, ''))
+      .join(' | ');
+    const cedulas = (n.compradores || []).map((c) => c.nroId || '').filter(Boolean).join(' | ');
+    return [
+      n.referencia,
+      n.estado,
+      n.datos?.Fideicomiso,
+      n.datos?.Nomenclatura,
+      n.datos?.Área ?? n.datos?.Area,
+      n.datos?.Inventario,
+      compradores,
+      cedulas,
+      getSaldoActual(n.datos),
+      n.datos?.['Valor venta'] ?? n.datos?.['Valor Venta'],
+      n.totalMovimientos,
+    ].map(escapeCSV).join(',');
+  });
+  return [headers.join(','), ...rows].join('\n');
+}
+
+function triggerDownload(content, filename) {
+  const blob = new Blob(['﻿' + content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function buildRows(negocios) {
+  return negocios.map((n) => ({
+    Referencia: n.referencia ?? '',
+    Estado: n.estado ?? '',
+    Fideicomiso: n.datos?.Fideicomiso ?? '',
+    Nomenclatura: n.datos?.Nomenclatura ?? '',
+    Área: n.datos?.Área ?? n.datos?.Area ?? '',
+    Inventario: n.datos?.Inventario ?? '',
+    Compradores: (n.compradores || [])
+      .map((c) => c.nombre.replace(/^\|+\s*/, '').replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, ''))
+      .join(' | '),
+    Cédulas: (n.compradores || []).map((c) => c.nroId || '').filter(Boolean).join(' | '),
+    'Saldo Actual': getSaldoActual(n.datos) ?? '',
+    'Valor Venta': n.datos?.['Valor venta'] ?? n.datos?.['Valor Venta'] ?? '',
+    Movimientos: n.totalMovimientos ?? 0,
+  }));
+}
+
+function exportExcel(negocios, filename) {
+  const ws = XLSX.utils.json_to_sheet(buildRows(negocios));
+  // Auto column widths
+  const colWidths = Object.keys(buildRows([negocios[0] || {}])).map((k) => ({
+    wch: Math.max(k.length, 12),
+  }));
+  ws['!cols'] = colWidths;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Negocios');
+  XLSX.writeFile(wb, filename);
+}
+
+function exportPDF(negocios, filename) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const date = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  doc.setFontSize(13);
+  doc.setTextColor(30, 41, 59);
+  doc.text('Negocios', 14, 14);
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`${date} · ${negocios.length} registros`, 14, 20);
+
+  autoTable(doc, {
+    startY: 25,
+    head: [['Referencia', 'Estado', 'Nomenclatura', 'Compradores', 'Cédulas', 'Saldo Actual', 'Mov.']],
+    body: negocios.map((n) => [
+      n.referencia,
+      n.estado ?? '—',
+      n.datos?.Nomenclatura ?? '—',
+      (n.compradores || [])
+        .map((c) => c.nombre.replace(/^\|+\s*/, '').replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, ''))
+        .join('\n') || '—',
+      (n.compradores || []).map((c) => c.nroId || '').filter(Boolean).join('\n') || '—',
+      getSaldoActual(n.datos) ?? '—',
+      n.totalMovimientos ?? 0,
+    ]),
+    styles: { fontSize: 7.5, cellPadding: 2, overflow: 'linebreak' },
+    headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 7.5, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 250, 255] },
+    columnStyles: { 0: { cellWidth: 28 }, 1: { cellWidth: 26 }, 2: { cellWidth: 22 }, 5: { cellWidth: 26 }, 6: { cellWidth: 12 } },
+  });
+
+  doc.save(filename);
+}
+
+// ── Export dropdown ────────────────────────────────────────────────────────
+
+function ExportMenu({ onExport, disabled }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function close(e) { if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const options = [
+    { label: 'Excel (.xlsx)', fmt: 'xlsx' },
+    { label: 'CSV',           fmt: 'csv'  },
+    { label: 'PDF',           fmt: 'pdf'  },
+  ];
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        title="Exportar"
+        className={`w-7 h-7 flex items-center justify-center rounded-md border border-aed-border bg-white hover:bg-aed-base disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${open ? 'bg-aed-base' : ''}`}
+      >
+        <Download size={12} className="text-slate-400" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-8 z-50 bg-white border border-aed-border rounded-lg shadow-lg overflow-hidden min-w-[140px]">
+          {options.map(({ label, fmt }) => (
+            <button
+              key={fmt}
+              onClick={() => { setOpen(false); onExport(fmt); }}
+              className="w-full text-left px-3 py-2 text-[12px] text-slate-700 hover:bg-aed-base transition-colors"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── List item ───────────────────────────────────────────────────────────────
+
+function cleanNombre(nombre) {
+  if (!nombre) return null;
+  return nombre.replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, '');
+}
+
+function NegocioItem({ negocio, selected, onClick }) {
+  const compradorPrincipal = cleanNombre(negocio.compradores?.[0]?.nombre);
+  const extraCompradores = (negocio.compradores?.length ?? 0) - 1;
+  const isSelected = selected === negocio.referencia;
+  const nomenclatura = negocio.datos?.Nomenclatura;
+  const inventario = negocio.datos?.Inventario;
+  const saldo = formatSaldoCompact(getSaldoActual(negocio.datos));
+  const saldoNum = saldo ? parseFloat(String(getSaldoActual(negocio.datos)).replace(/[^0-9.-]/g, '')) : null;
+
+  return (
+    <button
+      onClick={() => onClick(negocio.referencia)}
+      className={`w-full text-left px-3 py-2.5 border-b border-aed-border transition-colors relative ${
+        isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'
+      }`}
+    >
+      {isSelected && (
+        <span className="absolute left-0 top-2 bottom-2 w-0.5 bg-blue-500 rounded-r" />
+      )}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className={`text-[12px] font-semibold font-mono truncate ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
+            {negocio.referencia}
+          </p>
+          {(nomenclatura || inventario) && (
+            <p className="text-[11px] text-slate-500 truncate mt-0.5">
+              {nomenclatura && <span className="font-medium">Apto {nomenclatura}</span>}
+              {nomenclatura && inventario && <span className="mx-1 text-slate-300">·</span>}
+              {inventario && <span>{inventario}</span>}
+            </p>
+          )}
+          {compradorPrincipal && (
+            <p className="text-[11px] text-slate-400 truncate mt-0.5">
+              {compradorPrincipal}
+              {extraCompradores > 0 && <span className="ml-1 text-slate-300">+{extraCompradores}</span>}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          {negocio.estado && (
+            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${estadoColor(negocio.estado)}`}>
+              {negocio.estado}
+            </span>
+          )}
+          {saldo && (
+            <span className={`text-[10px] font-semibold tabular-nums ${saldoNum > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+              {saldo}
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ── Backfill helper ─────────────────────────────────────────────────────────
+
+function useBackfill(onSuccess) {
+  const [syncing, setSyncing] = useState(false);
+  const pollRef = useRef(null);
+
+  const trigger = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await triggerNegociosBackfill();
+    } catch {
+      // ignore — backfill still may run
+    }
+    // Poll status endpoint until backfill finishes
+    let attempts = 0;
+    pollRef.current = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await getNegociosBackfillStatus();
+        if (!res.running) {
+          clearInterval(pollRef.current);
+          setSyncing(false);
+          if (res.result?.ok) onSuccess();
+        }
+      } catch { /* keep polling */ }
+      if (attempts > 60) {
+        clearInterval(pollRef.current);
+        setSyncing(false);
+      }
+    }, 2000);
+  }, [onSuccess]);
+
+  useEffect(() => () => clearInterval(pollRef.current), []);
+  return { syncing, trigger };
+}
+
+// ── Main component ──────────────────────────────────────────────────────────
+
+export default function Negocios() {
+  const [negocios, setNegocios] = useState([]);
+  const [pagination, setPagination] = useState(null);
+  const [estados, setEstados] = useState([]);
+  const [fideicomisos, setFideicomisos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+
+  const [search, setSearch] = useState('');
+  const [estadoFilter, setEstadoFilter] = useState('');
+  const [fideicomisoFilter, setFideicomisoFilter] = useState('');
+  const [saldoPendiente, setSaldoPendiente] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [stats, setStats] = useState(null);
+
+  const debouncedSearch = useDebounce(search);
+  const filtersRef = useRef({});
+  filtersRef.current = { debouncedSearch, estadoFilter, fideicomisoFilter, saldoPendiente };
+
+  const fetchList = useCallback((p = 1) => {
+    const { debouncedSearch: s, estadoFilter: e, fideicomisoFilter: f, saldoPendiente: sp } = filtersRef.current;
+    setLoading(true);
+    getNegocios({ search: s || undefined, estado: e || undefined, fideicomiso: f || undefined, saldoPendiente: sp || undefined, page: p, limit: 50 })
+      .then((res) => {
+        setNegocios(res.data);
+        setPagination(res.pagination);
+        if (res.estados) setEstados(res.estados);
+        if (res.fideicomisos) setFideicomisos(res.fideicomisos);
+        setPage(p);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { fetchList(1); }, [debouncedSearch, estadoFilter, fideicomisoFilter, saldoPendiente, fetchList]);
+
+  const loadStats = useCallback(() => {
+    getNegociosStats().then(setStats).catch(() => {});
+  }, []);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
+
+  const { syncing, trigger: triggerBackfill } = useBackfill(() => { fetchList(1); loadStats(); });
+
+  const [exporting, setExporting] = useState(false);
+  const handleExport = useCallback(async (fmt) => {
+    const { debouncedSearch: s, estadoFilter: e, fideicomisoFilter: f, saldoPendiente: sp } = filtersRef.current;
+    setExporting(true);
+    try {
+      const res = await getNegocios({ search: s || undefined, estado: e || undefined, fideicomiso: f || undefined, saldoPendiente: sp || undefined, page: 1, limit: 9999 });
+      const date = new Date().toISOString().slice(0, 10);
+      const base = `negocios-${date}`;
+      if (fmt === 'xlsx') exportExcel(res.data, `${base}.xlsx`);
+      else if (fmt === 'pdf') exportPDF(res.data, `${base}.pdf`);
+      else triggerDownload(toCSV(res.data), `${base}.csv`);
+    } catch (err) {
+      console.error('Export error:', err);
+    } finally {
+      setExporting(false);
+    }
+  }, []);
+
+  const clearFilters = () => { setSearch(''); setEstadoFilter(''); setFideicomisoFilter(''); setSaldoPendiente(false); };
+  const hasFilters = search || estadoFilter || fideicomisoFilter || saldoPendiente;
+  const isEmpty = !loading && pagination?.total === 0 && !hasFilters;
+
+  // ── Resizable sidebar ──────────────────────────────────────────────────────
+  const MIN_W = 220;
+  const MAX_W = 520;
+  const [sidebarW, setSidebarW] = useState(300);
+  const dragging = useRef(false);
+
+  const onDragStart = useCallback((e) => {
+    e.preventDefault();
+    dragging.current = true;
+    const onMove = (ev) => {
+      if (!dragging.current) return;
+      const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+      setSidebarW(Math.min(MAX_W, Math.max(MIN_W, clientX)));
+    };
+    const onUp = () => {
+      dragging.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onUp);
+  }, []);
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      {/* ── Left panel ── */}
+      <div style={{ width: sidebarW }} className="flex-shrink-0 bg-white border-r border-aed-border flex flex-col min-w-0">
+        {/* Panel header */}
+        <div className="px-3 py-3 border-b border-aed-border">
+          <div className="flex items-center gap-2 mb-2">
+            <h1 className="text-[13px] font-bold text-slate-800 flex-1">Negocios</h1>
+            {pagination && !isEmpty && (
+              <span className="text-[10px] text-slate-400 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
+                {pagination.total}
+              </span>
+            )}
+            <ExportMenu onExport={handleExport} disabled={exporting || loading} />
+            <button
+              onClick={triggerBackfill}
+              disabled={syncing}
+              title="Sincronizar negocios"
+              className="w-7 h-7 flex items-center justify-center rounded-md border border-aed-border bg-white hover:bg-aed-base disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <RefreshCw size={12} className={`text-slate-400 ${syncing ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            {/* Search */}
+            <div className="relative">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Ref., nomenclatura, comprador o cédula…"
+                className="input pl-7 text-[12px] h-8"
+              />
+              {search && (
+                <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            {/* Estado filter */}
+            {estados.length > 0 && (
+              <select
+                value={estadoFilter}
+                onChange={(e) => setEstadoFilter(e.target.value)}
+                className="input text-[12px] h-8 pr-2"
+              >
+                <option value="">Todos los estados</option>
+                {estados.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
+            )}
+
+            {/* Fideicomiso filter */}
+            {fideicomisos.length > 0 && (
+              <select
+                value={fideicomisoFilter}
+                onChange={(e) => setFideicomisoFilter(e.target.value)}
+                className="input text-[12px] h-8 pr-2"
+              >
+                <option value="">Todos los proyectos</option>
+                {fideicomisos.map((f) => (
+                  <option key={f} value={f}>
+                    {String(f).replace(/^\d+[\s-]+/, '').replace(/^P\.?A\.?\s*/i, '').trim()}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Saldo pendiente toggle */}
+            <button
+              onClick={() => setSaldoPendiente((v) => !v)}
+              className={`w-full h-8 flex items-center gap-2 px-2.5 rounded-md border text-[12px] font-medium transition-colors ${
+                saldoPendiente
+                  ? 'bg-amber-50 border-amber-300 text-amber-700'
+                  : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${saldoPendiente ? 'bg-amber-500' : 'bg-slate-300'}`} />
+              Con saldo pendiente
+            </button>
+
+            {hasFilters && (
+              <button onClick={clearFilters} className="text-[10px] text-blue-500 hover:text-blue-700 flex items-center gap-1 py-0.5">
+                <X size={10} /> Limpiar filtros
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto">
+          {loading && (
+            <div className="flex items-center justify-center py-10">
+              <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            </div>
+          )}
+
+          {!loading && negocios.length === 0 && !isEmpty && (
+            <div className="px-4 py-8 text-center">
+              <p className="text-[12px] text-slate-400">Sin resultados para los filtros aplicados.</p>
+            </div>
+          )}
+
+          {!loading && negocios.map((n) => (
+            <NegocioItem key={n.id} negocio={n} selected={selected} onClick={setSelected} />
+          ))}
+        </div>
+
+        {/* Pagination */}
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between px-3 py-2 border-t border-aed-border bg-aed-base">
+            <button disabled={page <= 1} onClick={() => fetchList(page - 1)}
+              className="text-[11px] text-slate-500 hover:text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">← Ant.</button>
+            <span className="text-[10px] text-slate-400">{page}/{pagination.totalPages}</span>
+            <button disabled={page >= pagination.totalPages} onClick={() => fetchList(page + 1)}
+              className="text-[11px] text-slate-500 hover:text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">Sig. →</button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Resize handle ── */}
+      <div
+        onMouseDown={onDragStart}
+        onTouchStart={onDragStart}
+        className="w-1 flex-shrink-0 bg-aed-border hover:bg-blue-400 active:bg-blue-500 cursor-col-resize transition-colors group relative"
+        title="Arrastrar para redimensionar"
+      >
+        <div className="absolute inset-y-0 -left-1 -right-1" />
+      </div>
+
+      {/* ── Right panel ── */}
+      <div className="flex-1 min-w-0 overflow-y-auto bg-aed-base">
+        {selected ? (
+          <NegocioDetalle key={selected} referencia={selected} />
+        ) : isEmpty ? (
+          /* Empty state with sync button */
+          <div className="flex flex-col items-center justify-center h-full text-center px-8">
+            <div className="w-14 h-14 rounded-2xl bg-white border border-aed-border flex items-center justify-center mb-4">
+              <Building2 size={24} className="text-slate-300" />
+            </div>
+            <p className="text-[14px] font-medium text-slate-600 mb-1">Sin negocios cargados</p>
+            <p className="text-[12px] text-slate-400 mb-5 max-w-xs">
+              Los datos se extraen automáticamente de los archivos Excel subidos a Encargos.
+              Haz clic en Sincronizar para cargarlos.
+            </p>
+            <button
+              onClick={triggerBackfill}
+              disabled={syncing}
+              className="btn-primary text-[12px] px-5 py-2 gap-2 disabled:opacity-60"
+            >
+              <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+              {syncing ? 'Sincronizando…' : 'Sincronizar negocios'}
+            </button>
+            {syncing && (
+              <p className="text-[11px] text-slate-400 mt-3">Esto puede tomar unos segundos…</p>
+            )}
+          </div>
+        ) : (
+          /* Stats dashboard */
+          <div className="p-5 flex flex-col gap-4 overflow-y-auto">
+            {stats ? (
+              <>
+                {/* KPIs */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="card p-4">
+                    <p className="section-label mb-1">Total negocios</p>
+                    <p className="text-[26px] font-bold text-slate-800 tabular-nums">{stats.totalNegocios}</p>
+                  </div>
+                  <div className="card p-4">
+                    <p className="section-label mb-1">Con saldo pendiente</p>
+                    <p className="text-[26px] font-bold text-amber-600 tabular-nums">{stats.conSaldo}</p>
+                  </div>
+                  <div className="card p-4">
+                    <p className="section-label mb-1">Saldo total</p>
+                    <p className="text-[18px] font-bold text-amber-600 tabular-nums leading-tight mt-1">
+                      {stats.saldoTotal > 0
+                        ? new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(stats.saldoTotal)
+                        : '—'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Por estado + Por proyecto */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="card p-4">
+                    <p className="section-label mb-3">Por estado</p>
+                    <div className="flex flex-col gap-2">
+                      {stats.porEstado.map((e) => (
+                        <div key={e.estado} className="flex items-center justify-between gap-2">
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${estadoColor(e.estado)}`}>
+                            {e.estado}
+                          </span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-[12px] font-semibold text-slate-700 tabular-nums">{e.count}</span>
+                            {e.saldo > 0 && (
+                              <span className="text-[10px] text-amber-600 tabular-nums">
+                                {formatCOP(e.saldo)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="card p-4">
+                    <p className="section-label mb-3">Por proyecto</p>
+                    <div className="flex flex-col gap-2">
+                      {stats.porFideicomiso.map((f) => (
+                        <div key={f.fideicomiso} className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-slate-600 truncate">
+                            {String(f.fideicomiso).replace(/^\d+[\s-]+/, '').replace(/^P\.?A\.?\s*/i, '').trim()}
+                          </span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-[12px] font-semibold text-slate-700 tabular-nums">{f.count}</span>
+                            {f.saldo > 0 && (
+                              <span className="text-[10px] text-amber-600 tabular-nums">
+                                {formatCOP(f.saldo)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400 text-center">
+                  Selecciona un negocio de la lista para ver el detalle completo
+                </p>
+              </>
+            ) : (
+              <div className="flex items-center justify-center h-40">
+                <svg className="w-5 h-5 animate-spin text-blue-300" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

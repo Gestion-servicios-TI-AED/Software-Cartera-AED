@@ -58,17 +58,15 @@ function readWithoutPassword(buffer) {
   return sheets;
 }
 
+// All fiducia sheets: first 6 rows are metadata, row 7 (index 6) is the header.
+const FIDUCIA_HEADER_ROW = 6;
+
 function extractColumnsAndRows(raw2d) {
   if (!raw2d || raw2d.length === 0) return { columnas: [], filas: [], totalFilas: 0 };
+  if (raw2d.length <= FIDUCIA_HEADER_ROW) return { columnas: [], filas: [], totalFilas: 0 };
 
-  let headerIdx = 0;
-  for (let i = 0; i < Math.min(raw2d.length, 10); i++) {
-    const nonEmpty = (raw2d[i] || []).filter((c) => c !== null && c !== '').length;
-    if (nonEmpty >= 2) { headerIdx = i; break; }
-  }
-
-  const columnas = (raw2d[headerIdx] || []).map((c) => (c != null ? String(c).trim() : ''));
-  const filas = raw2d.slice(headerIdx + 1).filter((row) =>
+  const columnas = (raw2d[FIDUCIA_HEADER_ROW] || []).map((c) => (c != null ? String(c).trim() : ''));
+  const filas = raw2d.slice(FIDUCIA_HEADER_ROW + 1).filter((row) =>
     (Array.isArray(row) ? row : []).some((c) => c !== null && c !== '' && c !== undefined)
   );
 
@@ -156,6 +154,18 @@ async function procesarArchivoFiducia(buffer, filename, metadata = {}) {
     }
 
     hojasCreadas.push({ id: hoja.id, nombreHoja: sheetName, totalFilas });
+
+    // Populate Negocio tables based on sheet name
+    const sheetKey = sheetName.toLowerCase().trim();
+    try {
+      if (sheetKey === 'movimientos') {
+        await processResumenSheet(columnas, filas);
+      } else if (sheetKey === 'mov_por_propietario') {
+        await processMovPorPropietarioSheet(columnas, filas);
+      }
+    } catch (negErr) {
+      console.warn(`[negocios] Error procesando "${sheetName}": ${negErr.message}`);
+    }
   }
 
   console.log(`[fiducia] "${filename}" → ${hojasCreadas.length} hojas, encargo ${encargo.id}`);
@@ -194,6 +204,264 @@ async function procesarArchivoFiducia(buffer, filename, metadata = {}) {
   }
 
   return { encargo, hojas: hojasCreadas };
+}
+
+// ── Negocio parsing (spec-driven) ─────────────────────────────────────────────
+
+function cleanNegRef(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim().replace(/\.0+$/, '');
+  return s === '' ? null : s;
+}
+
+// Parse one or many compradores from a raw cell string.
+// Handles all known formats from the fiducia Excel:
+//   Single:  "NOMBRE (100%)"
+//            "12345678 NOMBRE (100%)"
+//   Multi:   "NOMBRE_A (12.5%) 28869349 NOMBRE_B (12.5%) 38237361 NOMBRE_C (12.5%) ..."
+//            (first person may lack an ID; last person may lack a percentage)
+// rawNroId / rawPct are the separate columns from Mov_Por_Propietario (used when the
+// name cell doesn't embed that information).
+function parseCompradoresCell(rawNombre, rawNroId, rawPct) {
+  if (!rawNombre || String(rawNombre).trim() === '') return [];
+  const s = String(rawNombre).replace(/[\r\n]/g, ' ').trim();
+
+  // Split by (PCT%) markers — each segment holds the ID+name of the NEXT person.
+  const pctPattern = /\((\d+\.?\d*)%\)/g;
+  const segments = [];
+  let lastEnd = 0;
+  let m;
+  while ((m = pctPattern.exec(s)) !== null) {
+    segments.push({ text: s.slice(lastEnd, m.index).trim(), pct: parseFloat(m[1]) });
+    lastEnd = m.index + m[0].length;
+  }
+  const remaining = s.slice(lastEnd).trim();
+  if (remaining) segments.push({ text: remaining, pct: null });
+
+  // Single-person path: no (PCT%) found at all and no ID prefix → use separate columns
+  if (segments.length === 1 && segments[0].pct === null) {
+    let nombre = segments[0].text.replace(/^\d+\s+/, '').trim();
+    let porcentaje = null;
+    if (rawPct != null) {
+      const p = parseFloat(String(rawPct).replace(/[^0-9.]/g, ''));
+      if (!isNaN(p)) porcentaje = p;
+    }
+    const nroId = rawNroId != null ? String(rawNroId).trim() || null : null;
+    return nombre ? [{ nombre, nroId, porcentaje }] : [];
+  }
+
+  // Multi (or single with embedded PCT%) — derive each person from segments
+  const isSingleEmbedded = segments.length === 1;
+  return segments
+    .map(({ text, pct }) => {
+      const clean = text.replace(/^\|+\s*/, ''); // strip | separator that Excel embeds
+      if (!clean) return null;
+      const idMatch = clean.match(/^(\d{4,12})\s+([\s\S]+)/);
+      let nroId = idMatch ? idMatch[1] : null;
+      if (!nroId && isSingleEmbedded && rawNroId != null) {
+        nroId = String(rawNroId).trim() || null;
+      }
+      const nombre = (idMatch ? idMatch[2] : clean).trim();
+      return nombre ? { nombre, nroId, porcentaje: pct } : null;
+    })
+    .filter(Boolean);
+}
+
+function cleanStr(v) {
+  if (v == null) return null;
+  const s = String(v).replace(/[\r\n]/g, ' ').trim();
+  return s === '' ? null : s;
+}
+
+async function applyNroIdRaw(negocioId, list) {
+  for (const c of list) {
+    if (!c.nroId) continue;
+    await prisma.$executeRaw`
+      UPDATE "NegocioComprador" SET "nroId" = ${c.nroId}
+      WHERE "negocioId"::text = ${negocioId} AND nombre = ${c.nombre}
+    `;
+  }
+}
+
+function colIdx(columnas, name) {
+  const target = name.toLowerCase();
+  return columnas.findIndex((c) => (c || '').toLowerCase().trim() === target);
+}
+
+// Hoja Movimientos (Resumen) — upsert Negocio por Referencia (col 8, index 7)
+async function processResumenSheet(columnas, filas) {
+  const refIdx = 7;        // Col 8: Referencia — primary key
+  const propietariosIdx = 9; // Col 10: Propietarios
+  const estadoIdx = colIdx(columnas, 'Estado');
+
+  let upserted = 0;
+  for (const row of filas) {
+    const referencia = cleanNegRef(row[refIdx]);
+    if (!referencia) continue;
+
+    const estado = estadoIdx !== -1 ? cleanStr(row[estadoIdx]) : null;
+
+    const datos = {};
+    columnas.forEach((col, idx) => {
+      const v = cleanStr(row[idx]);
+      if (col && v !== null) datos[col] = v;
+    });
+
+    const negocio = await prisma.negocio.upsert({
+      where: { referencia },
+      create: { referencia, estado, datos },
+      update: { estado, datos },
+    });
+    upserted++;
+
+    // Parse compradores from Propietarios column — only set if Mov_Por_Propietario
+    // hasn't already populated them (check count first to avoid overwriting richer data)
+    const comps = parseCompradoresCell(row[propietariosIdx], null, null);
+    if (comps.length > 0) {
+      const existing = await prisma.negocioComprador.count({ where: { negocioId: negocio.id } });
+      if (existing === 0) {
+        await prisma.negocioComprador.createMany({
+          data: comps.map((c, i) => ({
+            negocioId: negocio.id,
+            nombre: c.nombre,
+            nroId: c.nroId,
+            porcentaje: c.porcentaje,
+            orden: i,
+          })),
+        });
+        await applyNroIdRaw(negocio.id, comps);
+      }
+    }
+  }
+  if (upserted > 0) console.log(`[negocios] Resumen: upserted ${upserted} negocios`);
+}
+
+// Hoja Mov_Por_Propietario — upsert compradores + insert movements (dedup by idMovimiento)
+async function processMovPorPropietarioSheet(columnas, filas) {
+  // Find all occurrences of 'Referencia' (col 7 = negocio ref, col 20 = mov ref)
+  const refIdxs = columnas.reduce((acc, c, i) => {
+    if ((c || '').toLowerCase().trim() === 'referencia') acc.push(i);
+    return acc;
+  }, []);
+  const negRefIdx = refIdxs[0] ?? 6;   // Col 7 (index 6) — links to Negocio
+  const movRefIdx = refIdxs[1] ?? -1;  // Col 20 (index 19) — payment reference
+
+  const nroIdIdx      = colIdx(columnas, 'Nro ID Propietario') !== -1 ? colIdx(columnas, 'Nro ID Propietario') : colIdx(columnas, 'Nro ID Propietario 1');
+  const propIdx       = colIdx(columnas, 'Propietario') !== -1 ? colIdx(columnas, 'Propietario') : colIdx(columnas, 'Propietario 1');
+  const pctIdx        = colIdx(columnas, '% Participación') !== -1 ? colIdx(columnas, '% Participación') : colIdx(columnas, '% Participación 1');
+  const tipoMovIdx    = colIdx(columnas, 'Tipo Movimiento');
+  const fechaContIdx  = colIdx(columnas, 'Fecha Contable');
+  const valorIdx      = colIdx(columnas, 'Valor');
+  const comentIdx     = colIdx(columnas, 'Comentarios');
+  const fechaBancoIdx = colIdx(columnas, 'Fecha Mov. Banco');
+  const cuentaIdx     = colIdx(columnas, 'Cuenta Bancaria');
+  const conceptoIdx   = colIdx(columnas, 'Concepto');
+  const sucursalIdx   = colIdx(columnas, 'Sucursal');
+  const estadoIdx     = colIdx(columnas, 'Estado');
+  const obsIdx        = colIdx(columnas, 'Observaciones');
+  const razonIdx      = colIdx(columnas, 'Razones / Justificaciones');
+  const idUnidadIdx   = colIdx(columnas, 'ID Unidad');
+  // Dedup key: prefer 'ID Movimiento', fall back to 'ID Interno'
+  const idMovIdx      = colIdx(columnas, 'ID Movimiento') !== -1
+    ? colIdx(columnas, 'ID Movimiento')
+    : colIdx(columnas, 'ID Interno');
+  const idPersonaIdx  = colIdx(columnas, 'ID Persona');
+
+  // Group by negocio referencia
+  const negMap = new Map(); // referencia → { compradores: Map, movimientos: [] }
+  for (const row of filas) {
+    const referencia = cleanNegRef(row[negRefIdx]);
+    if (!referencia) continue;
+
+    if (!negMap.has(referencia)) negMap.set(referencia, { compradores: new Map(), movimientos: [] });
+    const entry = negMap.get(referencia);
+
+    // Compradores (unique by nroId, or nombre as fallback; enrich nroId if seen later)
+    const comps = parseCompradoresCell(row[propIdx], row[nroIdIdx], pctIdx !== -1 ? row[pctIdx] : null);
+    for (const comp of comps) {
+      const byId   = comp.nroId ? entry.compradores.get(comp.nroId) : undefined;
+      const byName = entry.compradores.get(comp.nombre);
+      if (byId) {
+        // Already known by cedula — nothing to do
+      } else if (byName) {
+        // Known by name — enrich with cedula if we now have it
+        if (comp.nroId) {
+          entry.compradores.delete(comp.nombre);
+          entry.compradores.set(comp.nroId, { ...byName, nroId: comp.nroId });
+        }
+      } else {
+        const key = comp.nroId || comp.nombre;
+        entry.compradores.set(key, { ...comp, orden: entry.compradores.size });
+      }
+    }
+
+    // Movement
+    const idMovimiento = cleanStr(row[idMovIdx]);
+    if (idMovimiento) {
+      const v = (idx) => (idx !== -1 ? cleanStr(row[idx]) : null);
+      const datos = {};
+      const movFields = [
+        ['Tipo Movimiento', tipoMovIdx], ['Fecha Contable', fechaContIdx],
+        ['Valor', valorIdx], ['Comentarios', comentIdx],
+        ['Fecha Mov. Banco', fechaBancoIdx], ['Cuenta Bancaria', cuentaIdx],
+        ['Concepto', conceptoIdx], ['Sucursal', sucursalIdx],
+        ['Referencia Movimiento', movRefIdx], ['Estado', estadoIdx],
+        ['Observaciones', obsIdx], ['Razones / Justificaciones', razonIdx],
+        ['ID Unidad', idUnidadIdx], ['ID Movimiento', idMovIdx],
+        ['ID Persona', idPersonaIdx], ['Nro ID Propietario', nroIdIdx],
+      ];
+      for (const [name, idx] of movFields) {
+        const val = v(idx);
+        if (val !== null) datos[name] = val;
+      }
+      entry.movimientos.push({ idMovimiento, referencia, datos });
+    }
+  }
+
+  let compCreated = 0, movCreated = 0;
+  for (const [referencia, entry] of negMap.entries()) {
+    let negocio = await prisma.negocio.findUnique({ where: { referencia } });
+    if (!negocio) negocio = await prisma.negocio.create({ data: { referencia } });
+
+    // Replace compradores
+    const list = [...entry.compradores.values()];
+    if (list.length > 0) {
+      await prisma.negocioComprador.deleteMany({ where: { negocioId: negocio.id } });
+      await prisma.negocioComprador.createMany({
+        data: list.map((c) => ({
+          negocioId: negocio.id,
+          nombre: c.nombre,
+          nroId: c.nroId,
+          porcentaje: c.porcentaje,
+          orden: c.orden,
+        })),
+      });
+      await applyNroIdRaw(negocio.id, list);
+      compCreated += list.length;
+    }
+
+    // Insert movements — skip existing idMovimiento
+    const ids = entry.movimientos.map((m) => m.idMovimiento);
+    const existing = await prisma.negocioMovimiento.findMany({
+      where: { idMovimiento: { in: ids } },
+      select: { idMovimiento: true },
+    });
+    const existingSet = new Set(existing.map((m) => m.idMovimiento));
+
+    const toInsert = entry.movimientos.filter((m) => !existingSet.has(m.idMovimiento));
+    if (toInsert.length > 0) {
+      await prisma.negocioMovimiento.createMany({
+        data: toInsert.map((m) => ({
+          negocioId: negocio.id,
+          referencia: m.referencia,
+          idMovimiento: m.idMovimiento,
+          datos: m.datos,
+        })),
+      });
+      movCreated += toInsert.length;
+    }
+  }
+  console.log(`[negocios] Mov_Por_Propietario: ${compCreated} compradores, ${movCreated} movimientos nuevos`);
 }
 
 module.exports = { procesarArchivoFiducia };

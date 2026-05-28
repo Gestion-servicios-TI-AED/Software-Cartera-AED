@@ -5,11 +5,10 @@ const path = require('path');
 const cron = require('node-cron');
 const { PrismaClient } = require('@prisma/client');
 const { syncOpportunitiesFromZoho } = require('./services/zohoSync');
-const { syncEmailMovimientos } = require('./services/emailSync');
 const opportunitiesRouter = require('./routes/opportunities');
 const fieldsRouter = require('./routes/fields');
-const pagosRouter = require('./routes/pagos');
 const fiduciaRouter = require('./routes/fiducia');
+const negociosRouter = require('./routes/negocios');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -21,8 +20,8 @@ app.use(express.json());
 // Rutas
 app.use('/api/opportunities', opportunitiesRouter);
 app.use('/api/fields', fieldsRouter);
-app.use('/api/pagos', pagosRouter);
 app.use('/api/fiducia', fiduciaRouter);
+app.use('/api/negocios', negociosRouter);
 
 // GET /api/sync/status — ruta directa (también está en opportunities router)
 app.get('/api/sync/status', async (req, res) => {
@@ -61,14 +60,6 @@ cron.schedule('0 * * * *', () => {
   console.log('[cron] Ejecutando sincronización horaria Zoho...');
   syncOpportunitiesFromZoho().catch((err) =>
     console.error('[cron] Error Zoho sync:', err.message)
-  );
-});
-
-// Sincronización correos — cada día a las 8 AM
-cron.schedule('0 8 * * *', () => {
-  console.log('[cron] Ejecutando sincronización de correos...');
-  syncEmailMovimientos().catch((err) =>
-    console.error('[cron] Error email sync:', err.message)
   );
 });
 

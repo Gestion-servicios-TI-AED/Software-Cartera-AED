@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
 const { procesarArchivoFiducia } = require('../services/fiduciaService');
+const { runBackfill } = require('./negocios');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -29,6 +30,7 @@ router.post('/upload', upload.single('archivo'), async (req, res) => {
       encargo: result.encargo,
       hojas: result.hojas,
     });
+    runBackfill().catch((err) => console.error('[backfill/auto]', err.message));
   } catch (err) {
     console.error('[fiducia/upload]', err.message);
     res.status(500).json({ error: err.message });
@@ -349,146 +351,72 @@ router.get('/propietarios', async (req, res) => {
   }
 });
 
-// GET /api/fiducia/encargos/:id/nomenclaturas — lista de nomenclaturas únicas del encargo
+// GET /api/fiducia/encargos/:id/nomenclaturas — lista de nomenclaturas del encargo (desde Negocio)
 router.get('/encargos/:id/nomenclaturas', async (req, res) => {
   try {
     const { search, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
 
-    // Obtener todas las hojas del encargo
-    const hojas = await prisma.hojaFiduciaria.findMany({
-      where: { encargId: req.params.id },
+    const encargo = await prisma.encargFiduciario.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, nombre: true, codigo: true },
+    });
+    if (!encargo) {
+      return res.json({ data: [], pagination: { total: 0, page: 1, limit: limitNum, totalPages: 0 } });
+    }
+
+    // Filtrar negocios por fideicomiso usando el código del encargo
+    const andConds = [];
+    if (encargo.codigo) {
+      andConds.push({ datos: { path: ['Fideicomiso'], string_contains: encargo.codigo } });
+    }
+    if (search) {
+      andConds.push({
+        OR: [
+          { datos: { path: ['Nomenclatura'], string_contains: search } },
+          { datos: { path: ['Inventario'],   string_contains: search } },
+          { compradores: { some: { nombre: { contains: search, mode: 'insensitive' } } } },
+        ],
+      });
+    }
+
+    const negocioWhere = andConds.length > 0 ? { AND: andConds } : {};
+
+    const negocios = await prisma.negocio.findMany({
+      where: negocioWhere,
+      include: {
+        compradores: { orderBy: { orden: 'asc' }, take: 1 },
+        _count: { select: { movimientos: true } },
+      },
     });
 
-    if (hojas.length === 0) {
-      return res.json({ data: [], nomenclaturaKey: null, pagination: { total: 0, page: 1, limit: limitNum, totalPages: 0 } });
-    }
-
-    // Detectar columnas clave en la primera hoja con datos
-    // Para nomenclatura: primero buscar coincidencia exacta, luego parcial
-    const NOMENCLATURA_EXACT = ['nomenclatura'];
-    const NOMENCLATURA_PARTIAL = ['nomen', 'unidad', 'apartamento', 'apto'];
-    const ESTADO_KEYS = ['estado'];
-    const PROPIETARIO_KEYS_DET = ['propietario 1', 'propietario', 'cliente', 'comprador'];
-    const TIPO_KEYS = ['tipo inmueble', 'categoria'];
-
-    let nomenclaturaIdx = -1, estadoIdx = -1, propIdx = -1, tipoIdx = -1;
-    let nomenclaturaKey = null, estadoKey = null, propKey = null, tipoKey = null;
-    let targetHoja = null;
-
-    for (const hoja of hojas) {
-      const columnas = Array.isArray(hoja.columnas) ? hoja.columnas : [];
-
-      // Paso 1: buscar coincidencia exacta de "nomenclatura"
-      for (let i = 0; i < columnas.length; i++) {
-        const cl = (columnas[i] || '').toLowerCase().trim();
-        if (NOMENCLATURA_EXACT.some((nk) => cl === nk)) {
-          nomenclaturaIdx = i;
-          nomenclaturaKey = columnas[i];
-          break;
-        }
-      }
-
-      // Paso 2: si no hay exacta, buscar coincidencia parcial (pero no "tipo inmueble")
-      if (nomenclaturaIdx === -1) {
-        for (let i = 0; i < columnas.length; i++) {
-          const cl = (columnas[i] || '').toLowerCase().trim();
-          if (cl.includes('tipo')) continue; // Evitar "Tipo Inmueble"
-          if (NOMENCLATURA_PARTIAL.some((nk) => cl.includes(nk))) {
-            nomenclaturaIdx = i;
-            nomenclaturaKey = columnas[i];
-            break;
-          }
-        }
-      }
-
-      // Detectar otras columnas
-      if (nomenclaturaIdx !== -1) {
-        // Buscar propietario en dos pasadas:
-        // 1) coincidencia exacta con alguna keyword (evita "Nro ID Propietario 1")
-        // 2) coincidencia parcial como fallback
-        for (let i = 0; i < columnas.length; i++) {
-          if (i === nomenclaturaIdx) continue;
-          const cl = (columnas[i] || '').toLowerCase().trim();
-          if (estadoIdx === -1 && ESTADO_KEYS.some((ek) => cl === ek)) {
-            estadoIdx = i; estadoKey = columnas[i];
-          }
-          if (propIdx === -1 && PROPIETARIO_KEYS_DET.some((pk) => cl === pk)) {
-            propIdx = i; propKey = columnas[i];
-          }
-          if (tipoIdx === -1 && TIPO_KEYS.some((tk) => cl === tk)) {
-            tipoIdx = i; tipoKey = columnas[i];
-          }
-        }
-        // Fallback para propietario: coincidencia parcial excluyendo columnas de ID
-        if (propIdx === -1) {
-          for (let i = 0; i < columnas.length; i++) {
-            if (i === nomenclaturaIdx) continue;
-            const cl = (columnas[i] || '').toLowerCase().trim();
-            const isId = cl.startsWith('nro') || cl.startsWith('id ') || cl.includes(' id ');
-            if (!isId && PROPIETARIO_KEYS_DET.some((pk) => cl.includes(pk))) {
-              propIdx = i; propKey = columnas[i]; break;
-            }
-          }
-        }
-        targetHoja = hoja;
-        break;
-      }
-    }
-
-    if (nomenclaturaIdx === -1) {
-      return res.json({ data: [], nomenclaturaKey: null, pagination: { total: 0, page: 1, limit: limitNum, totalPages: 0 } });
-    }
-
-    // Agrupar por valor de nomenclatura usando filas de la hoja
-    const filas = Array.isArray(targetHoja.filas) ? targetHoja.filas : [];
-    const grouped = {};
-
-    for (const row of filas) {
-      const arr = Array.isArray(row) ? row : [];
-      const val = arr[nomenclaturaIdx];
-      const key = val != null ? String(val).trim() : '';
-      if (!key) continue;
-
-      if (!grouped[key]) {
-        grouped[key] = {
-          nomenclatura: key,
-          totalMovimientos: 0,
-          estado: estadoIdx !== -1 ? (arr[estadoIdx] || null) : null,
-          propietario: propIdx !== -1 ? (arr[propIdx] || null) : null,
-          tipo: tipoIdx !== -1 ? (arr[tipoIdx] || null) : null,
+    let items = negocios
+      .filter((n) => n.datos?.Nomenclatura)
+      .map((n) => {
+        const comp = n.compradores[0];
+        const compradorPrincipal = comp?.nombre
+          ? comp.nombre.replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, '')
+          : null;
+        return {
+          nomenclatura:      n.datos.Nomenclatura,
+          referencia:        n.referencia,
+          estado:            n.estado,
+          compradorPrincipal,
+          nroId:             comp?.nroId ?? null,
+          saldoActual:       n.saldoActual ?? null,
+          totalMovimientos:  n._count.movimientos,
+          tipo:              n.datos?.['Tipo Inmueble'] ?? n.datos?.Categoria ?? null,
+          inventario:        n.datos?.Inventario ?? null,
         };
-      }
-      grouped[key].totalMovimientos++;
-      // Actualizar datos si los actuales están vacíos
-      if (propIdx !== -1 && !grouped[key].propietario && arr[propIdx]) {
-        grouped[key].propietario = arr[propIdx];
-      }
-    }
+      })
+      .sort((a, b) => a.nomenclatura.localeCompare(b.nomenclatura, 'es-CO', { numeric: true }));
 
-    let entries = Object.values(grouped).sort((a, b) => a.nomenclatura.localeCompare(b.nomenclatura));
-
-    // Aplicar filtro de búsqueda
-    if (search) {
-      const s = search.toLowerCase();
-      entries = entries.filter((e) =>
-        e.nomenclatura.toLowerCase().includes(s) ||
-        (e.propietario && e.propietario.toLowerCase().includes(s))
-      );
-    }
-
-    const total = entries.length;
-    const paginated = entries.slice((pageNum - 1) * limitNum, pageNum * limitNum);
+    const total     = items.length;
+    const paginated = items.slice((pageNum - 1) * limitNum, pageNum * limitNum);
 
     res.json({
       data: paginated,
-      nomenclaturaKey,
-      estadoKey,
-      propietarioKey: propKey,
-      tipoKey,
-      hojaId: targetHoja.id,
-      hojaNombre: targetHoja.nombreHoja,
       pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
     });
   } catch (err) {
@@ -497,143 +425,69 @@ router.get('/encargos/:id/nomenclaturas', async (req, res) => {
   }
 });
 
-// GET /api/fiducia/encargos/:id/nomenclaturas/:nomenclatura — detalle completo de una nomenclatura
+// GET /api/fiducia/encargos/:id/nomenclaturas/:nomenclatura — detalle de una nomenclatura (desde Negocio)
 router.get('/encargos/:id/nomenclaturas/:nomenclatura', async (req, res) => {
   try {
     const nomenclatura = decodeURIComponent(req.params.nomenclatura);
 
-    // Obtener todas las hojas del encargo
-    const hojas = await prisma.hojaFiduciaria.findMany({
-      where: { encargId: req.params.id },
-    });
-
-    if (hojas.length === 0) {
-      return res.status(404).json({ error: 'No se encontraron hojas' });
-    }
-
-    // Detectar columna nomenclatura — exacta primero
-    const NOMENCLATURA_EXACT = ['nomenclatura'];
-    const NOMENCLATURA_PARTIAL = ['nomen', 'unidad', 'apartamento', 'apto'];
-
-    // Propiedades fijas del inmueble
-    const FIXED_CANDIDATES = [
-      'fideicomiso', 'inventario', 'categoria', 'tipo inmueble', 'nomenclatura',
-      'area', 'estado',
-    ];
-
-    const allMatched = [];
-    let nomenclaturaKey = null;
-    let allColumnas = [];
-
-    for (const hoja of hojas) {
-      const columnas = Array.isArray(hoja.columnas) ? hoja.columnas : [];
-      const filas = Array.isArray(hoja.filas) ? hoja.filas : [];
-
-      // Encontrar índice de nomenclatura — exacta primero
-      let nomIdx = -1;
-      for (let i = 0; i < columnas.length; i++) {
-        const cl = (columnas[i] || '').toLowerCase().trim();
-        if (NOMENCLATURA_EXACT.some((nk) => cl === nk)) {
-          nomIdx = i;
-          if (!nomenclaturaKey) nomenclaturaKey = columnas[i];
-          break;
-        }
-      }
-      if (nomIdx === -1) {
-        for (let i = 0; i < columnas.length; i++) {
-          const cl = (columnas[i] || '').toLowerCase().trim();
-          if (cl.includes('tipo')) continue;
-          if (NOMENCLATURA_PARTIAL.some((nk) => cl.includes(nk))) {
-            nomIdx = i;
-            if (!nomenclaturaKey) nomenclaturaKey = columnas[i];
-            break;
-          }
-        }
-      }
-
-      if (nomIdx === -1) continue;
-      if (allColumnas.length === 0) allColumnas = columnas;
-
-      // Filtrar filas que coinciden con la nomenclatura
-      for (const row of filas) {
-        const arr = Array.isArray(row) ? row : [];
-        const val = arr[nomIdx];
-        if (val != null && String(val).trim() === nomenclatura) {
-          // Convertir fila de array a objeto { columna: valor }
-          const datos = {};
-          for (let i = 0; i < columnas.length; i++) {
-            if (columnas[i]) datos[columnas[i]] = arr[i] ?? null;
-          }
-          allMatched.push({ datos, nombreHoja: hoja.nombreHoja });
-        }
-      }
-    }
-
-    if (allMatched.length === 0) {
-      return res.status(404).json({ error: 'Nomenclatura no encontrada' });
-    }
-
-    // Separar propiedades fijas de movimientos variables
-    const fixedProps = {};
-    const movementKeys = [];
-
-    for (const col of allColumnas) {
-      if (!col) continue;
-      const cl = col.toLowerCase().trim();
-      const isFixed = FIXED_CANDIDATES.some((fc) => cl.includes(fc));
-
-      if (isFixed) {
-        // Tomar el primer valor no vacío y no espacio
-        const val = allMatched.find((m) =>
-          m.datos[col] != null && String(m.datos[col]).trim() !== ''
-        )?.datos[col] || null;
-        fixedProps[col] = val != null ? String(val).trim() : null;
-      } else {
-        movementKeys.push(col);
-      }
-    }
-
-    // Construir registros de movimientos (solo columnas variables)
-    let records = allMatched.map((m, idx) => {
-      const row = {};
-      for (const key of movementKeys) {
-        row[key] = m.datos[key] ?? null;
-      }
-      return { id: `row-${idx}`, nombreHoja: m.nombreHoja, ...row };
-    });
-
-    // Encontrar la columna de Fecha Contable para ordenar
-    let fechaContableKey = null;
-    for (const key of movementKeys) {
-      if (key.toLowerCase().includes('fecha contable')) {
-        fechaContableKey = key;
-        break;
-      }
-    }
-
-    // Ordenar movimientos por fecha contable
-    if (fechaContableKey) {
-      records.sort((a, b) => {
-        const valA = Number(a[fechaContableKey]) || 0;
-        const valB = Number(b[fechaContableKey]) || 0;
-        return valA - valB;
-      });
-    }
-
-    // Obtener info del encargo
     const encargo = await prisma.encargFiduciario.findUnique({
       where: { id: req.params.id },
       select: { id: true, nombre: true, codigo: true },
     });
+    if (!encargo) return res.status(404).json({ error: 'Encargo no encontrado' });
+
+    // Buscar el Negocio: primero con fideicomiso + nomenclatura, luego solo por nomenclatura
+    const andCondsBase = [{ datos: { path: ['Nomenclatura'], equals: nomenclatura } }];
+    if (encargo.codigo) {
+      andCondsBase.push({ datos: { path: ['Fideicomiso'], string_contains: encargo.codigo } });
+    }
+
+    let negocio = await prisma.negocio.findFirst({
+      where: { AND: andCondsBase },
+      include: { compradores: { orderBy: { orden: 'asc' } } },
+    });
+
+    // Fallback sin filtro de fideicomiso
+    if (!negocio && encargo.codigo) {
+      negocio = await prisma.negocio.findFirst({
+        where: { datos: { path: ['Nomenclatura'], equals: nomenclatura } },
+        include: { compradores: { orderBy: { orden: 'asc' } } },
+      });
+    }
+
+    if (!negocio) {
+      return res.status(404).json({
+        error: 'Negocio no encontrado para esta nomenclatura. Ejecuta el backfill en el módulo Negocios.',
+      });
+    }
+
+    const [totalMovimientos, movimientos] = await Promise.all([
+      prisma.negocioMovimiento.count({ where: { negocioId: negocio.id } }),
+      prisma.negocioMovimiento.findMany({
+        where: { negocioId: negocio.id },
+        orderBy: [{ fechaContable: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
+        take: 500,
+      }),
+    ]);
 
     res.json({
       nomenclatura,
-      nomenclaturaKey,
       encargo,
-      propiedades: fixedProps,
-      movimientos: records,
-      movimientoKeys: movementKeys,
-      totalMovimientos: records.length,
+      negocio: {
+        id:          negocio.id,
+        referencia:  negocio.referencia,
+        estado:      negocio.estado,
+        datos:       negocio.datos,
+        saldoActual: negocio.saldoActual,
+        compradores: negocio.compradores,
+      },
+      movimientos: movimientos.map((m) => ({
+        id:            m.id,
+        idMovimiento:  m.idMovimiento,
+        fechaContable: m.fechaContable,
+        datos:         m.datos,
+      })),
+      totalMovimientos,
     });
   } catch (err) {
     console.error('[fiducia/nomenclatura-detail]', err.message);

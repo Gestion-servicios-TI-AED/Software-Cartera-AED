@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getOpportunity, getFieldsMetadata, getSubforms, getMovimientos } from '../utils/api';
+import { getOpportunity, getFieldsMetadata, getSubforms } from '../utils/api';
 import { formatCOP, formatDate, formatDateTime } from '../utils/format';
 import StageBadge from '../components/StageBadge';
-import MovimientoTimeline from '../components/MovimientoTimeline';
-import ProgressBar from '../components/ProgressBar';
 
 function InfoRow({ label, children }) {
   return (
@@ -132,34 +130,21 @@ function LazySubforms({ opportunityId }) {
   );
 }
 
-function mapMovimiento(mov) {
-  const d = mov.datos || {};
-  return {
-    id: mov.id,
-    concepto: d.concepto || d.descripcion || mov.archivoNombre || 'Movimiento',
-    fecha: d.fecha || mov.emailFecha,
-    valor: d.monto || d.valor || d.Amount || 0,
-    fuente: d.fuente || 'Fiducia',
-  };
-}
-
 export default function OpportunityDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [opportunity, setOpportunity] = useState(null);
   const [fieldMap, setFieldMap] = useState({});
-  const [movimientos, setMovimientos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    Promise.all([getOpportunity(id), getFieldsMetadata(), getMovimientos(id)])
-      .then(([opp, fields, movRes]) => {
+    Promise.all([getOpportunity(id), getFieldsMetadata()])
+      .then(([opp, fields]) => {
         setOpportunity(opp);
         const map = {};
         fields.forEach((f) => { map[f.apiName] = f.fieldLabel; });
         setFieldMap(map);
-        setMovimientos((movRes.data || []).map(mapMovimiento));
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -214,8 +199,8 @@ export default function OpportunityDetail() {
         </span>
       </header>
 
-      {/* 3-column body */}
-      <div className="flex-1 p-5 grid grid-cols-[260px_1fr_260px] gap-4 items-start">
+      {/* 2-column body */}
+      <div className="flex-1 p-5 grid grid-cols-[260px_1fr] gap-4 items-start">
 
         {/* LEFT — Info */}
         <div className="flex flex-col gap-3">
@@ -253,24 +238,6 @@ export default function OpportunityDetail() {
 
         {/* CENTER — Financial */}
         <div className="flex flex-col gap-3">
-          {/* Progreso de recaudo */}
-          {(() => {
-            const amount = opportunity.camposFinancieros?.Amount || 0;
-            const totalRecaudado = movimientos.reduce((sum, m) => sum + (m.valor || 0), 0);
-            if (!amount) return null;
-            const pct = Math.round((totalRecaudado / amount) * 100);
-            return (
-              <div className="card p-4">
-                <p className="section-label mb-3">Recaudo</p>
-                <ProgressBar
-                  pct={pct}
-                  leftLabel={`Recaudado: ${formatCOP(totalRecaudado)}`}
-                  rightLabel={`Total: ${formatCOP(amount)}`}
-                />
-              </div>
-            );
-          })()}
-
           {/* Plan de Pagos */}
           <div className="card p-4 flex flex-col gap-3">
             <p className="section-label">Plan de Pagos</p>
@@ -309,12 +276,6 @@ export default function OpportunityDetail() {
             <p className="section-label">Forma y Propuesta de Pago</p>
             <LazySubforms opportunityId={id} />
           </div>
-        </div>
-
-        {/* RIGHT — Movements */}
-        <div className="card p-4" style={{ minHeight: '300px' }}>
-          <p className="section-label mb-3">Movimientos de Pago</p>
-          <MovimientoTimeline movimientos={movimientos} />
         </div>
 
       </div>
