@@ -127,3 +127,29 @@ export async function getNegociosBackfillStatus() {
   const { data } = await api.get('/negocios/backfill/status');
   return data;
 }
+
+// ── Stats ──────────────────────────────────────────────────
+export async function getStatsResumen() {
+  const { data } = await api.get('/stats/resumen');
+  return data;
+}
+
+export async function getStatsRecaudoMensual() {
+  const { data } = await api.get('/stats/recaudo-mensual');
+  return data;
+}
+
+export async function getStatsPipeline() {
+  const { data } = await api.get('/stats/pipeline');
+  return data;
+}
+
+export async function getStatsTopDeudores(limit = 10) {
+  const { data } = await api.get('/stats/top-deudores', { params: { limit } });
+  return data;
+}
+
+export async function getStatsSync(limit = 5) {
+  const { data } = await api.get('/stats/sync', { params: { limit } });
+  return data;
+}
