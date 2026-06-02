@@ -1,12 +1,13 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FolderOpen, ArrowLeftRight, Briefcase, Settings } from 'lucide-react';
+import { LayoutDashboard, FolderOpen, ArrowLeftRight, Briefcase, BarChart3, Settings } from 'lucide-react';
 
 const NAV_ITEMS = [
   { to: '/', Icon: Briefcase, label: 'Negocios', exact: true },
   { to: '/oportunidades', Icon: LayoutDashboard, label: 'Oportunidades', exact: true },
   { to: '/fiducia', Icon: FolderOpen, label: 'Encargos' },
   { to: '/fiducia/movimientos', Icon: ArrowLeftRight, label: 'Movimientos' },
+  { to: '/resumen', Icon: BarChart3, label: 'Resumen', exact: true },
 ];
 
 function SidebarItem({ to, Icon, label, exact }) {
