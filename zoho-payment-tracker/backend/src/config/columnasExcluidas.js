@@ -1,0 +1,37 @@
+// Columnas del informe de fiducia que NO deben guardarse ni mostrarse, según el
+// concepto provisto por Cartera (ver DICCIONARIO-COLUMNAS-FIDUCIA.md en la raíz).
+//
+// Dos motivos de exclusión:
+//   - "no aplica" / "en este momento no aplica"
+//   - "necesario para cuando se va a entregar el inmueble" (uso futuro, aún no se gestiona)
+//
+// La exclusión es POR HOJA: "Observaciones" del resumen se excluye, pero
+// "Observaciones" del movimiento (Hoja2) sí aplica y se conserva.
+
+const norm = (s) => (s == null ? '' : String(s).trim().toLowerCase());
+
+// Hoja Resumen (alimenta Negocio.datos)
+const COLS_RESUMEN_EXCLUIR = [
+  // no aplica
+  'Canje', 'Subsidio', 'Descuentos', 'Valor Acreditación', 'Movimiento Posterior',
+  // necesario para cuando se va a entregar el inmueble
+  'Fecha Autoriz. Escritura', 'Matricula Inmobiliaria', 'Valor Escritura', 'Observaciones',
+  'Fecha Factura', 'Número Factura', 'Número Escritura Publica', 'Notaria',
+  'Valor Factura', 'Fecha Envío Contabilidad',
+];
+
+// Hoja Movimientos / Mov_Por_Propietario (alimenta NegocioMovimiento.datos)
+const COLS_MOVIMIENTO_EXCLUIR = ['Sucursal'];
+
+const setResumen = new Set(COLS_RESUMEN_EXCLUIR.map(norm));
+const setMovimiento = new Set(COLS_MOVIMIENTO_EXCLUIR.map(norm));
+
+const excluirEnResumen = (col) => setResumen.has(norm(col));
+const excluirEnMovimiento = (col) => setMovimiento.has(norm(col));
+
+module.exports = {
+  COLS_RESUMEN_EXCLUIR,
+  COLS_MOVIMIENTO_EXCLUIR,
+  excluirEnResumen,
+  excluirEnMovimiento,
+};

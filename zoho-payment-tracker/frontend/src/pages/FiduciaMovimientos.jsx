@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, X, ChevronRight } from 'lucide-react';
 import { getAllNegocioMovimientos } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
+import { filtrarKeysMovimiento } from '../utils/columnasExcluidas';
+import ConceptoHint from '../components/ConceptoHint';
 
 function useDebounce(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
@@ -83,7 +85,7 @@ function MovimientoRow({ mov }) {
 
   const compradorPrincipal = cleanNombre(neg?.compradores?.[0]?.nombre);
   const extraCompradores   = (neg?.compradores?.length ?? 0) - 1;
-  const allFields          = Object.keys(datos);
+  const allFields          = filtrarKeysMovimiento(Object.keys(datos));
 
   return (
     <>
@@ -150,7 +152,7 @@ function MovimientoRow({ mov }) {
                 const display = v != null && v !== '' ? (formatCell(col, v) ?? String(v)) : null;
                 return (
                   <div key={col}>
-                    <p className="section-label mb-0.5">{col}</p>
+                    <p className="section-label mb-0.5 inline-flex items-center gap-1">{col}<ConceptoHint columna={col} hoja="movimiento" /></p>
                     <p className="text-[11px] text-slate-700 break-words">
                       {display ?? <span className="text-slate-300 italic">—</span>}
                     </p>
@@ -336,14 +338,14 @@ export default function FiduciaMovimientos() {
                 <thead>
                   <tr className="border-b border-aed-border bg-aed-base">
                     <th className="w-6" />
-                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Referencia</th>
-                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Proyecto</th>
-                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Nomenclatura</th>
-                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Comprador</th>
-                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Estado negocio</th>
-                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Fecha contable</th>
-                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Tipo movimiento</th>
-                    <th className="section-label px-3 py-2.5 text-right whitespace-nowrap">Valor</th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Referencia<ConceptoHint columna="Referencia" hoja="movimiento" /></span></th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Proyecto<ConceptoHint columna="Fideicomiso" hoja="movimiento" /></span></th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Nomenclatura<ConceptoHint columna="Nomenclatura" hoja="movimiento" /></span></th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Comprador<ConceptoHint columna="Propietario" hoja="movimiento" /></span></th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Estado negocio<ConceptoHint columna="Estado" hoja="resumen" /></span></th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Fecha contable<ConceptoHint columna="Fecha Contable" hoja="movimiento" /></span></th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Tipo movimiento<ConceptoHint columna="Tipo Movimiento" hoja="movimiento" /></span></th>
+                    <th className="section-label px-3 py-2.5 text-right whitespace-nowrap"><span className="inline-flex items-center gap-1">Valor<ConceptoHint columna="Valor" hoja="movimiento" /></span></th>
                     <th className="section-label px-3 py-2.5 text-right whitespace-nowrap">Estado mov.</th>
                   </tr>
                 </thead>

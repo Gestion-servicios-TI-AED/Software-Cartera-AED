@@ -1,5 +1,6 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const { excluirEnResumen, excluirEnMovimiento } = require('../config/columnasExcluidas');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -180,8 +181,9 @@ async function runBackfill() {
         const estado = estadoIdx !== -1 ? cleanStr(row[estadoIdx]) : null;
         const datos = {};
         headers.forEach((col, idx) => {
+          if (!col || excluirEnResumen(col)) return; // columnas "no aplica" / uso futuro
           const v = cleanStr(row[idx]);
-          if (col && v !== null) datos[col] = v;
+          if (v !== null) datos[col] = v;
         });
         const saldoActual = extractSaldoActual(datos);
         const negocio = await prisma.negocio.upsert({
@@ -289,7 +291,11 @@ async function runBackfill() {
             ['ID Unidad', idUnidadIdx], ['ID Movimiento', idMovIdx],
             ['ID Persona', idPersonaIdx], ['Nro ID Propietario', nroIdIdx],
           ];
-          for (const [name, idx] of movFields) { const val = v(idx); if (val !== null) datos[name] = val; }
+          for (const [name, idx] of movFields) {
+            if (excluirEnMovimiento(name)) continue; // columnas "no aplica" (Sucursal)
+            const val = v(idx);
+            if (val !== null) datos[name] = val;
+          }
           entry.movimientos.push({ idMovimiento, referencia, fechaContable, datos });
         }
       }

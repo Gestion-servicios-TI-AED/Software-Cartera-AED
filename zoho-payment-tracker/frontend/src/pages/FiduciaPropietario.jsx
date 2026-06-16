@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { getAllNegocioMovimientos } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
+import { filtrarKeysMovimiento } from '../utils/columnasExcluidas';
+import ConceptoHint from '../components/ConceptoHint';
 
 function formatCOP(val) {
   if (val == null || val === '') return null;
@@ -54,7 +56,7 @@ function MovimientoRow({ mov }) {
   const tipo  = datos['Tipo Movimiento'] || null;
   const valor = datos['Valor'] ? formatCOP(datos['Valor']) : null;
   const estado = datos['Estado'];
-  const fields = Object.keys(datos);
+  const fields = filtrarKeysMovimiento(Object.keys(datos));
 
   function estadoBadgeColor(e) {
     if (!e) return '';
@@ -103,7 +105,7 @@ function MovimientoRow({ mov }) {
                 const display = v != null && v !== '' ? (formatCell(col, v) ?? String(v)) : null;
                 return (
                   <div key={col}>
-                    <p className="section-label mb-0.5">{col}</p>
+                    <p className="section-label mb-0.5 inline-flex items-center gap-1">{col}<ConceptoHint columna={col} hoja="movimiento" /></p>
                     <p className="text-[11px] text-slate-700 break-words">
                       {display ?? <span className="text-slate-300 italic">—</span>}
                     </p>
@@ -215,10 +217,10 @@ export default function FiduciaPropietario() {
                     <thead>
                       <tr className="bg-white border-b border-aed-border">
                         <th className="w-6" />
-                        <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Fecha</th>
-                        <th className="section-label px-3 py-2.5 text-left">Tipo movimiento</th>
-                        <th className="section-label px-3 py-2.5 text-right whitespace-nowrap">Valor</th>
-                        <th className="section-label px-3 py-2.5 text-right whitespace-nowrap">Estado</th>
+                        <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Fecha<ConceptoHint columna="Fecha Contable" hoja="movimiento" /></span></th>
+                        <th className="section-label px-3 py-2.5 text-left"><span className="inline-flex items-center gap-1">Tipo movimiento<ConceptoHint columna="Tipo Movimiento" hoja="movimiento" /></span></th>
+                        <th className="section-label px-3 py-2.5 text-right whitespace-nowrap"><span className="inline-flex items-center gap-1">Valor<ConceptoHint columna="Valor" hoja="movimiento" /></span></th>
+                        <th className="section-label px-3 py-2.5 text-right whitespace-nowrap"><span className="inline-flex items-center gap-1">Estado<ConceptoHint columna="Estado" hoja="movimiento" /></span></th>
                       </tr>
                     </thead>
                     <tbody>

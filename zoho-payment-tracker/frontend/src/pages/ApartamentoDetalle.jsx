@@ -3,6 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, User, Building2, BarChart3, History } from 'lucide-react';
 import { getNomenclaturaDetail } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
+import { filtrarDatosResumen, filtrarKeysMovimiento } from '../utils/columnasExcluidas';
+import ConceptoHint from '../components/ConceptoHint';
+import { ListaInfo, ListaFinanciera } from '../components/DatosFinancieros';
+import { ordenarFinanciero } from '../utils/ordenColumnas';
 
 // ── Helpers (mismos que Negocios) ─────────────────────────────────────────
 
@@ -149,24 +153,6 @@ function Accordion({ icon: Icon, title, badge, children, defaultOpen = true }) {
   );
 }
 
-function DataGrid({ entries }) {
-  if (!entries || entries.length === 0) {
-    return <p className="px-4 py-4 text-[12px] text-slate-400 italic">Sin datos</p>;
-  }
-  return (
-    <div className="grid grid-cols-2 gap-px bg-aed-border">
-      {entries.map(([key, value]) => (
-        <div key={key} className="bg-white px-4 py-3">
-          <p className="section-label mb-0.5">{key}</p>
-          <p className="text-[12px] font-medium text-slate-800 break-words">
-            {formatCell(key, value) ?? <span className="text-slate-300 italic">—</span>}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function MovimientoRow({ mov, fields }) {
   const [expanded, setExpanded] = useState(false);
   const datos = mov.datos || {};
@@ -223,7 +209,7 @@ function MovimientoRow({ mov, fields }) {
                 const display = v != null && v !== '' ? (formatCell(col, v) ?? String(v)) : null;
                 return (
                   <div key={col}>
-                    <p className="section-label mb-0.5">{col}</p>
+                    <p className="section-label mb-0.5 inline-flex items-center gap-1">{col}<ConceptoHint columna={col} hoja="movimiento" /></p>
                     <p className="text-[11px] text-slate-700 break-words">
                       {display ?? <span className="text-slate-300 italic">—</span>}
                     </p>
@@ -283,13 +269,13 @@ export default function ApartamentoDetalle() {
   }
 
   const { negocio, movimientos, totalMovimientos, encargo } = data;
-  const { apto, financiero } = categorizeDatos(negocio.datos || {});
+  const { apto, financiero } = categorizeDatos(filtrarDatosResumen(negocio.datos || {}));
   const aptoEntries = Object.entries(apto);
-  const finEntries  = Object.entries(financiero);
+  const finEntries  = ordenarFinanciero(Object.entries(financiero));
 
   const saldo    = negocio.saldoActual ?? null;
   const saldoFmt = saldo != null ? formatCOP(saldo) : null;
-  const movFields = movimientos.length > 0 ? Object.keys(movimientos[0].datos || {}) : [];
+  const movFields = movimientos.length > 0 ? filtrarKeysMovimiento(Object.keys(movimientos[0].datos || {})) : [];
 
   return (
     <div className="flex flex-col min-h-screen bg-aed-base">
@@ -381,15 +367,15 @@ export default function ApartamentoDetalle() {
         {/* 2. Info del apartamento */}
         <Accordion icon={Building2} title="Info del apartamento" badge={aptoEntries.length} defaultOpen>
           {aptoEntries.length > 0
-            ? <DataGrid entries={aptoEntries} />
-            : <p className="px-4 py-4 text-[12px] text-slate-400 italic">Sin datos del apartamento</p>}
+            ? <ListaInfo entries={aptoEntries} hoja="resumen" format={formatCell} />
+            : <p className="px-4 py-4 text-[12px] text-slate-400 italic bg-white">Sin datos del apartamento</p>}
         </Accordion>
 
         {/* 3. Estructura financiera */}
         <Accordion icon={BarChart3} title="Estructura financiera y saldos" badge={finEntries.length} defaultOpen>
           {finEntries.length > 0
-            ? <DataGrid entries={finEntries} />
-            : <p className="px-4 py-4 text-[12px] text-slate-400 italic">Sin datos financieros</p>}
+            ? <ListaFinanciera entries={finEntries} format={formatCell} />
+            : <p className="px-4 py-4 text-[12px] text-slate-400 italic bg-white">Sin datos financieros</p>}
         </Accordion>
 
         {/* 4. Movimientos */}
@@ -402,10 +388,10 @@ export default function ApartamentoDetalle() {
                 <thead>
                   <tr className="bg-aed-base border-b border-aed-border">
                     <th className="w-6" />
-                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap">Fecha</th>
-                    <th className="section-label px-3 py-2.5 text-left">Tipo movimiento</th>
-                    <th className="section-label px-3 py-2.5 text-right whitespace-nowrap">Valor</th>
-                    <th className="section-label px-3 py-2.5 text-right whitespace-nowrap">Estado</th>
+                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Fecha<ConceptoHint columna="Fecha Contable" hoja="movimiento" /></span></th>
+                    <th className="section-label px-3 py-2.5 text-left"><span className="inline-flex items-center gap-1">Tipo movimiento<ConceptoHint columna="Tipo Movimiento" hoja="movimiento" /></span></th>
+                    <th className="section-label px-3 py-2.5 text-right whitespace-nowrap"><span className="inline-flex items-center gap-1">Valor<ConceptoHint columna="Valor" hoja="movimiento" /></span></th>
+                    <th className="section-label px-3 py-2.5 text-right whitespace-nowrap"><span className="inline-flex items-center gap-1">Estado<ConceptoHint columna="Estado" hoja="movimiento" /></span></th>
                   </tr>
                 </thead>
                 <tbody>

@@ -1,0 +1,288 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-02T13:00:00Z",
+  "title": "Design System: Cartera AED",
+  "extensions": {
+    "colorMeta": {
+      "azul-aed": {
+        "role": "primary",
+        "displayName": "Azul AED",
+        "canonical": "oklch(0.617 0.201 242)",
+        "tonalRamp": [
+          "oklch(0.18 0.20 242)",
+          "oklch(0.28 0.20 242)",
+          "oklch(0.38 0.20 242)",
+          "oklch(0.50 0.20 242)",
+          "oklch(0.617 0.201 242)",
+          "oklch(0.72 0.16 242)",
+          "oklch(0.84 0.09 242)",
+          "oklch(0.94 0.04 242)"
+        ]
+      },
+      "indigo-aed": {
+        "role": "secondary",
+        "displayName": "Índigo AED",
+        "canonical": "oklch(0.549 0.243 274)",
+        "tonalRamp": [
+          "oklch(0.18 0.24 274)",
+          "oklch(0.28 0.24 274)",
+          "oklch(0.38 0.24 274)",
+          "oklch(0.49 0.24 274)",
+          "oklch(0.549 0.243 274)",
+          "oklch(0.67 0.19 274)",
+          "oklch(0.81 0.11 274)",
+          "oklch(0.94 0.04 274)"
+        ]
+      },
+      "papel-helado": {
+        "role": "neutral",
+        "displayName": "Papel Helado",
+        "canonical": "oklch(0.978 0.005 246)",
+        "tonalRamp": [
+          "oklch(0.15 0.005 246)",
+          "oklch(0.30 0.005 246)",
+          "oklch(0.50 0.005 246)",
+          "oklch(0.65 0.005 246)",
+          "oklch(0.78 0.005 246)",
+          "oklch(0.88 0.005 246)",
+          "oklch(0.95 0.005 246)",
+          "oklch(0.978 0.005 246)"
+        ]
+      },
+      "linea-regla": {
+        "role": "neutral",
+        "displayName": "Línea de Regla",
+        "canonical": "oklch(0.929 0.021 242)",
+        "tonalRamp": [
+          "oklch(0.20 0.021 242)",
+          "oklch(0.35 0.021 242)",
+          "oklch(0.50 0.021 242)",
+          "oklch(0.65 0.021 242)",
+          "oklch(0.78 0.021 242)",
+          "oklch(0.87 0.021 242)",
+          "oklch(0.929 0.021 242)",
+          "oklch(0.97 0.010 242)"
+        ]
+      },
+      "tinta": {
+        "role": "neutral",
+        "displayName": "Tinta",
+        "canonical": "oklch(0.144 0.024 261)",
+        "tonalRamp": [
+          "oklch(0.144 0.024 261)",
+          "oklch(0.22 0.022 261)",
+          "oklch(0.32 0.020 261)",
+          "oklch(0.45 0.018 261)",
+          "oklch(0.57 0.015 261)",
+          "oklch(0.70 0.010 261)",
+          "oklch(0.82 0.006 261)",
+          "oklch(0.94 0.003 261)"
+        ]
+      },
+      "alerta-ambar": {
+        "role": "tertiary",
+        "displayName": "Alerta Ámbar",
+        "canonical": "oklch(0.643 0.185 68)",
+        "tonalRamp": [
+          "oklch(0.20 0.18 68)",
+          "oklch(0.30 0.18 68)",
+          "oklch(0.40 0.18 68)",
+          "oklch(0.52 0.19 68)",
+          "oklch(0.643 0.185 68)",
+          "oklch(0.74 0.15 68)",
+          "oklch(0.84 0.10 68)",
+          "oklch(0.95 0.04 68)"
+        ]
+      },
+      "verde-recaudo": {
+        "role": "tertiary",
+        "displayName": "Verde Recaudo",
+        "canonical": "oklch(0.588 0.170 147)",
+        "tonalRamp": [
+          "oklch(0.18 0.17 147)",
+          "oklch(0.28 0.17 147)",
+          "oklch(0.38 0.17 147)",
+          "oklch(0.49 0.17 147)",
+          "oklch(0.588 0.170 147)",
+          "oklch(0.70 0.14 147)",
+          "oklch(0.82 0.09 147)",
+          "oklch(0.95 0.04 147)"
+        ]
+      },
+      "rojo-cierre": {
+        "role": "tertiary",
+        "displayName": "Rojo Cierre",
+        "canonical": "oklch(0.538 0.230 13)",
+        "tonalRamp": [
+          "oklch(0.18 0.23 13)",
+          "oklch(0.28 0.23 13)",
+          "oklch(0.38 0.23 13)",
+          "oklch(0.48 0.23 13)",
+          "oklch(0.538 0.230 13)",
+          "oklch(0.66 0.18 13)",
+          "oklch(0.80 0.11 13)",
+          "oklch(0.94 0.04 13)"
+        ]
+      },
+      "violeta-fiducia": {
+        "role": "tertiary",
+        "displayName": "Violeta Fiducia",
+        "canonical": "oklch(0.518 0.241 287)",
+        "tonalRamp": [
+          "oklch(0.18 0.24 287)",
+          "oklch(0.28 0.24 287)",
+          "oklch(0.38 0.24 287)",
+          "oklch(0.48 0.24 287)",
+          "oklch(0.518 0.241 287)",
+          "oklch(0.65 0.19 287)",
+          "oklch(0.80 0.11 287)",
+          "oklch(0.94 0.04 287)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "Title", "purpose": "Títulos de página en el topbar. Uno por vista." },
+      "body": { "displayName": "Body", "purpose": "Contenido de tablas, valores de campos, texto descriptivo." },
+      "body-medium": { "displayName": "Body Medium", "purpose": "Etiquetas de columna, texto de controles, texto de acciones." },
+      "label": { "displayName": "Label", "purpose": "Etiquetas de KPI bajo valores grandes, notas secundarias." },
+      "section-label": { "displayName": "Section Label", "purpose": "Separadores de grupo en paneles de detalle. Máximo 4 palabras." },
+      "kpi-value": { "displayName": "KPI Value", "purpose": "Valores de métricas principales en cards de dashboard." }
+    },
+    "shadows": [
+      {
+        "name": "surface-ambient",
+        "value": "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+        "purpose": "El único nivel de sombra. Exclusivo para cards y paneles de contenido en reposo."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-transition",
+        "value": "150ms ease",
+        "purpose": "Transiciones de estado (hover, focus, active) en todos los componentes interactivos."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Button Primary",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Acción primaria de la vista. Usar para sincronizaciones, cargas, confirmaciones.",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"23 4 23 10 17 10\"/><polyline points=\"1 20 1 14 7 14\"/><path d=\"M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15\"/></svg>Sincronizar datos</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 8px; font-family: Inter, system-ui, sans-serif; font-size: 13px; font-weight: 500; line-height: 1.4; background-color: #3b82f6; color: #ffffff; border: none; cursor: pointer; transition: background-color 150ms ease; text-decoration: none; } .ds-btn-primary:hover { background-color: #2563eb; } .ds-btn-primary:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }"
+    },
+    {
+      "name": "Button Secondary",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Acción secundaria o terciaria. Para filtros, exportaciones, acciones auxiliares.",
+      "html": "<button class=\"ds-btn-secondary\">Filtrar</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 8px; font-family: Inter, system-ui, sans-serif; font-size: 13px; font-weight: 500; line-height: 1.4; background-color: #ffffff; color: #334155; border: 1px solid #e8f0fe; cursor: pointer; transition: background-color 150ms ease; } .ds-btn-secondary:hover { background-color: #f8faff; } .ds-btn-secondary:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; } .ds-btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }"
+    },
+    {
+      "name": "KPI Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Tarjeta de métrica del dashboard. Icono categorizado + etiqueta + valor principal.",
+      "html": "<div class=\"ds-kpi-card\"><div class=\"ds-kpi-icon\" style=\"background:#eff6ff\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3b82f6\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"18\" y1=\"20\" x2=\"18\" y2=\"10\"/><line x1=\"12\" y1=\"20\" x2=\"12\" y2=\"4\"/><line x1=\"6\" y1=\"20\" x2=\"6\" y2=\"14\"/></svg></div><span class=\"ds-kpi-label\">Total oportunidades</span><span class=\"ds-kpi-value\">248</span></div>",
+      "css": ".ds-kpi-card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e8f0fe; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); padding: 16px; display: flex; flex-direction: column; gap: 4px; min-width: 160px; } .ds-kpi-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; flex-shrink: 0; } .ds-kpi-label { font-family: Inter, system-ui, sans-serif; font-size: 11px; font-weight: 500; color: #94a3b8; line-height: 1.4; } .ds-kpi-value { font-family: Inter, system-ui, sans-serif; font-size: 22px; font-weight: 700; color: #1e293b; line-height: 1.1; letter-spacing: -0.02em; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Campo de búsqueda o filtro. Con ícono de búsqueda embebido a la izquierda.",
+      "html": "<div class=\"ds-input-wrap\"><svg class=\"ds-input-icon\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><line x1=\"21\" y1=\"21\" x2=\"16.65\" y2=\"16.65\"/></svg><input class=\"ds-input\" type=\"text\" placeholder=\"Buscar por nombre, contacto o referencia…\" /></div>",
+      "css": ".ds-input-wrap { position: relative; display: flex; align-items: center; } .ds-input-icon { position: absolute; left: 12px; color: #94a3b8; pointer-events: none; flex-shrink: 0; } .ds-input { display: block; width: 100%; border-radius: 8px; border: 1px solid #e8f0fe; padding: 8px 12px 8px 36px; font-family: Inter, system-ui, sans-serif; font-size: 13px; font-weight: 400; color: #0f172a; background-color: #f8faff; outline: none; transition: border-color 150ms ease, box-shadow 150ms ease; } .ds-input::placeholder { color: #94a3b8; } .ds-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }"
+    },
+    {
+      "name": "Sidebar Nav Item",
+      "kind": "nav",
+      "refersTo": "button-primary",
+      "description": "Ítem de navegación del sidebar icon-only. Muestra estado activo con indicador lateral y tint azul.",
+      "html": "<div class=\"ds-sidebar\"><div class=\"ds-sidebar-item ds-sidebar-item--active\"><span class=\"ds-sidebar-indicator\"></span><div class=\"ds-sidebar-icon\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\" ry=\"2\"/><line x1=\"8\" y1=\"21\" x2=\"16\" y2=\"21\"/><line x1=\"12\" y1=\"17\" x2=\"12\" y2=\"21\"/></svg></div></div><div class=\"ds-sidebar-item\"><span class=\"ds-sidebar-indicator\"></span><div class=\"ds-sidebar-icon\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z\"/></svg></div></div></div>",
+      "css": ".ds-sidebar { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; width: 60px; background: #fff; } .ds-sidebar-item { position: relative; width: 100%; display: flex; justify-content: center; } .ds-sidebar-indicator { display: none; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; background-color: #3b82f6; border-radius: 0 4px 4px 0; } .ds-sidebar-item--active .ds-sidebar-indicator { display: block; } .ds-sidebar-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #94a3b8; transition: background-color 150ms ease, color 150ms ease; cursor: pointer; } .ds-sidebar-item--active .ds-sidebar-icon { background-color: #eff6ff; color: #3b82f6; } .ds-sidebar-icon:hover { background-color: #f8faff; color: #475569; }"
+    },
+    {
+      "name": "Stage Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Badge semántico de etapa de pipeline. Colores de estado + punto indicador. Puramente informativo.",
+      "html": "<div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:center\"><span class=\"ds-stage won\"><svg width=\"5\" height=\"5\" viewBox=\"0 0 8 8\"><circle cx=\"4\" cy=\"4\" r=\"4\" fill=\"currentColor\"/></svg>Closed Won</span><span class=\"ds-stage negotiation\"><svg width=\"5\" height=\"5\" viewBox=\"0 0 8 8\"><circle cx=\"4\" cy=\"4\" r=\"4\" fill=\"currentColor\"/></svg>Negotiation/Review</span><span class=\"ds-stage qualification\"><svg width=\"5\" height=\"5\" viewBox=\"0 0 8 8\"><circle cx=\"4\" cy=\"4\" r=\"4\" fill=\"currentColor\"/></svg>Qualification</span><span class=\"ds-stage lost\"><svg width=\"5\" height=\"5\" viewBox=\"0 0 8 8\"><circle cx=\"4\" cy=\"4\" r=\"4\" fill=\"currentColor\"/></svg>Closed Lost</span></div>",
+      "css": ".ds-stage { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-family: Inter, system-ui, sans-serif; font-size: 10px; font-weight: 600; border: 1px solid; } .ds-stage.won { background: #f0fdf4; color: #16a34a; border-color: #bbf7d0; } .ds-stage.lost { background: #f9fafb; color: #6b7280; border-color: #e5e7eb; } .ds-stage.negotiation { background: #fff1f2; color: #e11d48; border-color: #fecdd3; } .ds-stage.qualification { background: #fffbeb; color: #d97706; border-color: #fde68a; } .ds-stage.proposal { background: #eff6ff; color: #3b82f6; border-color: #bfdbfe; } .ds-stage.fiducia { background: #faf5ff; color: #7c3aed; border-color: #ddd6fe; }"
+    },
+    {
+      "name": "Section Label",
+      "kind": "custom",
+      "refersTo": "badge",
+      "description": "Separador de grupo en paneles de detalle. No usar como kicker de heading.",
+      "html": "<span class=\"ds-section-label\">Información del proyecto</span>",
+      "css": ".ds-section-label { display: inline-block; font-family: Inter, system-ui, sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: #94a3b8; line-height: 1.4; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "El Libro Mayor",
+    "overview": "El Libro Mayor es una herramienta que no se contempla: se usa. El sistema visual traduce ese principio a cada decisión: fondo de papel casi blanco con un matiz azul apenas perceptible, bordes de regla suave, superficies blancas que respiran, y un único acento —Azul AED— reservado para lo que el usuario debe tocar o reconocer. No existe decoración sin función.\n\nLa paleta de estado (ámbar, verde, rojo, violeta) no es ornamental. Cada color nombra una condición financiera específica: en qué etapa está el negocio, si el recaudo avanza, si el cierre es positivo o negativo. La jerarquía tipográfica es densa pero legible: Inter en cuatro pesos, escala fija de 9 a 22 px, sin familias display que compitan con los datos.\n\nEl sistema rechaza: dashboards con degradados agresivos o métricas gigantes, navegación con menús anidados, glassmorphism, motion sin propósito de estado.",
+    "keyCharacteristics": [
+      "Paleta contenida: un acento funcional, neutros calibrados, vocabulario semántico de cuatro estados",
+      "Single-family typography: Inter en 400/500/600/700, escala fija para densidad cómoda",
+      "Elevación mínima: plano por defecto; shadow-sm es el techo",
+      "El color comunica estado, no personalidad",
+      "La herramienta se retira: el sistema desaparece; los datos quedan"
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "Azul AED aparece en botones primarios, el indicador del sidebar activo, y anillos de foco. En ningún otro contexto como decoración. Su escasez es su autoridad.",
+        "section": "colors"
+      },
+      {
+        "name": "The Semantic State Rule",
+        "body": "Los cuatro colores de estado (ámbar, verde, rojo, violeta) existen para nombrar condiciones del pipeline financiero. Si un elemento no comunica un estado de negocio o categoría financiera, no usa un color de estado.",
+        "section": "colors"
+      },
+      {
+        "name": "The Fixed Scale Rule",
+        "body": "No usar clamp() en tipografía de producto. La escala es fija: 9 / 11 / 13 / 15 / 22 px. Los usuarios trabajan a DPI consistente.",
+        "section": "typography"
+      },
+      {
+        "name": "The Data Priority Rule",
+        "body": "Cuando texto compite con un número en la misma tarjeta o fila, el número gana en peso y tamaño. Las etiquetas acompañan, no compiten.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Las superficies son planas en reposo. Surface Ambient (shadow-sm) es el techo de elevación. Sin sombra hover sobre cards, sin sombra dramática sobre modales.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do reservar Azul AED (#3b82f6) para botones primarios, indicador activo del sidebar, y anillo de foco.",
+      "Do usar los cuatro colores semánticos únicamente cuando nombran un estado de pipeline o categoría financiera, siempre en trio: color sólido, fondo suave, borde tintado.",
+      "Do verificar contraste ≥4.5:1 antes de usar Pizarra Apagada (#94a3b8) sobre fondos distintos de Superficie o Papel Helado.",
+      "Do mantener shadow-sm como techo de elevación. Usar bordes Línea de Regla para separación estructural.",
+      "Do etiquetar todos los botones con verbo + objeto: 'Sincronizar datos', 'Cargar Excel', 'Ver movimientos'.",
+      "Do mantener border-radius: 8px uniforme en todos los controles interactivos.",
+      "Do usar Inter únicamente. La jerarquía sale del peso y el tamaño, no de la familia."
+    ],
+    "donts": [
+      "Don't usar degradados como fondos de card, sección o métrica. El degradado Azul AED → Índigo AED existe únicamente para el logotipo y el avatar.",
+      "Don't crear menús anidados ni profundidad de navegación mayor a dos niveles.",
+      "Don't usar los colores de estado semántico como acentos decorativos, fondos de región, o separadores visuales.",
+      "Don't usar border-left mayor a 1px como acento de color en cards o list items.",
+      "Don't usar glassmorphism (backdrop-filter + fondo translúcido) en ningún componente.",
+      "Don't agregar motion sin propósito de estado. Sin page-load sequences, sin stagger decorativo.",
+      "Don't superar shadow-sm. Sin sombra de hover que amplifique cards.",
+      "Don't anidar cards. Una card dentro de otra siempre es un error de estructura.",
+      "Don't usar Section Label como kicker sobre headings de página ni en body copy.",
+      "Don't usar display fonts, scripts, o tipografía decorativa. Inter es la única familia."
+    ]
+  }
+}

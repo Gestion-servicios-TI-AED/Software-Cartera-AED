@@ -1,6 +1,7 @@
 const XLSX = require('xlsx');
 const XlsxPopulate = require('xlsx-populate');
 const { PrismaClient } = require('@prisma/client');
+const { excluirEnResumen, excluirEnMovimiento } = require('../config/columnasExcluidas');
 
 const prisma = new PrismaClient();
 
@@ -303,8 +304,9 @@ async function processResumenSheet(columnas, filas) {
 
     const datos = {};
     columnas.forEach((col, idx) => {
+      if (!col || excluirEnResumen(col)) return; // columnas "no aplica" / uso futuro
       const v = cleanStr(row[idx]);
-      if (col && v !== null) datos[col] = v;
+      if (v !== null) datos[col] = v;
     });
 
     const negocio = await prisma.negocio.upsert({
@@ -411,6 +413,7 @@ async function processMovPorPropietarioSheet(columnas, filas) {
         ['ID Persona', idPersonaIdx], ['Nro ID Propietario', nroIdIdx],
       ];
       for (const [name, idx] of movFields) {
+        if (excluirEnMovimiento(name)) continue; // columnas "no aplica" (Sucursal)
         const val = v(idx);
         if (val !== null) datos[name] = val;
       }
