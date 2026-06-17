@@ -1,12 +1,13 @@
 import ConceptoHint from './ConceptoHint';
 import { separarFinanciero } from '../utils/ordenColumnas';
+import { etiquetaColumna } from '../utils/etiquetas';
 
 // Una fila de texto plano: etiqueta a la izquierda, valor a la derecha. Fondo blanco.
 function Fila({ etiqueta, valor, hoja = 'resumen' }) {
   return (
     <div className="flex items-baseline justify-between gap-6 px-4 py-2 bg-white border-b border-aed-border/60 break-inside-avoid">
       <span className="section-label inline-flex items-center gap-1 shrink-0">
-        {etiqueta}
+        {etiquetaColumna(etiqueta)}
         <ConceptoHint columna={etiqueta} hoja={hoja} />
       </span>
       <span className="text-[12px] font-medium text-slate-800 text-right break-words">
@@ -55,7 +56,7 @@ export function ListaFinanciera({ entries, format }) {
             <span className="mx-1.5 text-slate-300">·</span>
             <span className="text-slate-400">Salida</span> <b className="font-semibold text-slate-800">{dinero(m.salida)}</b>
             <span className="mx-1.5 text-slate-300">·</span>
-            <span className="text-slate-400">Saldo</span> <b className="font-semibold text-slate-800">{dinero(m.saldo)}</b>
+            <span className="text-slate-400">Abonado</span> <b className="font-semibold text-slate-800">{dinero(m.saldo)}</b>
           </span>
         </div>
       ))}

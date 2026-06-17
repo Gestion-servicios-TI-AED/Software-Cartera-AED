@@ -27,13 +27,13 @@ const RESUMEN = {
   'fecha contrato': 'Fecha de vinculación.',
   'valor venta': 'Valor del inmueble.',
   'cuota inicial': 'Valor de la cuota inicial a pagar.',
-  'crédito': 'Descripción de cómo se pagará el saldo contra entrega.',
-  'credito': 'Descripción de cómo se pagará el saldo contra entrega.',
+  'crédito': 'Descripción de cómo se pagará lo que falta contra entrega.',
+  'credito': 'Descripción de cómo se pagará lo que falta contra entrega.',
   'aportes posteriores': 'Cuando se trae valor de otra fiducia y se traslada a esta fiduciaria.',
   'cumple acreditación': 'Si cumple con las condiciones para seguir en la compra.',
   'cumple acreditacion': 'Si cumple con las condiciones para seguir en la compra.',
-  'saldo inicial': 'Abono total a la fecha del inmueble.',
-  'saldo actual': 'Saldo pagado a la fecha.',
+  'saldo inicial': 'Abonado total a la fecha del inmueble (al inicio del período del reporte).',
+  'saldo actual': 'Total abonado a la fecha.',
 };
 
 const MOVIMIENTO = {
@@ -74,7 +74,7 @@ export function getConcepto(columna, hoja = 'movimiento') {
 
   // Columnas dinámicas de saldos por mes (solo resumen): "May 2026 +", "Jun 2026 (-)", "Saldo May 2026"
   if (hoja === 'resumen') {
-    if (/^saldo\s+\w+\s+\d{4}$/.test(key)) return 'Saldo que queda después del ingreso y la salida del mes.';
+    if (/^saldo\s+\w+\s+\d{4}$/.test(key)) return 'Abonado acumulado tras el ingreso y la salida del mes.';
     if (/\d{4}\s*\+$/.test(key)) return 'Ingreso del inmueble en el mes.';
     if (/\d{4}\s*\(-\)$/.test(key)) return 'Salida de recursos del inmueble en el mes.';
   }

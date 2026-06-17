@@ -431,8 +431,8 @@ function NegocioDetalle({ referencia }) {
             </div>
             {saldoFmt && (
               <div className="text-right">
-                <p className="text-[9px] text-slate-400 uppercase tracking-wide">Saldo actual</p>
-                <p className={`text-[14px] font-bold tabular-nums ${saldo > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                <p className="text-[9px] text-slate-400 uppercase tracking-wide">Total abonado</p>
+                <p className={`text-[14px] font-bold tabular-nums ${saldo > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                   {saldoFmt}
                 </p>
               </div>
@@ -478,7 +478,7 @@ function NegocioDetalle({ referencia }) {
       </Accordion>
 
       {/* 3. Estructura financiera */}
-      <Accordion icon={BarChart3} title="Estructura financiera y saldos" badge={finEntries.length} defaultOpen>
+      <Accordion icon={BarChart3} title="Estructura financiera y abonos" badge={finEntries.length} defaultOpen>
         {finEntries.length > 0 ? (
           <ListaFinanciera entries={finEntries} format={formatCell} />
         ) : (
@@ -505,7 +505,7 @@ function escapeCSV(v) {
 function toCSV(negocios) {
   const headers = [
     'Referencia', 'Estado', 'Fideicomiso', 'Nomenclatura', 'Área',
-    'Inventario', 'Compradores', 'Cédulas', 'Saldo Actual', 'Valor Venta', 'Movimientos',
+    'Inventario', 'Compradores', 'Cédulas', 'Total abonado', 'Valor Venta', 'Movimientos',
   ];
   const rows = negocios.map((n) => {
     const compradores = (n.compradores || [])
@@ -551,7 +551,7 @@ function buildRows(negocios) {
       .map((c) => c.nombre.replace(/^\|+\s*/, '').replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, ''))
       .join(' | '),
     Cédulas: (n.compradores || []).map((c) => c.nroId || '').filter(Boolean).join(' | '),
-    'Saldo Actual': getSaldoActual(n.datos) ?? '',
+    'Total abonado': getSaldoActual(n.datos) ?? '',
     'Valor Venta': n.datos?.['Valor venta'] ?? n.datos?.['Valor Venta'] ?? '',
     Movimientos: n.totalMovimientos ?? 0,
   }));
@@ -582,7 +582,7 @@ function exportPDF(negocios, filename) {
 
   autoTable(doc, {
     startY: 25,
-    head: [['Referencia', 'Estado', 'Nomenclatura', 'Compradores', 'Cédulas', 'Saldo Actual', 'Mov.']],
+    head: [['Referencia', 'Estado', 'Nomenclatura', 'Compradores', 'Cédulas', 'Total abonado', 'Mov.']],
     body: negocios.map((n) => [
       n.referencia,
       n.estado ?? '—',
@@ -701,7 +701,7 @@ function NegocioItem({ negocio, selected, onClick }) {
             </span>
           )}
           {saldo && (
-            <span className={`text-[10px] font-semibold tabular-nums ${saldoNum > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+            <span className={`text-[10px] font-semibold tabular-nums ${saldoNum > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
               {saldo}
             </span>
           )}
@@ -912,17 +912,17 @@ export default function Negocios() {
               </select>
             )}
 
-            {/* Saldo pendiente toggle */}
+            {/* Con abonos toggle */}
             <button
               onClick={() => setSaldoPendiente((v) => !v)}
               className={`w-full h-8 flex items-center gap-2 px-2.5 rounded-md border text-[12px] font-medium transition-colors ${
                 saldoPendiente
-                  ? 'bg-amber-50 border-amber-300 text-amber-700'
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
                   : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
               }`}
             >
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${saldoPendiente ? 'bg-amber-500' : 'bg-slate-300'}`} />
-              Con saldo pendiente
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${saldoPendiente ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+              Con abonos
             </button>
 
             {hasFilters && (
@@ -1016,12 +1016,12 @@ export default function Negocios() {
                     <p className="text-[26px] font-bold text-slate-800 tabular-nums">{stats.totalNegocios}</p>
                   </div>
                   <div className="card p-4">
-                    <p className="section-label mb-1">Con saldo pendiente</p>
-                    <p className="text-[26px] font-bold text-amber-600 tabular-nums">{stats.conSaldo}</p>
+                    <p className="section-label mb-1">Con abonos</p>
+                    <p className="text-[26px] font-bold text-emerald-600 tabular-nums">{stats.conSaldo}</p>
                   </div>
                   <div className="card p-4">
-                    <p className="section-label mb-1">Saldo total</p>
-                    <p className="text-[18px] font-bold text-amber-600 tabular-nums leading-tight mt-1">
+                    <p className="section-label mb-1">Total abonado</p>
+                    <p className="text-[18px] font-bold text-emerald-600 tabular-nums leading-tight mt-1">
                       {stats.saldoTotal > 0
                         ? new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(stats.saldoTotal)
                         : '—'}

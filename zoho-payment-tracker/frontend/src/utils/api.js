@@ -153,3 +153,8 @@ export async function getStatsSync(limit = 5) {
   const { data } = await api.get('/stats/sync', { params: { limit } });
   return data;
 }
+
+export async function getStatsCartera() {
+  const { data } = await api.get('/stats/cartera');
+  return data;
+}

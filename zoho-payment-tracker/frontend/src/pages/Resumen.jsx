@@ -1,18 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import {
-  TrendingUp, Wallet, BarChart3, CalendarCheck, Briefcase, CheckCircle, XCircle, Clock,
+  TrendingUp, AlertTriangle, Target, Clock, Briefcase, CheckCircle, XCircle,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import RecaudoChart from '../components/stats/RecaudoChart';
-import EstadoDonut from '../components/stats/EstadoDonut';
 import PipelineBars from '../components/stats/PipelineBars';
+import { AvancePorProyecto, Morosidad, EmbudoEstados } from '../components/stats/CarteraWidgets';
 import {
   getStatsResumen,
   getStatsRecaudoMensual,
   getStatsPipeline,
-  getStatsTopDeudores,
   getStatsSync,
-  getNegociosStats,
+  getStatsCartera,
 } from '../utils/api';
 import { formatCOP, formatDateTime } from '../utils/format';
 
@@ -26,18 +25,17 @@ export default function Resumen() {
   const [resumen, setResumen] = useState(null);
   const [recaudoMensual, setRecaudoMensual] = useState([]);
   const [pipeline, setPipeline] = useState([]);
-  const [deudores, setDeudores] = useState([]);
   const [syncLogs, setSyncLogs] = useState([]);
-  const [negStats, setNegStats] = useState(null);
+  const [cartera, setCartera] = useState(null);
+  const [moraDias, setMoraDias] = useState(30);
 
   useEffect(() => {
     Promise.allSettled([
       getStatsResumen().then(setResumen),
       getStatsRecaudoMensual().then(setRecaudoMensual),
       getStatsPipeline().then(setPipeline),
-      getStatsTopDeudores(10).then(setDeudores),
       getStatsSync(5).then(setSyncLogs),
-      getNegociosStats().then(setNegStats),
+      getStatsCartera().then(setCartera),
     ]);
   }, []);
 
@@ -45,149 +43,106 @@ export default function Resumen() {
   const syncOk = syncLogs.filter((s) => s.status === 'success').length;
   const syncErr = syncLogs.filter((s) => s.status === 'error').length;
 
+  const c = cartera?.resumen;
+  const morososActual = c ? c[`morosos${moraDias}`] : null;
+  const pct = c?.pctGlobal ?? 0;
+
   return (
     <div className="flex flex-col min-h-screen bg-aed-base">
       {/* Topbar */}
       <header className="h-[52px] bg-white border-b border-aed-border flex items-center px-5 gap-3 flex-shrink-0 sticky top-0 z-10">
         <h1 className="text-[15px] font-bold text-slate-800">Resumen Gerencial</h1>
-        <span className="text-xs text-slate-400">Vista ejecutiva</span>
+        <span className="text-xs text-slate-400">Cartera de cobranza</span>
       </header>
 
       <div className="flex-1 p-5 flex flex-col gap-4">
-        {/* KPIs */}
+        {/* KPIs accionables */}
         <div className="grid grid-cols-5 gap-3">
           <KpiCard
-            icon={Wallet}
-            iconBg="#eff6ff"
-            iconColor="#3b82f6"
-            label="Saldo total cartera"
-            value={resumen ? formatCOP(resumen.saldoCartera) : '—'}
-            sub={resumen ? `${resumen.negociosActivos} negocios activos` : undefined}
+            icon={AlertTriangle}
+            iconBg="#fef2f2"
+            iconColor="#dc2626"
+            label="Por cobrar (cuota inicial)"
+            value={c ? formatCOP(c.porCobrarTotal) : '—'}
+            sub={c ? `de ${formatCOP(c.cuotaInicialTotal)} en cuotas` : undefined}
           />
+
+          {/* % recaudado con barra */}
+          <div className="card p-4 flex flex-col gap-1">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-1" style={{ background: '#f0fdf4' }}>
+              <Target size={16} color="#16a34a" strokeWidth={2} />
+            </div>
+            <span className="text-[11px] text-slate-400 font-medium">% recaudado de cartera</span>
+            <span className="text-[22px] font-bold text-slate-800 leading-tight tracking-tight">{c ? `${pct}%` : '—'}</span>
+            <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden mt-1.5">
+              <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.min(100, pct)}%` }} />
+            </div>
+          </div>
+
           <KpiCard
             icon={TrendingUp}
-            iconBg="#f0fdf4"
-            iconColor="#16a34a"
+            iconBg="#eff6ff"
+            iconColor="#3b82f6"
             label="Recaudo del mes"
             value={resumen ? formatCOP(resumen.recaudoMes) : '—'}
             sub={variacionText(resumen?.variacionMes) ?? undefined}
           />
           <KpiCard
-            icon={BarChart3}
-            iconBg="#faf5ff"
-            iconColor="#7c3aed"
-            label="Recaudo año (YTD)"
-            value={resumen ? formatCOP(resumen.recaudoAnio) : '—'}
-          />
-          <KpiCard
-            icon={CalendarCheck}
+            icon={Clock}
             iconBg="#fffbeb"
             iconColor="#d97706"
-            label="Separaciones del mes"
-            value={resumen !== null ? resumen.separacionesMes : '—'}
+            label={`Morosos (+${moraDias} días)`}
+            value={morososActual ?? '—'}
+            sub={c ? 'sin abonar y con saldo' : undefined}
           />
           <KpiCard
             icon={Briefcase}
-            iconBg="#fef2f2"
-            iconColor="#dc2626"
-            label="Negocios activos"
-            value={resumen !== null ? resumen.negociosActivos : '—'}
+            iconBg="#faf5ff"
+            iconColor="#7c3aed"
+            label="Negocios en cobro"
+            value={c ? c.negociosEnCobro : '—'}
+            sub={resumen ? `Recaudo año: ${formatCOP(resumen.recaudoAnio)}` : undefined}
           />
+        </div>
+
+        {/* Accionable: avance por proyecto + morosidad */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="card p-4">
+            <h2 className="text-[13px] font-semibold text-slate-700 mb-3">Avance de recaudo por proyecto</h2>
+            <AvancePorProyecto data={cartera?.porProyecto ?? []} />
+          </div>
+          <div className="card p-4">
+            <h2 className="text-[13px] font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+              <AlertTriangle size={14} className="text-amber-500" /> Morosidad — requieren gestión
+            </h2>
+            <Morosidad negocios={cartera?.enCobro ?? []} dias={moraDias} onDiasChange={setMoraDias} />
+          </div>
         </div>
 
         {/* Tendencia recaudo */}
         <div className="card p-4">
-          <h2 className="text-[13px] font-semibold text-slate-700 mb-3">
-            Recaudo mensual — últimos 12 meses
-          </h2>
+          <div className="flex items-baseline justify-between mb-3">
+            <h2 className="text-[13px] font-semibold text-slate-700">Recaudo mensual — últimos 12 meses</h2>
+            {resumen && (
+              <span className="text-[11px] text-slate-400">
+                YTD <b className="text-slate-600">{formatCOP(resumen.recaudoAnio)}</b>
+                <span className="mx-1.5">·</span>
+                Separaciones del mes <b className="text-slate-600">{resumen.separacionesMes}</b>
+              </span>
+            )}
+          </div>
           <RecaudoChart data={recaudoMensual} />
         </div>
 
         {/* Distribución */}
         <div className="grid grid-cols-2 gap-4">
           <div className="card p-4">
-            <h2 className="text-[13px] font-semibold text-slate-700 mb-3">
-              Negocios por estado
-            </h2>
-            <EstadoDonut data={negStats?.porEstado ?? []} />
+            <h2 className="text-[13px] font-semibold text-slate-700 mb-3">Negocios por estado</h2>
+            <EmbudoEstados data={cartera?.estados ?? []} />
           </div>
           <div className="card p-4">
-            <h2 className="text-[13px] font-semibold text-slate-700 mb-3">
-              Pipeline por etapa (Zoho)
-            </h2>
+            <h2 className="text-[13px] font-semibold text-slate-700 mb-3">Pipeline por etapa (Zoho)</h2>
             <PipelineBars data={pipeline} />
-          </div>
-        </div>
-
-        {/* Rankings */}
-        <div className="grid grid-cols-2 gap-4">
-          {/* Top deudores */}
-          <div className="card p-4">
-            <h2 className="text-[13px] font-semibold text-slate-700 mb-3">
-              Top 10 deudores (saldo pendiente)
-            </h2>
-            {deudores.length === 0 ? (
-              <p className="text-sm text-slate-400">Sin datos</p>
-            ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-slate-400 border-b border-slate-100">
-                    <th className="text-left py-1 font-medium">#</th>
-                    <th className="text-left py-1 font-medium">Comprador</th>
-                    <th className="text-right py-1 font-medium">Saldo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {deudores.map((d, i) => (
-                    <tr key={d.referencia} className="border-b border-slate-50 hover:bg-slate-50">
-                      <td className="py-1.5 text-slate-400">{i + 1}</td>
-                      <td className="py-1.5 text-slate-700 max-w-[160px] truncate" title={d.nombre}>
-                        {d.nombre}
-                      </td>
-                      <td className="py-1.5 text-right font-medium text-slate-800">
-                        {formatCOP(d.saldoActual)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {/* Recaudo por fideicomiso */}
-          <div className="card p-4">
-            <h2 className="text-[13px] font-semibold text-slate-700 mb-3">
-              Cartera por proyecto (fideicomiso)
-            </h2>
-            {!negStats?.porFideicomiso?.length ? (
-              <p className="text-sm text-slate-400">Sin datos</p>
-            ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-slate-400 border-b border-slate-100">
-                    <th className="text-left py-1 font-medium">Proyecto</th>
-                    <th className="text-right py-1 font-medium">Negocios</th>
-                    <th className="text-right py-1 font-medium">Saldo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {negStats.porFideicomiso.map((f) => (
-                    <tr key={f.fideicomiso} className="border-b border-slate-50 hover:bg-slate-50">
-                      <td
-                        className="py-1.5 text-slate-700 max-w-[160px] truncate"
-                        title={f.fideicomiso}
-                      >
-                        {f.fideicomiso}
-                      </td>
-                      <td className="py-1.5 text-right text-slate-500">{f.count}</td>
-                      <td className="py-1.5 text-right font-medium text-slate-800">
-                        {formatCOP(f.saldo)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
           </div>
         </div>
 

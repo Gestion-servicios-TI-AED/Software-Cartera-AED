@@ -327,8 +327,8 @@ export default function ApartamentoDetalle() {
               )}
               {saldoFmt && (
                 <div className="text-right">
-                  <p className="text-[9px] text-slate-400 uppercase tracking-wide">Saldo actual</p>
-                  <p className={`text-[14px] font-bold tabular-nums ${saldo > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                  <p className="text-[9px] text-slate-400 uppercase tracking-wide">Total abonado</p>
+                  <p className={`text-[14px] font-bold tabular-nums ${saldo > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                     {saldoFmt}
                   </p>
                 </div>
@@ -372,7 +372,7 @@ export default function ApartamentoDetalle() {
         </Accordion>
 
         {/* 3. Estructura financiera */}
-        <Accordion icon={BarChart3} title="Estructura financiera y saldos" badge={finEntries.length} defaultOpen>
+        <Accordion icon={BarChart3} title="Estructura financiera y abonos" badge={finEntries.length} defaultOpen>
           {finEntries.length > 0
             ? <ListaFinanciera entries={finEntries} format={formatCell} />
             : <p className="px-4 py-4 text-[12px] text-slate-400 italic bg-white">Sin datos financieros</p>}

@@ -178,7 +178,7 @@ export default function EncargoNomenclaturas() {
                           </span>
                         )}
                         {saldo && (
-                          <span className={`text-[10px] font-semibold tabular-nums flex-shrink-0 ${saldoNum > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                          <span className={`text-[10px] font-semibold tabular-nums flex-shrink-0 ${saldoNum > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                             {saldo}
                           </span>
                         )}
