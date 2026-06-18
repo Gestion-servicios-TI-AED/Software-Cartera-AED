@@ -131,10 +131,14 @@ export default function Resumen() {
           <div className="flex items-baseline justify-between mb-3">
             <h2 className="text-[15px] font-semibold text-slate-700">Recaudo mensual — últimos 12 meses</h2>
             {resumen && (
-              <span className="text-[13px] text-slate-500">
-                YTD <b className="text-slate-600">{formatCOP(resumen.recaudoAnio)}</b>
-                <span className="mx-1.5">·</span>
-                Separaciones del mes <b className="text-slate-600">{resumen.separacionesMes}</b>
+              <span className="text-[13px] text-slate-500 inline-flex items-center gap-1 flex-wrap">
+                Recaudado en el año
+                <HelpTip text="Total de abonos recibidos desde el 1 de enero hasta hoy (acumulado del año en curso)." />
+                <b className="text-slate-600">{formatCOP(resumen.recaudoAnio)}</b>
+                <span className="mx-1">·</span>
+                Separaciones este mes
+                <HelpTip text="Cantidad de negocios cuyo pago de separación (la reserva inicial) ocurrió en el mes actual." />
+                <b className="text-slate-600">{resumen.separacionesMes}</b>
               </span>
             )}
           </div>
