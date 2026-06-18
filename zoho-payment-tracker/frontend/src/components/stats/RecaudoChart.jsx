@@ -24,9 +24,9 @@ function CustomTooltip({ active, payload, label }) {
     style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0,
   }).format(val);
   return (
-    <div className="bg-white border border-aed-border rounded-lg px-3 py-2 shadow-sm text-xs">
+    <div className="bg-white border border-aed-border rounded-lg px-3 py-2 shadow-sm text-[14px]">
       <p className="font-medium text-slate-700">{label}</p>
-      <p className="text-blue-600 font-bold">{formatted}</p>
+      <p className="text-brand font-bold">{formatted}</p>
     </div>
   );
 }
@@ -36,7 +36,7 @@ export default function RecaudoChart({ data = [] }) {
 
   if (!chartData.length) {
     return (
-      <div className="h-48 flex items-center justify-center text-sm text-slate-400">
+      <div className="h-48 flex items-center justify-center text-[16px] text-slate-400">
         Sin datos de recaudo
       </div>
     );
@@ -48,19 +48,19 @@ export default function RecaudoChart({ data = [] }) {
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
         <XAxis
           dataKey="mesLabel"
-          tick={{ fontSize: 11, fill: '#94a3b8' }}
+          tick={{ fontSize: 11, fill: '#64748b' }}
           axisLine={false}
           tickLine={false}
         />
         <YAxis
           tickFormatter={formatYAxis}
-          tick={{ fontSize: 11, fill: '#94a3b8' }}
+          tick={{ fontSize: 11, fill: '#64748b' }}
           axisLine={false}
           tickLine={false}
           width={52}
         />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f1f5f9' }} />
-        <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
+        <Bar dataKey="total" fill="#0f766e" radius={[4, 4, 0, 0]} maxBarSize={40} />
       </BarChart>
     </ResponsiveContainer>
   );

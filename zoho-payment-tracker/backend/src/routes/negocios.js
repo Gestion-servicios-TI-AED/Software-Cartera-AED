@@ -581,6 +581,24 @@ router.get('/stats', async (_req, res) => {
   }
 });
 
+// Busca la oportunidad de Zoho vinculada a un negocio por su referencia.
+// La clave de unión es Negocio.referencia ↔ Opportunity.referenciaRecaudo.
+async function findOportunidadByReferencia(referencia) {
+  const select = {
+    id: true, dealName: true, stage: true, referenciaRecaudo: true,
+    pagoSeparacion: true, camposFinancieros: true, lastSyncedAt: true,
+  };
+  // Coincidencia exacta primero; luego tolerante a espacios/formato.
+  let opp = await prisma.opportunity.findFirst({ where: { referenciaRecaudo: referencia }, select });
+  if (!opp && referencia && referencia.length >= 6) {
+    opp = await prisma.opportunity.findFirst({
+      where: { referenciaRecaudo: { contains: referencia, mode: 'insensitive' } },
+      select,
+    });
+  }
+  return opp;
+}
+
 // GET /api/negocios/:referencia
 router.get('/:referencia', async (req, res) => {
   try {
@@ -593,7 +611,8 @@ router.get('/:referencia', async (req, res) => {
       },
     });
     if (!negocio) return res.status(404).json({ error: 'Negocio no encontrado' });
-    res.json({ ...negocio, totalMovimientos: negocio._count.movimientos });
+    const oportunidad = await findOportunidadByReferencia(referencia);
+    res.json({ ...negocio, totalMovimientos: negocio._count.movimientos, oportunidad });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

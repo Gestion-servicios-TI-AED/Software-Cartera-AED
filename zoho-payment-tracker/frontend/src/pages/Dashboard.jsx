@@ -44,8 +44,8 @@ export default function Dashboard() {
     <div className="flex flex-col min-h-screen bg-aed-base">
       {/* Topbar */}
       <header className="h-[52px] bg-white border-b border-aed-border flex items-center px-5 gap-3 flex-shrink-0 sticky top-0 z-10">
-        <h1 className="text-[15px] font-bold text-slate-800">Oportunidades</h1>
-        <span className="text-xs text-slate-400">CRM Zoho</span>
+        <h1 className="text-[18px] font-bold text-slate-800">Oportunidades</h1>
+        <span className="text-[14px] text-slate-500">CRM Zoho</span>
         <div className="flex items-center gap-4 ml-1">
           <SyncStatus />
         </div>
@@ -67,6 +67,7 @@ export default function Dashboard() {
             iconColor="#d97706"
             label="En negociación"
             value={kpis.enNegociacion !== null ? kpis.enNegociacion : '—'}
+            hint="Cantidad de etapas intermedias del proceso comercial (entre calificación y cierre)."
           />
           <KpiCard
             icon={Wallet}
@@ -75,6 +76,7 @@ export default function Dashboard() {
             label="Total recaudado"
             value="—"
             sub="Ver detalle por oportunidad"
+            hint="El recaudado total se consulta dentro de cada oportunidad; aquí no se suma globalmente."
           />
           <KpiCard
             icon={Landmark}

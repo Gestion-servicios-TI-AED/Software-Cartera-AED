@@ -39,18 +39,18 @@ export default function SyncStatus() {
 
   return (
     <div className="flex items-center gap-4">
-      <div className="text-sm text-gray-500">
+      <div className="text-[16px] text-slate-500">
         {status?.status === 'never' && 'Sin sincronizaciones'}
         {status?.status === 'running' && (
-          <span className="flex items-center gap-1.5 text-blue-600">
-            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+          <span className="flex items-center gap-1.5 text-brand">
+            <span className="w-2 h-2 rounded-full bg-brand animate-pulse" />
             Sincronizando...
           </span>
         )}
         {status?.status === 'success' && (
           <span>
             Última sync:{' '}
-            <span className="font-medium text-gray-700">
+            <span className="font-medium text-slate-700">
               {formatDateTime(status.finishedAt)}
             </span>{' '}
             <span className="text-green-600">({status.recordsSync} reg.)</span>

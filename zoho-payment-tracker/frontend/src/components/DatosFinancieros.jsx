@@ -10,7 +10,7 @@ function Fila({ etiqueta, valor, hoja = 'resumen' }) {
         {etiquetaColumna(etiqueta)}
         <ConceptoHint columna={etiqueta} hoja={hoja} />
       </span>
-      <span className="text-[12px] font-medium text-slate-800 text-right break-words">
+      <span className="text-[14px] font-medium text-slate-800 text-right break-words">
         {valor != null && valor !== '' ? valor : <span className="text-slate-300 italic">—</span>}
       </span>
     </div>
@@ -20,7 +20,7 @@ function Fila({ etiqueta, valor, hoja = 'resumen' }) {
 // Lista simple de pares etiqueta/valor en texto plano (Info del apartamento).
 export function ListaInfo({ entries, hoja = 'resumen', format }) {
   if (!entries || entries.length === 0) {
-    return <p className="px-4 py-4 text-[12px] text-slate-400 italic bg-white">Sin datos</p>;
+    return <p className="px-4 py-4 text-[14px] text-slate-500 italic bg-white">Sin datos</p>;
   }
   return (
     <div className="bg-white columns-1 lg:columns-2 lg:gap-8 lg:[column-rule:1px_solid_#e9edf2]">
@@ -34,7 +34,7 @@ export function ListaInfo({ entries, hoja = 'resumen', format }) {
 // Lista financiera: campos fijos como filas y cada mes consolidado en una sola línea.
 export function ListaFinanciera({ entries, format }) {
   if (!entries || entries.length === 0) {
-    return <p className="px-4 py-4 text-[12px] text-slate-400 italic bg-white">Sin datos financieros</p>;
+    return <p className="px-4 py-4 text-[14px] text-slate-500 italic bg-white">Sin datos financieros</p>;
   }
   const { antes, meses, despues, otras } = separarFinanciero(entries);
   const dinero = (v) => (v != null && v !== '' ? format('saldo', v) ?? String(v) : '—');
@@ -51,12 +51,12 @@ export function ListaFinanciera({ entries, format }) {
           className="flex items-baseline justify-between gap-6 px-4 py-2 bg-white border-b border-aed-border/60 break-inside-avoid"
         >
           <span className="section-label shrink-0">{m.etiqueta}</span>
-          <span className="text-[12px] text-slate-700 text-right tabular-nums">
-            <span className="text-slate-400">Ingreso</span> <b className="font-semibold text-slate-800">{dinero(m.ingreso)}</b>
+          <span className="text-[14px] text-slate-700 text-right tabular-nums">
+            <span className="text-slate-500">Ingreso</span> <b className="font-semibold text-slate-800">{dinero(m.ingreso)}</b>
             <span className="mx-1.5 text-slate-300">·</span>
-            <span className="text-slate-400">Salida</span> <b className="font-semibold text-slate-800">{dinero(m.salida)}</b>
+            <span className="text-slate-500">Salida</span> <b className="font-semibold text-slate-800">{dinero(m.salida)}</b>
             <span className="mx-1.5 text-slate-300">·</span>
-            <span className="text-slate-400">Abonado</span> <b className="font-semibold text-slate-800">{dinero(m.saldo)}</b>
+            <span className="text-slate-500">Abonado</span> <b className="font-semibold text-slate-800">{dinero(m.saldo)}</b>
           </span>
         </div>
       ))}

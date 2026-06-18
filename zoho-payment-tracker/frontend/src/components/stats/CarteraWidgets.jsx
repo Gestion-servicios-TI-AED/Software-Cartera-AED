@@ -8,7 +8,7 @@ function shortFideicomiso(raw) {
 // Color del avance según % pagado de la cuota inicial.
 function avanceColor(pct) {
   if (pct >= 90) return { bar: 'bg-emerald-500', text: 'text-emerald-600' };
-  if (pct >= 60) return { bar: 'bg-blue-500', text: 'text-blue-600' };
+  if (pct >= 60) return { bar: 'bg-brand', text: 'text-brand' };
   if (pct >= 30) return { bar: 'bg-amber-500', text: 'text-amber-600' };
   return { bar: 'bg-red-500', text: 'text-red-600' };
 }
@@ -31,7 +31,7 @@ function BarraAvance({ pct }) {
 
 // ── Avance de recaudo por proyecto ──────────────────────────────────────────
 export function AvancePorProyecto({ data }) {
-  if (!data || data.length === 0) return <p className="text-sm text-slate-400">Sin datos</p>;
+  if (!data || data.length === 0) return <p className="text-[16px] text-slate-500">Sin datos</p>;
   return (
     <div className="flex flex-col gap-3">
       {data.map((p) => {
@@ -39,14 +39,14 @@ export function AvancePorProyecto({ data }) {
         return (
           <div key={p.fideicomiso}>
             <div className="flex items-baseline justify-between gap-3 mb-1">
-              <span className="text-[12px] text-slate-700 font-medium truncate" title={p.fideicomiso}>
+              <span className="text-[14px] text-slate-700 font-medium truncate" title={p.fideicomiso}>
                 {shortFideicomiso(p.fideicomiso)}
-                <span className="text-slate-400 font-normal ml-1.5">· {p.count}</span>
+                <span className="text-slate-500 font-normal ml-1.5">· {p.count}</span>
               </span>
-              <span className={`text-[12px] font-semibold tabular-nums ${c.text}`}>{p.pct}%</span>
+              <span className={`text-[14px] font-semibold tabular-nums ${c.text}`}>{p.pct}%</span>
             </div>
             <BarraAvance pct={p.pct} />
-            <div className="flex items-baseline justify-between mt-1 text-[10px] text-slate-400 tabular-nums">
+            <div className="flex items-baseline justify-between mt-1 text-[12px] text-slate-500 tabular-nums">
               <span>Abonado {formatCOP(p.abonado)}</span>
               <span>Por cobrar <b className="text-slate-600 font-semibold">{formatCOP(p.porCobrar)}</b></span>
             </div>
@@ -71,7 +71,7 @@ export function Morosidad({ negocios, dias, onDiasChange }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] text-slate-400">
+        <span className="text-[13px] text-slate-500">
           {filtrados.length} negocio{filtrados.length !== 1 ? 's' : ''} sin abonar hace +{dias} días
         </span>
         <div className="flex gap-1">
@@ -79,9 +79,9 @@ export function Morosidad({ negocios, dias, onDiasChange }) {
             <button
               key={d}
               onClick={() => onDiasChange(d)}
-              className={`text-[11px] font-medium px-2 py-0.5 rounded-md border transition-colors ${
+              className={`text-[13px] font-medium px-2 py-0.5 rounded-md border transition-colors ${
                 dias === d
-                  ? 'bg-slate-800 border-slate-800 text-white'
+                  ? 'bg-brand border-brand text-white'
                   : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
               }`}
             >
@@ -92,12 +92,12 @@ export function Morosidad({ negocios, dias, onDiasChange }) {
       </div>
 
       {filtrados.length === 0 ? (
-        <p className="text-sm text-slate-400">Sin morosos en este rango 🎉</p>
+        <p className="text-[16px] text-slate-500">Sin morosos en este rango 🎉</p>
       ) : (
         <div className="max-h-[340px] overflow-y-auto -mx-1 px-1">
-          <table className="w-full text-xs">
+          <table className="w-full text-[14px]">
             <thead className="sticky top-0 bg-white">
-              <tr className="text-slate-400 border-b border-slate-100">
+              <tr className="text-slate-500 border-b border-slate-100">
                 <th className="text-left py-1.5 font-medium">Comprador</th>
                 <th className="text-left py-1.5 font-medium">Último abono</th>
                 <th className="text-right py-1.5 font-medium">Días</th>
@@ -109,7 +109,7 @@ export function Morosidad({ negocios, dias, onDiasChange }) {
                 <tr key={n.referencia} className="border-b border-slate-50 hover:bg-slate-50">
                   <td className="py-1.5 max-w-[180px]">
                     <p className="text-slate-700 truncate" title={n.nombre}>{n.nombre}</p>
-                    <p className="text-[10px] text-slate-400 truncate">
+                    <p className="text-[12px] text-slate-500 truncate">
                       {shortFideicomiso(n.fideicomiso)}{n.nomenclatura ? ` · ${n.nomenclatura}` : ''}
                     </p>
                   </td>
@@ -117,7 +117,7 @@ export function Morosidad({ negocios, dias, onDiasChange }) {
                     {n.ultimoAbono ? formatDate(n.ultimoAbono) : <span className="text-red-400 italic">Nunca</span>}
                   </td>
                   <td className="py-1.5 text-right">
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${moraColor(n.diasSinAbonar)}`}>
+                    <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded-full ${moraColor(n.diasSinAbonar)}`}>
                       {n.diasSinAbonar === null ? '—' : n.diasSinAbonar}
                     </span>
                   </td>
@@ -144,7 +144,7 @@ function rankEstado(estado) {
 }
 
 export function EmbudoEstados({ data }) {
-  if (!data || data.length === 0) return <p className="text-sm text-slate-400">Sin datos</p>;
+  if (!data || data.length === 0) return <p className="text-[16px] text-slate-500">Sin datos</p>;
   const ordenado = [...data].sort((a, b) => rankEstado(a.estado) - rankEstado(b.estado) || b.count - a.count);
   const max = Math.max(...ordenado.map((e) => e.count), 1);
   return (
@@ -153,14 +153,14 @@ export function EmbudoEstados({ data }) {
         const libre = (e.estado || '').toLowerCase().includes('libre');
         return (
           <div key={e.estado} className="flex items-center gap-3">
-            <span className="text-[11px] text-slate-500 w-32 flex-shrink-0 truncate" title={e.estado}>{e.estado}</span>
+            <span className="text-[13px] text-slate-500 w-32 flex-shrink-0 truncate" title={e.estado}>{e.estado}</span>
             <div className="flex-1 h-5 rounded bg-slate-100 overflow-hidden">
               <div
-                className={`h-full rounded ${libre ? 'bg-slate-300' : 'bg-blue-500'} transition-all`}
+                className={`h-full rounded ${libre ? 'bg-slate-300' : 'bg-brand'} transition-all`}
                 style={{ width: `${(e.count / max) * 100}%` }}
               />
             </div>
-            <span className="text-[12px] font-semibold text-slate-700 tabular-nums w-8 text-right flex-shrink-0">{e.count}</span>
+            <span className="text-[14px] font-semibold text-slate-700 tabular-nums w-8 text-right flex-shrink-0">{e.count}</span>
           </div>
         );
       })}

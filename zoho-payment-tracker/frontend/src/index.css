@@ -4,44 +4,80 @@
 
 @layer base {
   :root {
-    --aed-base: #f8faff;
-    --aed-border: #e8f0fe;
+    /* ── Marca (teal AED) ── */
+    --brand: #0f766e;
+    --brand-strong: #115e59;
+    --brand-soft: #ccfbf1;
+    --brand-tint: #f0fdfa;
+
+    /* ── Neutros teñidos de teal (cero grises planos) ──
+       Mismo matiz (195°) y luminosidad que la rampa slate teal del config. */
+    --ink: oklch(0.208 0.016 195);          /* títulos / valores prominentes */
+    --surface: #ffffff;                      /* tarjetas, paneles, sidebar */
+    --surface-base: oklch(0.984 0.006 195);  /* fondo de contenido principal (bruma teal) */
+    --border: oklch(0.929 0.012 195);        /* bordes de cards y separadores */
+    --border-soft: oklch(0.960 0.009 195);   /* separadores internos de tablas */
+
+    /* Aliases legados (compatibilidad con clases existentes) */
+    --aed-base: var(--surface-base);
+    --aed-border: var(--border);
+
+    /* ── Estados del dominio (un color = un significado) ── */
+    --success-text: #047857; --success-bg: #ecfdf5; --success-border: #a7f3d0;
+    --danger-text:  #b91c1c; --danger-bg:  #fef2f2; --danger-border:  #fecaca;
+    --warning-text: #b45309; --warning-bg: #fffbeb; --warning-border: #fde68a;
+    --info-text:    #1d4ed8; --info-bg:    #eff6ff; --info-border:    #bfdbfe;
+    --neutral-text: #475569; --neutral-bg: #f1f5f9; --neutral-border: #e2e8f0;
   }
 
   body {
-    background-color: var(--aed-base);
-    @apply text-slate-900 antialiased;
+    background-color: var(--surface-base);
+    @apply font-sans text-slate-700 antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
   }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-[16px] transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn bg-blue-500 text-white hover:bg-blue-600 focus:ring-blue-500;
+    @apply btn text-white;
+    background-color: var(--brand);
+    &:hover { background-color: var(--brand-strong); }
+    @apply focus:ring-[color:var(--brand)];
   }
   .btn-secondary {
     @apply btn bg-white text-slate-700 border;
-    border-color: var(--aed-border);
-    &:hover {
-      background-color: var(--aed-base);
-    }
-    @apply focus:ring-blue-500;
+    border-color: var(--border);
+    &:hover { background-color: var(--surface-base); }
+    @apply focus:ring-[color:var(--brand)];
   }
   .card {
     @apply bg-white rounded-xl border shadow-sm;
-    border-color: var(--aed-border);
+    border-color: var(--border);
   }
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[14px] font-semibold border;
   }
   .input {
-    @apply block w-full rounded-lg border px-3 py-2 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
-    border-color: var(--aed-border);
-    background-color: var(--aed-base);
+    @apply block w-full rounded-lg border px-3 py-2 text-[16px] text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:border-transparent;
+    border-color: var(--border);
+    background-color: var(--surface);
+    @apply focus:ring-[color:var(--brand)];
   }
+  /* Filtro con identidad: contenedor label + control */
+  .field {
+    @apply flex flex-col gap-1;
+  }
+  .field-label {
+    @apply inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-500;
+  }
+  /* Etiqueta de sección — legible (antes 9px slate-400) */
   .section-label {
-    @apply text-[9px] font-bold uppercase tracking-[0.7px] text-slate-400;
+    @apply text-[13px] font-semibold uppercase tracking-[0.4px] text-slate-500;
   }
 }

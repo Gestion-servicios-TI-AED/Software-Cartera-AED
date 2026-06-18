@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, X, ChevronDown, ChevronRight, User, Building2, BarChart3, History, RefreshCw, Download } from 'lucide-react';
-import { getNegocios, getNegocio, getNegocioMovimientos, triggerNegociosBackfill, getNegociosBackfillStatus, getNegociosStats } from '../utils/api';
+import { Search, X, ChevronDown, ChevronRight, User, Building2, BarChart3, History, RefreshCw, Download, CircleDot, Wallet, ClipboardList } from 'lucide-react';
+import { getNegocios, getNegocio, getNegocioMovimientos, triggerNegociosBackfill, getNegociosBackfillStatus, getNegociosStats, getSubforms } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
 import { filtrarDatosResumen, filtrarKeysMovimiento } from '../utils/columnasExcluidas';
 import ConceptoHint from '../components/ConceptoHint';
+import HelpTip from '../components/HelpTip';
 import { ListaInfo, ListaFinanciera } from '../components/DatosFinancieros';
 import { ordenarFinanciero } from '../utils/ordenColumnas';
+import { estadoBadgeClass } from '../utils/estados';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -21,19 +23,9 @@ function useDebounce(value, delay = 350) {
   return debounced;
 }
 
-function estadoColor(estado) {
-  if (!estado) return 'bg-slate-100 text-slate-500';
-  const e = estado.toLowerCase();
-  if (e.includes('escriturado') || e.includes('activo') || e.includes('vigente') || e.includes('prometido'))
-    return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
-  if (e.includes('cancel') || e.includes('rescili') || e.includes('anulado'))
-    return 'bg-red-50 text-red-700 border border-red-200';
-  if (e.includes('mora') || e.includes('vencido') || e.includes('pendiente'))
-    return 'bg-amber-50 text-amber-700 border border-amber-200';
-  if (e.includes('promesa') || e.includes('proceso') || e.includes('tramite') || e.includes('libre'))
-    return 'bg-blue-50 text-blue-700 border border-blue-200';
-  return 'bg-slate-100 text-slate-500';
-}
+// Clases del badge de estado — centralizadas en utils/estados.js
+// (un color = un significado, mismo mapeo en toda la app).
+const estadoColor = estadoBadgeClass;
 
 function formatCOP(val) {
   if (val == null || val === '') return null;
@@ -167,7 +159,7 @@ function categorizeDatos(datos) {
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
-function Accordion({ icon: Icon, title, badge, children, defaultOpen = true }) {
+function Accordion({ icon: Icon, title, badge, children, defaultOpen = true, accent = '#0f766e' }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="card overflow-hidden">
@@ -175,15 +167,22 @@ function Accordion({ icon: Icon, title, badge, children, defaultOpen = true }) {
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-aed-base transition-colors"
       >
-        {Icon && <Icon size={14} className="text-slate-400 flex-shrink-0" strokeWidth={1.75} />}
-        <span className="text-[12px] font-semibold text-slate-700 flex-1 text-left">{title}</span>
+        {Icon && (
+          <span
+            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: `${accent}14`, color: accent }}
+          >
+            <Icon size={15} strokeWidth={2} />
+          </span>
+        )}
+        <span className="text-[14px] font-semibold text-slate-800 flex-1 text-left">{title}</span>
         {badge != null && badge !== 0 && (
-          <span className="text-[10px] font-medium text-slate-400 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
+          <span className="text-[12px] font-medium text-slate-500 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
             {badge}
           </span>
         )}
         <ChevronDown
-          size={13}
+          size={14}
           strokeWidth={2}
           className={`text-slate-400 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
         />
@@ -215,34 +214,34 @@ function MovimientoRow({ mov, fields }) {
     <>
       <tr
         onClick={() => setExpanded((e) => !e)}
-        className="border-b border-aed-border hover:bg-blue-50/40 cursor-pointer transition-colors"
+        className="border-b border-aed-border hover:bg-brand-tint cursor-pointer transition-colors"
       >
         <td className="pl-4 pr-2 py-2.5 w-6">
           <ChevronRight
             size={12}
             strokeWidth={2.5}
-            className={`text-slate-400 transition-transform ${expanded ? 'rotate-90 text-blue-500' : ''}`}
+            className={`text-slate-500 transition-transform ${expanded ? 'rotate-90 text-brand' : ''}`}
           />
         </td>
-        <td className="px-3 py-2.5 whitespace-nowrap text-[11px] text-slate-500">
+        <td className="px-3 py-2.5 whitespace-nowrap text-[13px] text-slate-500">
           {fecha ?? <span className="text-slate-300">—</span>}
         </td>
-        <td className="px-3 py-2.5 text-[12px] text-slate-700 max-w-[200px]">
+        <td className="px-3 py-2.5 text-[14px] text-slate-700 max-w-[200px]">
           <span className="line-clamp-1">{tipo ?? <span className="text-slate-300">—</span>}</span>
         </td>
-        <td className="px-3 py-2.5 whitespace-nowrap text-[12px] text-right font-medium text-slate-700">
+        <td className="px-3 py-2.5 whitespace-nowrap text-[14px] text-right font-medium text-slate-700">
           {valor ?? <span className="text-slate-300">—</span>}
         </td>
         <td className="px-3 py-2.5 whitespace-nowrap text-right">
           {estado && (
-            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${estadoBadgeColor(estado)}`}>
+            <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${estadoBadgeColor(estado)}`}>
               {estado}
             </span>
           )}
         </td>
       </tr>
       {expanded && (
-        <tr className="bg-blue-50/30 border-b border-aed-border">
+        <tr className="bg-brand-tint border-b border-aed-border">
           <td colSpan={5} className="px-5 py-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2.5">
               {fields.map((col) => {
@@ -251,7 +250,7 @@ function MovimientoRow({ mov, fields }) {
                 return (
                   <div key={col}>
                     <p className="section-label mb-0.5 inline-flex items-center gap-1">{col}<ConceptoHint columna={col} hoja="movimiento" /></p>
-                    <p className="text-[11px] text-slate-700 break-words">
+                    <p className="text-[13px] text-slate-700 break-words">
                       {display ?? <span className="text-slate-300 italic">—</span>}
                     </p>
                   </div>
@@ -295,8 +294,8 @@ function MovimientosSection({ referencia }) {
   return (
     <div>
       {loading && (
-        <div className="flex items-center gap-2 px-4 py-4 text-[12px] text-slate-400">
-          <svg className="w-4 h-4 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+        <div className="flex items-center gap-2 px-4 py-4 text-[14px] text-slate-500">
+          <svg className="w-4 h-4 animate-spin text-brand" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
@@ -305,13 +304,13 @@ function MovimientosSection({ referencia }) {
       )}
 
       {!loading && movimientos && movimientos.length === 0 && (
-        <p className="px-4 py-4 text-[12px] text-slate-400 italic">Sin movimientos registrados</p>
+        <p className="px-4 py-4 text-[14px] text-slate-500 italic">Sin movimientos registrados</p>
       )}
 
       {!loading && movimientos && movimientos.length > 0 && (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full text-[12px]">
+            <table className="w-full text-[14px]">
               <thead>
                 <tr className="bg-aed-base border-b border-aed-border">
                   <th className="w-6" />
@@ -330,21 +329,21 @@ function MovimientosSection({ referencia }) {
           </div>
           {pagination && pagination.totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-2.5 border-t border-aed-border bg-aed-base">
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[13px] text-slate-500">
                 {pagination.total} movimientos · pág. {pagination.page}/{pagination.totalPages}
               </span>
               <div className="flex gap-1">
                 <button
                   disabled={page <= 1}
                   onClick={() => load(page - 1)}
-                  className="px-2.5 py-1 rounded text-[11px] border border-aed-border bg-white hover:bg-aed-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-2.5 py-1 rounded text-[13px] border border-aed-border bg-white hover:bg-aed-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   ← Anterior
                 </button>
                 <button
                   disabled={page >= pagination.totalPages}
                   onClick={() => load(page + 1)}
-                  className="px-2.5 py-1 rounded text-[11px] border border-aed-border bg-white hover:bg-aed-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-2.5 py-1 rounded text-[13px] border border-aed-border bg-white hover:bg-aed-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   Siguiente →
                 </button>
@@ -355,6 +354,101 @@ function MovimientosSection({ referencia }) {
       )}
     </div>
   );
+}
+
+// ── Forma de pago desde la oportunidad de Zoho vinculada ────────────────────
+
+// Parsea un valor como número (ignora fechas y separadores de miles).
+function parseAmt(v) {
+  if (v == null || v === '') return NaN;
+  if (typeof v === 'number') return v;
+  const s = String(v).trim();
+  if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(s)) return NaN; // es una fecha
+  return parseFloat(s.replace(/[^0-9-]/g, ''));
+}
+
+function PlanSubTable({ rows }) {
+  if (!rows || rows.length === 0) {
+    return <p className="px-3 py-3 text-[14px] text-slate-500 italic">Sin datos</p>;
+  }
+  const SKIP = ['id', 'Created_Time', 'Modified_Time', '$line_tax', '$permissions', 'Owner'];
+  const keys = [...new Set(rows.flatMap(Object.keys))].filter((k) => !SKIP.includes(k));
+  const toLabel = (k) => k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+  // Campos monetarios: los que tienen algún valor >= 1000. Se ocultan las filas
+  // cuyos montos están todos en 0 (mismo criterio que la vista de Oportunidades).
+  const moneyKeys = keys.filter((k) =>
+    rows.some((row) => { const n = parseAmt(row[k]); return !isNaN(n) && n >= 1000; })
+  );
+  const visibleRows = moneyKeys.length === 0
+    ? rows
+    : rows.filter((row) => moneyKeys.some((k) => { const n = parseAmt(row[k]); return !isNaN(n) && n !== 0; }));
+
+  if (visibleRows.length === 0) {
+    return <p className="px-3 py-3 text-[14px] text-slate-500 italic">Sin datos</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[14px]">
+        <thead>
+          <tr className="bg-aed-base border-b border-aed-border">
+            {keys.map((k) => (
+              <th key={k} className="section-label px-3 py-2 text-left whitespace-nowrap">{toLabel(k)}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {visibleRows.map((r, i) => (
+            <tr key={i} className="border-b border-aed-border last:border-0 hover:bg-brand-tint">
+              {keys.map((k) => {
+                const v = r[k];
+                let d = '—';
+                if (v != null && v !== '') {
+                  if (typeof v === 'object') d = v.name || v.display_value || JSON.stringify(v);
+                  else if (typeof v === 'number') d = formatCOP(v);
+                  else d = String(v);
+                }
+                return <td key={k} className="px-3 py-2 text-slate-600 whitespace-nowrap">{d}</td>;
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PlanDePagosZoho({ oportunidad }) {
+  const [formaPago, setFormaPago] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    getSubforms(oportunidad.id)
+      .then((subs) => { if (alive) setFormaPago(subs?.formaPago || []); })
+      .catch(() => { if (alive) setFormaPago([]); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [oportunidad.id]);
+
+  if (loading) {
+    return (
+      <p className="flex items-center gap-2 px-4 py-4 text-[14px] text-slate-500">
+        <svg className="w-4 h-4 animate-spin text-brand" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+        Cargando forma de pago…
+      </p>
+    );
+  }
+
+  if (!formaPago || formaPago.length === 0) {
+    return <p className="px-4 py-4 text-[14px] text-slate-500 italic">Sin forma de pago registrada</p>;
+  }
+
+  return <PlanSubTable rows={formaPago} />;
 }
 
 function NegocioDetalle({ referencia }) {
@@ -374,8 +468,8 @@ function NegocioDetalle({ referencia }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[200px]">
-        <div className="flex items-center gap-2 text-slate-400 text-[13px]">
-          <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+        <div className="flex items-center gap-2 text-slate-500 text-[15px]">
+          <svg className="w-5 h-5 animate-spin text-brand" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
@@ -388,7 +482,7 @@ function NegocioDetalle({ referencia }) {
   if (error || !negocio) {
     return (
       <div className="flex items-center justify-center h-full min-h-[200px]">
-        <p className="text-red-500 text-[13px]">{error || 'Negocio no encontrado'}</p>
+        <p className="text-red-500 text-[15px]">{error || 'Negocio no encontrado'}</p>
       </div>
     );
   }
@@ -408,11 +502,11 @@ function NegocioDetalle({ referencia }) {
       <div className="card px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[11px] text-slate-400 mb-0.5">Referencia</p>
-            <h2 className="text-[16px] font-bold text-slate-800 font-mono">{negocio.referencia}</h2>
+            <p className="text-[12px] text-slate-500 mb-0.5 uppercase tracking-wide">Referencia</p>
+            <h2 className="font-heading text-[19px] font-bold text-ink font-mono">{negocio.referencia}</h2>
             {(nomenclatura || inventario) && (
-              <p className="text-[12px] text-slate-500 mt-0.5">
-                {nomenclatura && <span className="font-medium">Apto {nomenclatura}</span>}
+              <p className="text-[14px] text-slate-500 mt-0.5">
+                {nomenclatura && <span className="font-medium text-slate-700">Apto {nomenclatura}</span>}
                 {nomenclatura && inventario && <span className="mx-1.5 text-slate-300">·</span>}
                 {inventario && <span>{inventario}</span>}
               </p>
@@ -421,18 +515,18 @@ function NegocioDetalle({ referencia }) {
           <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
             <div className="flex items-center gap-2">
               {negocio.estado && (
-                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${estadoColor(negocio.estado)}`}>
+                <span className={`text-[12px] font-bold px-2.5 py-1 rounded-full ${estadoColor(negocio.estado)}`}>
                   {negocio.estado}
                 </span>
               )}
-              <span className="text-[11px] text-slate-400 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
+              <span className="text-[13px] text-slate-500 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
                 {negocio.totalMovimientos} mov.
               </span>
             </div>
             {saldoFmt && (
               <div className="text-right">
-                <p className="text-[9px] text-slate-400 uppercase tracking-wide">Total abonado</p>
-                <p className={`text-[14px] font-bold tabular-nums ${saldo > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                <p className="text-[12px] text-slate-500 uppercase tracking-wide">Total abonado</p>
+                <p className={`text-[16px] font-bold tabular-nums ${saldo > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
                   {saldoFmt}
                 </p>
               </div>
@@ -442,53 +536,64 @@ function NegocioDetalle({ referencia }) {
       </div>
 
       {/* 1. Comprador */}
-      <Accordion icon={User} title="Comprador" badge={negocio.compradores?.length} defaultOpen>
+      <Accordion icon={User} title="Comprador" badge={negocio.compradores?.length} accent="#0f766e" defaultOpen>
         {negocio.compradores && negocio.compradores.length > 0 ? (
           <div className="divide-y divide-aed-border">
             {negocio.compradores.map((c, i) => {
               const nombre = c.nombre.replace(/^\|+\s*/, '').replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, '');
               return (
               <div key={c.id ?? i} className="flex items-center gap-3 px-4 py-3">
-                <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-[11px] font-bold text-blue-600 flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-brand-soft border border-brand-soft flex items-center justify-center text-[13px] font-bold text-brand-strong flex-shrink-0">
                   {nombre.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-medium text-slate-800">{nombre}</p>
-                  {c.nroId && <p className="text-[11px] text-slate-400 mt-0.5">{c.nroId}</p>}
+                  <p className="text-[15px] font-medium text-slate-800">{nombre}</p>
+                  {c.nroId && <p className="text-[13px] text-slate-500 mt-0.5">{c.nroId}</p>}
                 </div>
                 {c.porcentaje != null && (
-                  <span className="text-[12px] font-semibold text-slate-500 flex-shrink-0">{c.porcentaje}%</span>
+                  <span className="text-[14px] font-semibold text-slate-500 flex-shrink-0">{c.porcentaje}%</span>
                 )}
               </div>
               );
             })}
           </div>
         ) : (
-          <p className="px-4 py-4 text-[12px] text-slate-400 italic">Sin compradores registrados</p>
+          <p className="px-4 py-4 text-[14px] text-slate-500 italic">Sin compradores registrados</p>
         )}
       </Accordion>
 
       {/* 2. Apartamento */}
-      <Accordion icon={Building2} title="Info del apartamento" badge={aptoEntries.length} defaultOpen>
+      <Accordion icon={Building2} title="Info del apartamento" badge={aptoEntries.length} accent="#7c3aed" defaultOpen>
         {aptoEntries.length > 0 ? (
           <ListaInfo entries={aptoEntries} hoja="resumen" format={formatCell} />
         ) : (
-          <p className="px-4 py-4 text-[12px] text-slate-400 italic bg-white">Sin datos del apartamento</p>
+          <p className="px-4 py-4 text-[14px] text-slate-500 italic bg-white">Sin datos del apartamento</p>
         )}
       </Accordion>
 
       {/* 3. Estructura financiera */}
-      <Accordion icon={BarChart3} title="Estructura financiera y abonos" badge={finEntries.length} defaultOpen>
+      <Accordion icon={BarChart3} title="Estructura financiera y abonos" badge={finEntries.length} accent="#059669" defaultOpen>
         {finEntries.length > 0 ? (
           <ListaFinanciera entries={finEntries} format={formatCell} />
         ) : (
-          <p className="px-4 py-4 text-[12px] text-slate-400 italic bg-white">Sin datos financieros en este archivo</p>
+          <p className="px-4 py-4 text-[14px] text-slate-500 italic bg-white">Sin datos financieros en este archivo</p>
         )}
       </Accordion>
 
       {/* 4. Movimientos */}
-      <Accordion icon={History} title="Historial de movimientos" badge={negocio.totalMovimientos} defaultOpen={false}>
+      <Accordion icon={History} title="Historial de movimientos" badge={negocio.totalMovimientos} accent="#d97706" defaultOpen={false}>
         <MovimientosSection key={referencia} referencia={referencia} />
+      </Accordion>
+
+      {/* 5. Forma de pago (oportunidad Zoho vinculada por referencia) */}
+      <Accordion icon={ClipboardList} title="Forma de pago" accent="#2563eb" defaultOpen={false}>
+        {negocio.oportunidad ? (
+          <PlanDePagosZoho oportunidad={negocio.oportunidad} />
+        ) : (
+          <p className="px-4 py-4 text-[14px] text-slate-500 italic">
+            Sin oportunidad de Zoho vinculada a esta referencia.
+          </p>
+        )}
       </Accordion>
     </div>
   );
@@ -595,8 +700,8 @@ function exportPDF(negocios, filename) {
       n.totalMovimientos ?? 0,
     ]),
     styles: { fontSize: 7.5, cellPadding: 2, overflow: 'linebreak' },
-    headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 7.5, fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: [248, 250, 255] },
+    headStyles: { fillColor: [15, 118, 110], textColor: 255, fontSize: 7.5, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [240, 253, 250] },
     columnStyles: { 0: { cellWidth: 28 }, 1: { cellWidth: 26 }, 2: { cellWidth: 22 }, 5: { cellWidth: 26 }, 6: { cellWidth: 12 } },
   });
 
@@ -630,7 +735,7 @@ function ExportMenu({ onExport, disabled }) {
         title="Exportar"
         className={`w-7 h-7 flex items-center justify-center rounded-md border border-aed-border bg-white hover:bg-aed-base disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${open ? 'bg-aed-base' : ''}`}
       >
-        <Download size={12} className="text-slate-400" />
+        <Download size={12} className="text-slate-500" />
       </button>
       {open && (
         <div className="absolute right-0 top-8 z-50 bg-white border border-aed-border rounded-lg shadow-lg overflow-hidden min-w-[140px]">
@@ -638,7 +743,7 @@ function ExportMenu({ onExport, disabled }) {
             <button
               key={fmt}
               onClick={() => { setOpen(false); onExport(fmt); }}
-              className="w-full text-left px-3 py-2 text-[12px] text-slate-700 hover:bg-aed-base transition-colors"
+              className="w-full text-left px-3 py-2 text-[14px] text-slate-700 hover:bg-aed-base transition-colors"
             >
               {label}
             </button>
@@ -669,26 +774,26 @@ function NegocioItem({ negocio, selected, onClick }) {
     <button
       onClick={() => onClick(negocio.referencia)}
       className={`w-full text-left px-3 py-2.5 border-b border-aed-border transition-colors relative ${
-        isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'
+        isSelected ? 'bg-brand-soft' : 'hover:bg-brand-tint'
       }`}
     >
       {isSelected && (
-        <span className="absolute left-0 top-2 bottom-2 w-0.5 bg-blue-500 rounded-r" />
+        <span className="absolute left-0 top-2 bottom-2 w-0.5 bg-brand rounded-r" />
       )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className={`text-[12px] font-semibold font-mono truncate ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
+          <p className={`text-[14px] font-semibold font-mono truncate ${isSelected ? 'text-brand-strong' : 'text-slate-700'}`}>
             {negocio.referencia}
           </p>
           {(nomenclatura || inventario) && (
-            <p className="text-[11px] text-slate-500 truncate mt-0.5">
+            <p className="text-[13px] text-slate-500 truncate mt-0.5">
               {nomenclatura && <span className="font-medium">Apto {nomenclatura}</span>}
               {nomenclatura && inventario && <span className="mx-1 text-slate-300">·</span>}
               {inventario && <span>{inventario}</span>}
             </p>
           )}
           {compradorPrincipal && (
-            <p className="text-[11px] text-slate-400 truncate mt-0.5">
+            <p className="text-[13px] text-slate-500 truncate mt-0.5">
               {compradorPrincipal}
               {extraCompradores > 0 && <span className="ml-1 text-slate-300">+{extraCompradores}</span>}
             </p>
@@ -696,12 +801,12 @@ function NegocioItem({ negocio, selected, onClick }) {
         </div>
         <div className="flex flex-col items-end gap-1 flex-shrink-0">
           {negocio.estado && (
-            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${estadoColor(negocio.estado)}`}>
+            <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded-full ${estadoColor(negocio.estado)}`}>
               {negocio.estado}
             </span>
           )}
           {saldo && (
-            <span className={`text-[10px] font-semibold tabular-nums ${saldoNum > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+            <span className={`text-[12px] font-semibold tabular-nums ${saldoNum > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
               {saldo}
             </span>
           )}
@@ -849,9 +954,9 @@ export default function Negocios() {
         {/* Panel header */}
         <div className="px-3 py-3 border-b border-aed-border">
           <div className="flex items-center gap-2 mb-2">
-            <h1 className="text-[13px] font-bold text-slate-800 flex-1">Negocios</h1>
+            <h1 className="text-[15px] font-bold text-slate-800 flex-1">Negocios</h1>
             {pagination && !isEmpty && (
-              <span className="text-[10px] text-slate-400 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
+              <span className="text-[12px] text-slate-500 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
                 {pagination.total}
               </span>
             )}
@@ -862,72 +967,94 @@ export default function Negocios() {
               title="Sincronizar negocios"
               className="w-7 h-7 flex items-center justify-center rounded-md border border-aed-border bg-white hover:bg-aed-base disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              <RefreshCw size={12} className={`text-slate-400 ${syncing ? 'animate-spin' : ''}`} />
+              <RefreshCw size={12} className={`text-slate-500 ${syncing ? 'animate-spin' : ''}`} />
             </button>
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2.5">
             {/* Search */}
-            <div className="relative">
-              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Ref., nomenclatura, comprador o cédula…"
-                className="input pl-7 text-[12px] h-8"
-              />
-              {search && (
-                <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  <X size={12} />
-                </button>
-              )}
+            <div className="field">
+              <label className="field-label">
+                <Search size={13} className="text-brand" />
+                Buscar
+                <HelpTip text="Busca por referencia, nomenclatura, nombre del comprador o número de cédula." />
+              </label>
+              <div className="relative">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Ref., nomenclatura, comprador o cédula…"
+                  className="input pl-7 text-[14px] h-8"
+                />
+                {search && (
+                  <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600">
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Estado filter */}
             {estados.length > 0 && (
-              <select
-                value={estadoFilter}
-                onChange={(e) => setEstadoFilter(e.target.value)}
-                className="input text-[12px] h-8 pr-2"
-              >
-                <option value="">Todos los estados</option>
-                {estados.map((e) => <option key={e} value={e}>{e}</option>)}
-              </select>
+              <div className="field">
+                <label className="field-label">
+                  <CircleDot size={13} className="text-info" />
+                  Estado del negocio
+                  <HelpTip text="Filtra según la situación del negocio: al día, en proceso, pendiente o cancelado." />
+                </label>
+                <select
+                  value={estadoFilter}
+                  onChange={(e) => setEstadoFilter(e.target.value)}
+                  className="input text-[14px] h-8 pr-2"
+                >
+                  <option value="">Todos los estados</option>
+                  {estados.map((e) => <option key={e} value={e}>{e}</option>)}
+                </select>
+              </div>
             )}
 
             {/* Fideicomiso filter */}
             {fideicomisos.length > 0 && (
-              <select
-                value={fideicomisoFilter}
-                onChange={(e) => setFideicomisoFilter(e.target.value)}
-                className="input text-[12px] h-8 pr-2"
-              >
-                <option value="">Todos los proyectos</option>
-                {fideicomisos.map((f) => (
-                  <option key={f} value={f}>
-                    {String(f).replace(/^\d+[\s-]+/, '').replace(/^P\.?A\.?\s*/i, '').trim()}
-                  </option>
-                ))}
-              </select>
+              <div className="field">
+                <label className="field-label">
+                  <Building2 size={13} className="text-[#7c3aed]" />
+                  Proyecto
+                  <HelpTip text="Filtra por el proyecto / fideicomiso al que pertenece el negocio." />
+                </label>
+                <select
+                  value={fideicomisoFilter}
+                  onChange={(e) => setFideicomisoFilter(e.target.value)}
+                  className="input text-[14px] h-8 pr-2"
+                >
+                  <option value="">Todos los proyectos</option>
+                  {fideicomisos.map((f) => (
+                    <option key={f} value={f}>
+                      {String(f).replace(/^\d+[\s-]+/, '').replace(/^P\.?A\.?\s*/i, '').trim()}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
 
             {/* Con abonos toggle */}
             <button
               onClick={() => setSaldoPendiente((v) => !v)}
-              className={`w-full h-8 flex items-center gap-2 px-2.5 rounded-md border text-[12px] font-medium transition-colors ${
+              className={`w-full h-8 flex items-center gap-2 px-2.5 rounded-md border text-[14px] font-medium transition-colors ${
                 saldoPendiente
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                  ? 'bg-success-bg border-success-border text-success'
                   : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
               }`}
             >
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${saldoPendiente ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-              Con abonos
+              <Wallet size={13} className={saldoPendiente ? 'text-success' : 'text-slate-500'} />
+              Solo con abonos
+              <HelpTip text="Muestra únicamente los negocios que ya registran al menos un abono." />
             </button>
 
             {hasFilters && (
-              <button onClick={clearFilters} className="text-[10px] text-blue-500 hover:text-blue-700 flex items-center gap-1 py-0.5">
-                <X size={10} /> Limpiar filtros
+              <button onClick={clearFilters} className="text-[13px] text-brand hover:text-brand-strong font-medium flex items-center gap-1 py-0.5">
+                <X size={11} /> Limpiar filtros
               </button>
             )}
           </div>
@@ -937,7 +1064,7 @@ export default function Negocios() {
         <div className="flex-1 overflow-y-auto">
           {loading && (
             <div className="flex items-center justify-center py-10">
-              <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 animate-spin text-brand" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
@@ -946,7 +1073,7 @@ export default function Negocios() {
 
           {!loading && negocios.length === 0 && !isEmpty && (
             <div className="px-4 py-8 text-center">
-              <p className="text-[12px] text-slate-400">Sin resultados para los filtros aplicados.</p>
+              <p className="text-[14px] text-slate-500">Sin resultados para los filtros aplicados.</p>
             </div>
           )}
 
@@ -959,10 +1086,10 @@ export default function Negocios() {
         {pagination && pagination.totalPages > 1 && (
           <div className="flex items-center justify-between px-3 py-2 border-t border-aed-border bg-aed-base">
             <button disabled={page <= 1} onClick={() => fetchList(page - 1)}
-              className="text-[11px] text-slate-500 hover:text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">← Ant.</button>
-            <span className="text-[10px] text-slate-400">{page}/{pagination.totalPages}</span>
+              className="text-[13px] text-slate-500 hover:text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">← Ant.</button>
+            <span className="text-[12px] text-slate-500">{page}/{pagination.totalPages}</span>
             <button disabled={page >= pagination.totalPages} onClick={() => fetchList(page + 1)}
-              className="text-[11px] text-slate-500 hover:text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">Sig. →</button>
+              className="text-[13px] text-slate-500 hover:text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">Sig. →</button>
           </div>
         )}
       </div>
@@ -971,7 +1098,7 @@ export default function Negocios() {
       <div
         onMouseDown={onDragStart}
         onTouchStart={onDragStart}
-        className="w-1 flex-shrink-0 bg-aed-border hover:bg-blue-400 active:bg-blue-500 cursor-col-resize transition-colors group relative"
+        className="w-1 flex-shrink-0 bg-aed-border hover:bg-brand active:bg-brand-strong cursor-col-resize transition-colors group relative"
         title="Arrastrar para redimensionar"
       >
         <div className="absolute inset-y-0 -left-1 -right-1" />
@@ -987,21 +1114,21 @@ export default function Negocios() {
             <div className="w-14 h-14 rounded-2xl bg-white border border-aed-border flex items-center justify-center mb-4">
               <Building2 size={24} className="text-slate-300" />
             </div>
-            <p className="text-[14px] font-medium text-slate-600 mb-1">Sin negocios cargados</p>
-            <p className="text-[12px] text-slate-400 mb-5 max-w-xs">
+            <p className="text-[16px] font-medium text-slate-600 mb-1">Sin negocios cargados</p>
+            <p className="text-[14px] text-slate-500 mb-5 max-w-xs">
               Los datos se extraen automáticamente de los archivos Excel subidos a Encargos.
               Haz clic en Sincronizar para cargarlos.
             </p>
             <button
               onClick={triggerBackfill}
               disabled={syncing}
-              className="btn-primary text-[12px] px-5 py-2 gap-2 disabled:opacity-60"
+              className="btn-primary text-[14px] px-5 py-2 gap-2 disabled:opacity-60"
             >
               <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
               {syncing ? 'Sincronizando…' : 'Sincronizar negocios'}
             </button>
             {syncing && (
-              <p className="text-[11px] text-slate-400 mt-3">Esto puede tomar unos segundos…</p>
+              <p className="text-[13px] text-slate-500 mt-3">Esto puede tomar unos segundos…</p>
             )}
           </div>
         ) : (
@@ -1013,15 +1140,15 @@ export default function Negocios() {
                 <div className="grid grid-cols-3 gap-3">
                   <div className="card p-4">
                     <p className="section-label mb-1">Total negocios</p>
-                    <p className="text-[26px] font-bold text-slate-800 tabular-nums">{stats.totalNegocios}</p>
+                    <p className="text-[28px] font-bold text-slate-800 tabular-nums">{stats.totalNegocios}</p>
                   </div>
                   <div className="card p-4">
                     <p className="section-label mb-1">Con abonos</p>
-                    <p className="text-[26px] font-bold text-emerald-600 tabular-nums">{stats.conSaldo}</p>
+                    <p className="text-[28px] font-bold text-emerald-600 tabular-nums">{stats.conSaldo}</p>
                   </div>
                   <div className="card p-4">
                     <p className="section-label mb-1">Total abonado</p>
-                    <p className="text-[18px] font-bold text-emerald-600 tabular-nums leading-tight mt-1">
+                    <p className="text-[20px] font-bold text-emerald-600 tabular-nums leading-tight mt-1">
                       {stats.saldoTotal > 0
                         ? new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(stats.saldoTotal)
                         : '—'}
@@ -1036,13 +1163,13 @@ export default function Negocios() {
                     <div className="flex flex-col gap-2">
                       {stats.porEstado.map((e) => (
                         <div key={e.estado} className="flex items-center justify-between gap-2">
-                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${estadoColor(e.estado)}`}>
+                          <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${estadoColor(e.estado)}`}>
                             {e.estado}
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="text-[12px] font-semibold text-slate-700 tabular-nums">{e.count}</span>
+                            <span className="text-[14px] font-semibold text-slate-700 tabular-nums">{e.count}</span>
                             {e.saldo > 0 && (
-                              <span className="text-[10px] text-amber-600 tabular-nums">
+                              <span className="text-[12px] text-amber-600 tabular-nums">
                                 {formatCOP(e.saldo)}
                               </span>
                             )}
@@ -1057,13 +1184,13 @@ export default function Negocios() {
                     <div className="flex flex-col gap-2">
                       {stats.porFideicomiso.map((f) => (
                         <div key={f.fideicomiso} className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] text-slate-600 truncate">
+                          <span className="text-[13px] text-slate-600 truncate">
                             {String(f.fideicomiso).replace(/^\d+[\s-]+/, '').replace(/^P\.?A\.?\s*/i, '').trim()}
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="text-[12px] font-semibold text-slate-700 tabular-nums">{f.count}</span>
+                            <span className="text-[14px] font-semibold text-slate-700 tabular-nums">{f.count}</span>
                             {f.saldo > 0 && (
-                              <span className="text-[10px] text-amber-600 tabular-nums">
+                              <span className="text-[12px] text-amber-600 tabular-nums">
                                 {formatCOP(f.saldo)}
                               </span>
                             )}
@@ -1074,13 +1201,13 @@ export default function Negocios() {
                   </div>
                 </div>
 
-                <p className="text-[11px] text-slate-400 text-center">
+                <p className="text-[13px] text-slate-500 text-center">
                   Selecciona un negocio de la lista para ver el detalle completo
                 </p>
               </>
             ) : (
               <div className="flex items-center justify-center h-40">
-                <svg className="w-5 h-5 animate-spin text-blue-300" fill="none" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 animate-spin text-brand/70" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>

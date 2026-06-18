@@ -27,8 +27,8 @@ function SheetTable({ encargoId, hoja }) {
 
   if (loading && !data) {
     return (
-      <div className="flex items-center justify-center py-12 text-slate-400 text-[13px] gap-2">
-        <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+      <div className="flex items-center justify-center py-12 text-slate-500 text-[15px] gap-2">
+        <svg className="w-5 h-5 animate-spin text-brand" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
@@ -37,7 +37,7 @@ function SheetTable({ encargoId, hoja }) {
     );
   }
 
-  if (!data) return <p className="text-slate-400 text-[12px] py-4">Sin datos</p>;
+  if (!data) return <p className="text-slate-500 text-[14px] py-4">Sin datos</p>;
 
   const columnas = Array.isArray(data.columnas) ? data.columnas : [];
   const filas = Array.isArray(data.filas) ? data.filas : [];
@@ -56,7 +56,7 @@ function SheetTable({ encargoId, hoja }) {
       {/* Controles de hoja */}
       <div className="flex items-center gap-3 mb-3">
         <div className="relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <input
@@ -64,10 +64,10 @@ function SheetTable({ encargoId, hoja }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filtrar en esta hoja..."
-            className="input pl-9 pr-4 py-1.5 text-[12px]"
+            className="input pl-9 pr-4 py-1.5 text-[14px]"
           />
         </div>
-        <span className="text-[11px] text-slate-400">
+        <span className="text-[13px] text-slate-500">
           {filteredFilas.length} fila{filteredFilas.length !== 1 ? 's' : ''}
           {data.pagination && data.pagination.totalPages > 1 && ` · página ${data.pagination.page}/${data.pagination.totalPages}`}
         </span>
@@ -75,7 +75,7 @@ function SheetTable({ encargoId, hoja }) {
 
       {/* Tabla */}
       <div className="overflow-x-auto rounded-lg border border-aed-border">
-        <table className="w-full text-[12px]">
+        <table className="w-full text-[14px]">
           <thead>
             <tr className="bg-aed-base border-b border-aed-border">
               {columnas.map((col, i) => (
@@ -88,7 +88,7 @@ function SheetTable({ encargoId, hoja }) {
           <tbody>
             {filteredFilas.length === 0 ? (
               <tr>
-                <td colSpan={columnas.length || 1} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={columnas.length || 1} className="px-4 py-8 text-center text-slate-500">
                   Sin resultados
                 </td>
               </tr>
@@ -96,7 +96,7 @@ function SheetTable({ encargoId, hoja }) {
               filteredFilas.map((row, ri) => {
                 const cells = Array.isArray(row) ? row : columnas.map((c) => row[c]);
                 return (
-                  <tr key={ri} className="border-b border-aed-border hover:bg-blue-50/40">
+                  <tr key={ri} className="border-b border-aed-border hover:bg-brand-tint">
                     {cells.map((cell, ci) => (
                       <td key={ci} className="px-3 py-2 text-slate-600 whitespace-nowrap">
                         {cell != null && cell !== '' ? String(cell) : '—'}
@@ -113,19 +113,19 @@ function SheetTable({ encargoId, hoja }) {
       {/* Paginación */}
       {data.pagination && data.pagination.totalPages > 1 && (
         <div className="mt-3 flex items-center justify-between">
-          <span className="text-[11px] text-slate-400">
+          <span className="text-[13px] text-slate-500">
             {data.pagination.total} filas totales
           </span>
           <div className="flex gap-2">
             <button
               disabled={data.pagination.page === 1 || loading}
               onClick={() => loadPage(page - 1)}
-              className="btn-secondary text-xs py-1 px-2 disabled:opacity-40"
+              className="btn-secondary text-[14px] py-1 px-2 disabled:opacity-40"
             >Anterior</button>
             <button
               disabled={data.pagination.page === data.pagination.totalPages || loading}
               onClick={() => loadPage(page + 1)}
-              className="btn-secondary text-xs py-1 px-2 disabled:opacity-40"
+              className="btn-secondary text-[14px] py-1 px-2 disabled:opacity-40"
             >Siguiente</button>
           </div>
         </div>
@@ -155,8 +155,8 @@ export default function FiduciaDetalle() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="flex items-center gap-2 text-slate-400 text-[13px]">
-          <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+        <div className="flex items-center gap-2 text-slate-500 text-[15px]">
+          <svg className="w-5 h-5 animate-spin text-brand" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
@@ -170,7 +170,7 @@ export default function FiduciaDetalle() {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-500 text-[13px] mb-4">{error || 'Encargo no encontrado'}</p>
+          <p className="text-red-500 text-[15px] mb-4">{error || 'Encargo no encontrado'}</p>
           <button onClick={() => navigate('/fiducia')} className="btn-primary">Volver</button>
         </div>
       </div>
@@ -190,21 +190,21 @@ export default function FiduciaDetalle() {
           </svg>
         </button>
         <div className="flex-1 min-w-0 flex items-center gap-2">
-          <h1 className="text-[15px] font-bold text-slate-800 truncate">{encargo.nombre}</h1>
+          <h1 className="text-[18px] font-bold text-slate-800 truncate">{encargo.nombre}</h1>
           {encargo.codigo && (
-            <span className="text-[10px] font-mono bg-blue-50 text-blue-500 border border-blue-100 px-1.5 py-0.5 rounded">
+            <span className="text-[12px] font-mono bg-brand-soft text-brand-strong border border-brand-soft px-1.5 py-0.5 rounded">
               {encargo.codigo}
             </span>
           )}
         </div>
-        <span className="text-[10px] text-slate-400 hidden sm:block">
+        <span className="text-[12px] text-slate-500 hidden sm:block">
           {encargo.archivoNombre} · {formatDateTime(encargo.createdAt)}
         </span>
       </header>
 
       <div className="flex-1 p-5">
         {encargo.hojas.length === 0 ? (
-          <p className="text-slate-400 text-[13px]">Este archivo no tiene hojas con datos.</p>
+          <p className="text-slate-500 text-[15px]">Este archivo no tiene hojas con datos.</p>
         ) : (
           <>
             <div className="flex gap-1 mb-4 border-b border-aed-border overflow-x-auto">
@@ -212,14 +212,14 @@ export default function FiduciaDetalle() {
                 <button
                   key={hoja.id}
                   onClick={() => setActiveHoja(hoja)}
-                  className={`px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors ${
+                  className={`px-4 py-2.5 text-[15px] font-medium whitespace-nowrap border-b-2 transition-colors ${
                     activeHoja?.id === hoja.id
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-200'
+                      ? 'border-brand text-brand'
+                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-200'
                   }`}
                 >
                   {hoja.nombreHoja}
-                  <span className="ml-1.5 text-[11px] text-slate-400">({hoja.totalFilas})</span>
+                  <span className="ml-1.5 text-[13px] text-slate-500">({hoja.totalFilas})</span>
                 </button>
               ))}
             </div>

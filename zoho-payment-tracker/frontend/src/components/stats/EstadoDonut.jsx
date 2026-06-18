@@ -1,13 +1,14 @@
 import React from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { CATEGORICAL } from '../../utils/estados';
 
-const COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#6366f1'];
+const COLORS = CATEGORICAL;
 
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const { name, value } = payload[0];
   return (
-    <div className="bg-white border border-aed-border rounded-lg px-3 py-2 shadow-sm text-xs">
+    <div className="bg-white border border-aed-border rounded-lg px-3 py-2 shadow-sm text-[14px]">
       <p className="font-medium text-slate-700">{name}</p>
       <p className="text-slate-600">{value} negocios</p>
     </div>
@@ -17,7 +18,7 @@ function CustomTooltip({ active, payload }) {
 export default function EstadoDonut({ data = [] }) {
   if (!data.length) {
     return (
-      <div className="h-48 flex items-center justify-center text-sm text-slate-400">
+      <div className="h-48 flex items-center justify-center text-[16px] text-slate-400">
         Sin datos
       </div>
     );
@@ -51,7 +52,7 @@ export default function EstadoDonut({ data = [] }) {
         </Pie>
         <Tooltip content={<CustomTooltip />} />
         <Legend
-          formatter={(value) => <span className="text-[11px] text-slate-600">{value}</span>}
+          formatter={(value) => <span className="text-[13px] text-slate-600">{value}</span>}
           iconSize={10}
           iconType="circle"
         />

@@ -3,6 +3,7 @@ import {
   TrendingUp, AlertTriangle, Target, Clock, Briefcase, CheckCircle, XCircle,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
+import HelpTip from '../components/HelpTip';
 import RecaudoChart from '../components/stats/RecaudoChart';
 import PipelineBars from '../components/stats/PipelineBars';
 import { AvancePorProyecto, Morosidad, EmbudoEstados } from '../components/stats/CarteraWidgets';
@@ -51,8 +52,8 @@ export default function Resumen() {
     <div className="flex flex-col min-h-screen bg-aed-base">
       {/* Topbar */}
       <header className="h-[52px] bg-white border-b border-aed-border flex items-center px-5 gap-3 flex-shrink-0 sticky top-0 z-10">
-        <h1 className="text-[15px] font-bold text-slate-800">Resumen Gerencial</h1>
-        <span className="text-xs text-slate-400">Cartera de cobranza</span>
+        <h1 className="text-[18px] font-bold text-slate-800">Resumen Gerencial</h1>
+        <span className="text-[14px] text-slate-500">Cartera de cobranza</span>
       </header>
 
       <div className="flex-1 p-5 flex flex-col gap-4">
@@ -65,6 +66,7 @@ export default function Resumen() {
             label="Por cobrar (cuota inicial)"
             value={c ? formatCOP(c.porCobrarTotal) : '—'}
             sub={c ? `de ${formatCOP(c.cuotaInicialTotal)} en cuotas` : undefined}
+            hint="Dinero pendiente de la cuota inicial pactada en todos los negocios en cobro."
           />
 
           {/* % recaudado con barra */}
@@ -72,8 +74,11 @@ export default function Resumen() {
             <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-1" style={{ background: '#f0fdf4' }}>
               <Target size={16} color="#16a34a" strokeWidth={2} />
             </div>
-            <span className="text-[11px] text-slate-400 font-medium">% recaudado de cartera</span>
-            <span className="text-[22px] font-bold text-slate-800 leading-tight tracking-tight">{c ? `${pct}%` : '—'}</span>
+            <span className="inline-flex items-center gap-1 text-[14px] text-slate-500 font-medium">
+              % recaudado de cartera
+              <HelpTip text="Porcentaje de la cuota inicial total que ya fue abonado por los compradores." />
+            </span>
+            <span className="font-heading text-[25px] font-bold text-ink leading-tight tracking-tight">{c ? `${pct}%` : '—'}</span>
             <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden mt-1.5">
               <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.min(100, pct)}%` }} />
             </div>
@@ -93,7 +98,8 @@ export default function Resumen() {
             iconColor="#d97706"
             label={`Morosos (+${moraDias} días)`}
             value={morososActual ?? '—'}
-            sub={c ? 'sin abonar y con saldo' : undefined}
+            sub={c ? 'sin abonar' : undefined}
+            hint={`Negocios con saldo pendiente que no registran abonos en los últimos ${moraDias} días.`}
           />
           <KpiCard
             icon={Briefcase}
@@ -102,17 +108,18 @@ export default function Resumen() {
             label="Negocios en cobro"
             value={c ? c.negociosEnCobro : '—'}
             sub={resumen ? `Recaudo año: ${formatCOP(resumen.recaudoAnio)}` : undefined}
+            hint="Negocios activos que todavía tienen saldo de cuota inicial por cobrar."
           />
         </div>
 
         {/* Accionable: avance por proyecto + morosidad */}
         <div className="grid grid-cols-2 gap-4">
           <div className="card p-4">
-            <h2 className="text-[13px] font-semibold text-slate-700 mb-3">Avance de recaudo por proyecto</h2>
+            <h2 className="text-[15px] font-semibold text-slate-700 mb-3">Avance de recaudo por proyecto</h2>
             <AvancePorProyecto data={cartera?.porProyecto ?? []} />
           </div>
           <div className="card p-4">
-            <h2 className="text-[13px] font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+            <h2 className="text-[15px] font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
               <AlertTriangle size={14} className="text-amber-500" /> Morosidad — requieren gestión
             </h2>
             <Morosidad negocios={cartera?.enCobro ?? []} dias={moraDias} onDiasChange={setMoraDias} />
@@ -122,9 +129,9 @@ export default function Resumen() {
         {/* Tendencia recaudo */}
         <div className="card p-4">
           <div className="flex items-baseline justify-between mb-3">
-            <h2 className="text-[13px] font-semibold text-slate-700">Recaudo mensual — últimos 12 meses</h2>
+            <h2 className="text-[15px] font-semibold text-slate-700">Recaudo mensual — últimos 12 meses</h2>
             {resumen && (
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[13px] text-slate-500">
                 YTD <b className="text-slate-600">{formatCOP(resumen.recaudoAnio)}</b>
                 <span className="mx-1.5">·</span>
                 Separaciones del mes <b className="text-slate-600">{resumen.separacionesMes}</b>
@@ -137,17 +144,17 @@ export default function Resumen() {
         {/* Distribución */}
         <div className="grid grid-cols-2 gap-4">
           <div className="card p-4">
-            <h2 className="text-[13px] font-semibold text-slate-700 mb-3">Negocios por estado</h2>
+            <h2 className="text-[15px] font-semibold text-slate-700 mb-3">Negocios por estado</h2>
             <EmbudoEstados data={cartera?.estados ?? []} />
           </div>
           <div className="card p-4">
-            <h2 className="text-[13px] font-semibold text-slate-700 mb-3">Pipeline por etapa (Zoho)</h2>
+            <h2 className="text-[15px] font-semibold text-slate-700 mb-3">Pipeline por etapa (Zoho)</h2>
             <PipelineBars data={pipeline} />
           </div>
         </div>
 
         {/* Footer sync */}
-        <div className="card p-4 flex items-center gap-4 text-xs text-slate-500">
+        <div className="card p-4 flex items-center gap-4 text-[14px] text-slate-500">
           {lastSync ? (
             <>
               {lastSync.status === 'success' ? (

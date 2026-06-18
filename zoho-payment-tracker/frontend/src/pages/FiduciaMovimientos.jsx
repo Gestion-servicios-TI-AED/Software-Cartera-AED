@@ -4,6 +4,7 @@ import { getAllNegocioMovimientos } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
 import { filtrarKeysMovimiento } from '../utils/columnasExcluidas';
 import ConceptoHint from '../components/ConceptoHint';
+import { estadoBadgeClass } from '../utils/estados';
 
 function useDebounce(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
@@ -41,19 +42,8 @@ function formatCell(key, value) {
   return String(value);
 }
 
-function estadoNegocioColor(estado) {
-  if (!estado) return 'bg-slate-100 text-slate-500';
-  const e = estado.toLowerCase();
-  if (e.includes('escriturado') || e.includes('activo') || e.includes('vigente') || e.includes('prometido'))
-    return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
-  if (e.includes('cancel') || e.includes('rescili') || e.includes('anulado'))
-    return 'bg-red-50 text-red-700 border border-red-200';
-  if (e.includes('mora') || e.includes('vencido') || e.includes('pendiente'))
-    return 'bg-amber-50 text-amber-700 border border-amber-200';
-  if (e.includes('promesa') || e.includes('proceso') || e.includes('tramite') || e.includes('libre'))
-    return 'bg-blue-50 text-blue-700 border border-blue-200';
-  return 'bg-slate-100 text-slate-500';
-}
+// Color del estado del negocio — centralizado en utils/estados.js
+const estadoNegocioColor = estadoBadgeClass;
 
 function estadoMovColor(estado) {
   if (!estado) return 'text-slate-600 bg-slate-100';
@@ -91,27 +81,27 @@ function MovimientoRow({ mov }) {
     <>
       <tr
         onClick={() => setExpanded((e) => !e)}
-        className="border-b border-aed-border hover:bg-blue-50/40 cursor-pointer transition-colors"
+        className="border-b border-aed-border hover:bg-brand-tint cursor-pointer transition-colors"
       >
         <td className="pl-4 pr-2 py-2.5 w-6">
           <ChevronRight
             size={12}
             strokeWidth={2.5}
-            className={`text-slate-400 transition-transform ${expanded ? 'rotate-90 text-blue-500' : ''}`}
+            className={`text-slate-500 transition-transform ${expanded ? 'rotate-90 text-brand' : ''}`}
           />
         </td>
         <td className="px-3 py-2.5 whitespace-nowrap">
-          <span className="font-mono text-[12px] font-semibold text-slate-700">{mov.referencia}</span>
+          <span className="font-mono text-[14px] font-semibold text-slate-700">{mov.referencia}</span>
         </td>
-        <td className="px-3 py-2.5 text-[11px] text-slate-500 max-w-[160px]">
+        <td className="px-3 py-2.5 text-[13px] text-slate-500 max-w-[160px]">
           {neg?.fideicomiso
             ? <span className="line-clamp-1">{shortFideicomiso(neg.fideicomiso)}</span>
             : <span className="text-slate-300">—</span>}
         </td>
-        <td className="px-3 py-2.5 whitespace-nowrap text-[11px] text-slate-500">
+        <td className="px-3 py-2.5 whitespace-nowrap text-[13px] text-slate-500">
           {neg?.nomenclatura ?? <span className="text-slate-300">—</span>}
         </td>
-        <td className="px-3 py-2.5 text-[11px] text-slate-500 max-w-[180px]">
+        <td className="px-3 py-2.5 text-[13px] text-slate-500 max-w-[180px]">
           {compradorPrincipal
             ? (
               <span className="line-clamp-1">
@@ -123,28 +113,28 @@ function MovimientoRow({ mov }) {
         </td>
         <td className="px-3 py-2.5 whitespace-nowrap">
           {neg?.estado
-            ? <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${estadoNegocioColor(neg.estado)}`}>{neg.estado}</span>
-            : <span className="text-slate-300 text-[11px]">—</span>}
+            ? <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${estadoNegocioColor(neg.estado)}`}>{neg.estado}</span>
+            : <span className="text-slate-300 text-[13px]">—</span>}
         </td>
-        <td className="px-3 py-2.5 whitespace-nowrap text-[11px] text-slate-500">
+        <td className="px-3 py-2.5 whitespace-nowrap text-[13px] text-slate-500">
           {fecha ?? <span className="text-slate-300">—</span>}
         </td>
-        <td className="px-3 py-2.5 text-[12px] text-slate-700 max-w-[200px]">
+        <td className="px-3 py-2.5 text-[14px] text-slate-700 max-w-[200px]">
           <span className="line-clamp-1">{tipo ?? <span className="text-slate-300">—</span>}</span>
         </td>
-        <td className="px-3 py-2.5 whitespace-nowrap text-[12px] text-right font-medium text-slate-700">
+        <td className="px-3 py-2.5 whitespace-nowrap text-[14px] text-right font-medium text-slate-700">
           {valor ?? <span className="text-slate-300">—</span>}
         </td>
         <td className="px-3 py-2.5 whitespace-nowrap text-right">
           {estadoMov && (
-            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${estadoMovColor(estadoMov)}`}>
+            <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${estadoMovColor(estadoMov)}`}>
               {estadoMov}
             </span>
           )}
         </td>
       </tr>
       {expanded && (
-        <tr className="bg-blue-50/30 border-b border-aed-border">
+        <tr className="bg-brand-tint border-b border-aed-border">
           <td colSpan={10} className="px-5 py-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-6 gap-y-2.5">
               {allFields.map((col) => {
@@ -153,7 +143,7 @@ function MovimientoRow({ mov }) {
                 return (
                   <div key={col}>
                     <p className="section-label mb-0.5 inline-flex items-center gap-1">{col}<ConceptoHint columna={col} hoja="movimiento" /></p>
-                    <p className="text-[11px] text-slate-700 break-words">
+                    <p className="text-[13px] text-slate-700 break-words">
                       {display ?? <span className="text-slate-300 italic">—</span>}
                     </p>
                   </div>
@@ -213,14 +203,14 @@ export default function FiduciaMovimientos() {
   return (
     <div className="flex flex-col min-h-screen bg-aed-base">
       <header className="h-[52px] bg-white border-b border-aed-border flex items-center px-5 gap-3 flex-shrink-0 sticky top-0 z-10">
-        <h1 className="text-[15px] font-bold text-slate-800">Movimientos Fiduciarios</h1>
+        <h1 className="text-[18px] font-bold text-slate-800">Movimientos Fiduciarios</h1>
         {pagination && (
-          <span className="text-xs text-slate-400">
+          <span className="text-[14px] text-slate-500">
             {pagination.total.toLocaleString('es-CO')} movimientos
           </span>
         )}
         {loading && result && (
-          <svg className="w-4 h-4 animate-spin text-blue-400 ml-1" fill="none" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 animate-spin text-brand ml-1" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
@@ -235,16 +225,16 @@ export default function FiduciaMovimientos() {
             <div className="flex-1 min-w-52">
               <label className="section-label block mb-1">Buscar</label>
               <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Referencia, comprador o cédula…"
-                  className="input w-full pl-9 pr-8 py-2 text-[13px]"
+                  className="input w-full pl-9 pr-8 py-2 text-[15px]"
                 />
                 {search && (
-                  <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600">
                     <X size={12} />
                   </button>
                 )}
@@ -258,7 +248,7 @@ export default function FiduciaMovimientos() {
                 <select
                   value={fideicomisoFilter}
                   onChange={(e) => setFideicomisoFilter(e.target.value)}
-                  className="input w-full py-2 px-3 text-[13px]"
+                  className="input w-full py-2 px-3 text-[15px]"
                 >
                   <option value="">Todos los proyectos</option>
                   {fideicomisos.map((f) => (
@@ -275,7 +265,7 @@ export default function FiduciaMovimientos() {
                 <select
                   value={estadoFilter}
                   onChange={(e) => setEstadoFilter(e.target.value)}
-                  className="input w-full py-2 px-3 text-[13px]"
+                  className="input w-full py-2 px-3 text-[15px]"
                 >
                   <option value="">Todos los estados</option>
                   {estados.map((e) => <option key={e} value={e}>{e}</option>)}
@@ -292,7 +282,7 @@ export default function FiduciaMovimientos() {
                 type="date"
                 value={fechaDesde}
                 onChange={(e) => setFechaDesde(e.target.value)}
-                className="input py-2 px-3 text-[13px]"
+                className="input py-2 px-3 text-[15px]"
               />
             </div>
             <div>
@@ -301,13 +291,13 @@ export default function FiduciaMovimientos() {
                 type="date"
                 value={fechaHasta}
                 onChange={(e) => setFechaHasta(e.target.value)}
-                className="input py-2 px-3 text-[13px]"
+                className="input py-2 px-3 text-[15px]"
               />
             </div>
             {hasFilters && (
               <button
                 onClick={clearAll}
-                className="btn-secondary text-[12px] py-2 px-3 flex items-center gap-1 ml-auto self-end"
+                className="btn-secondary text-[14px] py-2 px-3 flex items-center gap-1 ml-auto self-end"
               >
                 <X size={13} /> Limpiar filtros
               </button>
@@ -317,24 +307,24 @@ export default function FiduciaMovimientos() {
 
         {/* ── Tabla ── */}
         {loading && !result ? (
-          <div className="flex items-center justify-center py-16 text-slate-400 text-[13px] gap-2">
-            <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+          <div className="flex items-center justify-center py-16 text-slate-500 text-[15px] gap-2">
+            <svg className="w-5 h-5 animate-spin text-brand" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
             Cargando…
           </div>
         ) : movimientos.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-            <p className="text-[13px] font-medium">Sin movimientos</p>
-            <p className="text-[12px] mt-1">
+          <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+            <p className="text-[15px] font-medium">Sin movimientos</p>
+            <p className="text-[14px] mt-1">
               {hasFilters ? 'Ajusta los filtros para ver resultados.' : 'Sincroniza los datos desde el módulo Negocios.'}
             </p>
           </div>
         ) : (
           <div className="card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-[12px]">
+              <table className="w-full text-[14px]">
                 <thead>
                   <tr className="border-b border-aed-border bg-aed-base">
                     <th className="w-6" />
@@ -360,21 +350,21 @@ export default function FiduciaMovimientos() {
             {/* Paginación */}
             {pagination && pagination.totalPages > 1 && (
               <div className="px-4 py-3 border-t border-aed-border flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">
+                <span className="text-[13px] text-slate-500">
                   {pagination.total.toLocaleString('es-CO')} movimientos · Pág. {pagination.page} de {pagination.totalPages}
                 </span>
                 <div className="flex gap-2">
                   <button
                     disabled={pagination.page === 1 || loading}
                     onClick={() => fetchData(page - 1)}
-                    className="btn-secondary text-[11px] py-1 px-3 disabled:opacity-40"
+                    className="btn-secondary text-[13px] py-1 px-3 disabled:opacity-40"
                   >
                     Anterior
                   </button>
                   <button
                     disabled={pagination.page === pagination.totalPages || loading}
                     onClick={() => fetchData(page + 1)}
-                    className="btn-secondary text-[11px] py-1 px-3 disabled:opacity-40"
+                    className="btn-secondary text-[13px] py-1 px-3 disabled:opacity-40"
                   >
                     Siguiente
                   </button>

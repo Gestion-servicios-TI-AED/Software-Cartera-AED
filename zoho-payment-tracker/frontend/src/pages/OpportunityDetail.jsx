@@ -8,7 +8,7 @@ function InfoRow({ label, children }) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="section-label">{label}</span>
-      <div className="text-[13px] font-medium text-slate-800">{children || '—'}</div>
+      <div className="text-[15px] font-medium text-slate-800">{children || '—'}</div>
     </div>
   );
 }
@@ -16,7 +16,7 @@ function InfoRow({ label, children }) {
 function FieldGrid({ data, fieldMap, isCurrency = false }) {
   if (!data) return null;
   const entries = Object.entries(data).filter(([, v]) => v !== null && v !== undefined && v !== '');
-  if (entries.length === 0) return <p className="text-[12px] text-slate-400 italic">Sin datos disponibles</p>;
+  if (entries.length === 0) return <p className="text-[14px] text-slate-500 italic">Sin datos disponibles</p>;
 
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -33,7 +33,7 @@ function FieldGrid({ data, fieldMap, isCurrency = false }) {
         return (
           <div key={key} className="flex flex-col gap-0.5">
             <span className="section-label">{label}</span>
-            <span className="text-[12px] text-slate-700">{displayValue || '—'}</span>
+            <span className="text-[14px] text-slate-700">{displayValue || '—'}</span>
           </div>
         );
       })}
@@ -43,12 +43,12 @@ function FieldGrid({ data, fieldMap, isCurrency = false }) {
 
 function SubformTable({ rows }) {
   if (!rows || rows.length === 0) {
-    return <p className="text-[12px] text-slate-400 italic">Sin datos registrados</p>;
+    return <p className="text-[14px] text-slate-500 italic">Sin datos registrados</p>;
   }
 
   const SKIP_KEYS = ['id', 'Created_Time', 'Modified_Time', '$line_tax', '$permissions', 'Owner'];
   const allKeys = [...new Set(rows.flatMap(Object.keys))].filter((k) => !SKIP_KEYS.includes(k));
-  if (allKeys.length === 0) return <p className="text-[12px] text-slate-400 italic">Sin datos registrados</p>;
+  if (allKeys.length === 0) return <p className="text-[14px] text-slate-500 italic">Sin datos registrados</p>;
 
   const toLabel = (key) => key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -71,7 +71,7 @@ function SubformTable({ rows }) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-[12px]">
+      <table className="w-full text-[14px]">
         <thead>
           <tr className="border-b border-aed-border bg-aed-base">
             {allKeys.map((key) => (
@@ -89,7 +89,7 @@ function SubformTable({ rows }) {
               return !isNaN(n) && n !== 0;
             });
           }).map((row, i) => (
-            <tr key={i} className="border-b border-aed-border hover:bg-blue-50/40">
+            <tr key={i} className="border-b border-aed-border hover:bg-brand-tint">
               {allKeys.map((key) => {
                 const val = row[key];
                 let display = '—';
@@ -168,7 +168,7 @@ function SubformsAccordion({ opportunityId, pagoSeparacion }) {
       >
         <span className="section-label">Forma y Propuesta de Pago</span>
         <svg
-          className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -178,8 +178,8 @@ function SubformsAccordion({ opportunityId, pagoSeparacion }) {
       {open && (
         <div className="border-t border-aed-border p-4 flex flex-col gap-5">
           {loading ? (
-            <span className="flex items-center gap-1.5 text-slate-400 text-[12px] py-1">
-              <svg className="w-3 h-3 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+            <span className="flex items-center gap-1.5 text-slate-500 text-[14px] py-1">
+              <svg className="w-3 h-3 animate-spin text-brand" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
@@ -191,7 +191,7 @@ function SubformsAccordion({ opportunityId, pagoSeparacion }) {
                 <p className="section-label mb-2">Forma de Pago</p>
                 <SubformTable rows={addDates(subforms.formaPago)} />
                 {pagoSeparacion && subforms.formaPago?.length > 0 && (
-                  <p className="text-[10px] text-slate-400 italic mt-2 px-1">
+                  <p className="text-[12px] text-slate-500 italic mt-2 px-1">
                     * Fechas estimadas con periodicidad mensual desde la fecha de separación. No representan fechas contractuales.
                   </p>
                 )}
@@ -231,8 +231,8 @@ export default function OpportunityDetail() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="flex items-center gap-2 text-slate-400">
-          <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+        <div className="flex items-center gap-2 text-slate-500">
+          <svg className="w-5 h-5 animate-spin text-brand" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
@@ -246,7 +246,7 @@ export default function OpportunityDetail() {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-500 text-[13px] mb-4">{error || 'Oportunidad no encontrada'}</p>
+          <p className="text-red-500 text-[15px] mb-4">{error || 'Oportunidad no encontrada'}</p>
           <button onClick={() => navigate('/oportunidades')} className="btn-primary">Volver al Dashboard</button>
         </div>
       </div>
@@ -269,10 +269,10 @@ export default function OpportunityDetail() {
           </svg>
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-[15px] font-bold text-slate-800 truncate">{opportunity.dealName}</h1>
+          <h1 className="text-[18px] font-bold text-slate-800 truncate">{opportunity.dealName}</h1>
         </div>
         <StageBadge stage={opportunity.stage} />
-        <span className="text-[10px] text-slate-400 hidden sm:block">
+        <span className="text-[12px] text-slate-500 hidden sm:block">
           Sync {formatDateTime(opportunity.lastSyncedAt)}
         </span>
       </header>
@@ -287,21 +287,21 @@ export default function OpportunityDetail() {
             <InfoRow label="Contacto">{opportunity.contactName}</InfoRow>
             <InfoRow label="Email">
               {opportunity.contactEmail
-                ? <a href={`mailto:${opportunity.contactEmail}`} className="text-blue-500 hover:underline">{opportunity.contactEmail}</a>
+                ? <a href={`mailto:${opportunity.contactEmail}`} className="text-brand hover:underline">{opportunity.contactEmail}</a>
                 : null}
             </InfoRow>
             <InfoRow label="Teléfono">
               {opportunity.contactPhone
-                ? <a href={`tel:${opportunity.contactPhone}`} className="text-blue-500 hover:underline">{opportunity.contactPhone}</a>
+                ? <a href={`tel:${opportunity.contactPhone}`} className="text-brand hover:underline">{opportunity.contactPhone}</a>
                 : null}
             </InfoRow>
             <InfoRow label="Empresa / Proyecto">{opportunity.accountName}</InfoRow>
             <InfoRow label="Pago Separación">
-              <span className="text-blue-500">{formatDate(opportunity.pagoSeparacion)}</span>
+              <span className="text-brand">{formatDate(opportunity.pagoSeparacion)}</span>
             </InfoRow>
             <InfoRow label="Referencia Recaudo">
               {opportunity.referenciaRecaudo
-                ? <span className="font-mono text-[11px] bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded">{opportunity.referenciaRecaudo}</span>
+                ? <span className="font-mono text-[13px] bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded">{opportunity.referenciaRecaudo}</span>
                 : null}
             </InfoRow>
           </div>
@@ -320,7 +320,7 @@ export default function OpportunityDetail() {
           <div className="card p-4 flex flex-col gap-3">
             <p className="section-label">Plan de Pagos</p>
             {hasFinancialData ? (
-              <table className="w-full text-[12px]">
+              <table className="w-full text-[14px]">
                 <thead>
                   <tr className="border-b border-aed-border bg-aed-base">
                     <th className="section-label px-3 py-2 text-left">Campo</th>
@@ -335,7 +335,7 @@ export default function OpportunityDetail() {
                       return isNaN(n) || n !== 0;
                     })
                     .map(([key, value]) => (
-                    <tr key={key} className="border-b border-aed-border hover:bg-blue-50/40">
+                    <tr key={key} className="border-b border-aed-border hover:bg-brand-tint">
                       <td className="px-3 py-2.5 text-slate-600">{fieldMap[key] || key}</td>
                       <td className="px-3 py-2.5 text-right font-mono font-semibold text-slate-800">{formatCOP(value)}</td>
                     </tr>
@@ -343,7 +343,7 @@ export default function OpportunityDetail() {
                 </tbody>
               </table>
             ) : (
-              <p className="text-[12px] text-slate-400 italic">Sin datos financieros</p>
+              <p className="text-[14px] text-slate-500 italic">Sin datos financieros</p>
             )}
           </div>
 

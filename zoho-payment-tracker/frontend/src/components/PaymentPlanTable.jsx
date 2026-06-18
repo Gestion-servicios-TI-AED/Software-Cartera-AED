@@ -32,7 +32,7 @@ const columns = [
   columnHelper.accessor('pagoSeparacion', {
     header: 'Pago Separación',
     cell: (info) => (
-      <span className="font-mono text-[12px] text-slate-600">{formatDate(info.getValue())}</span>
+      <span className="font-mono text-[14px] text-slate-600">{formatDate(info.getValue())}</span>
     ),
   }),
   columnHelper.accessor('camposFinancieros', {
@@ -41,7 +41,7 @@ const columns = [
       const campos = info.getValue();
       const amount = campos?.Amount ?? info.row.original.Amount;
       return (
-        <span className="font-mono text-[12px] text-slate-700 font-semibold">{formatCOP(amount)}</span>
+        <span className="font-mono text-[14px] text-slate-700 font-semibold">{formatCOP(amount)}</span>
       );
     },
   }),
@@ -49,7 +49,7 @@ const columns = [
     header: 'Ref. Recaudo',
     cell: (info) =>
       info.getValue() ? (
-        <span className="font-mono text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-100">
+        <span className="font-mono text-[13px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-100">
           {info.getValue()}
         </span>
       ) : (
@@ -59,7 +59,7 @@ const columns = [
   columnHelper.accessor('lastSyncedAt', {
     header: 'Última Sync',
     cell: (info) => (
-      <span className="text-[11px] text-slate-400">{formatDateTime(info.getValue())}</span>
+      <span className="text-[13px] text-slate-400">{formatDateTime(info.getValue())}</span>
     ),
   }),
 ];
@@ -122,7 +122,7 @@ export default function PaymentPlanTable() {
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-[16px]">
             <thead>
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id} className="border-b border-aed-border bg-aed-base">
@@ -142,7 +142,7 @@ export default function PaymentPlanTable() {
                 <tr>
                   <td colSpan={columns.length} className="px-4 py-12 text-center text-slate-400">
                     <div className="flex justify-center items-center gap-2">
-                      <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 animate-spin text-brand" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
@@ -161,7 +161,7 @@ export default function PaymentPlanTable() {
                   <tr
                     key={row.id}
                     onClick={() => navigate(`/opportunity/${row.original.id}`)}
-                    className="border-b border-aed-border hover:bg-blue-50/60 cursor-pointer transition-colors"
+                    className="border-b border-aed-border hover:bg-brand-tint cursor-pointer transition-colors"
                   >
                     {row.getVisibleCells().map((cell) => (
                       <td key={cell.id} className="px-4 py-3">
@@ -178,21 +178,21 @@ export default function PaymentPlanTable() {
         {/* Paginación */}
         {pagination.totalPages > 1 && (
           <div className="px-4 py-3 border-t border-aed-border flex items-center justify-between">
-            <p className="text-[12px] text-slate-400">
+            <p className="text-[14px] text-slate-400">
               {pagination.total} registros · Página {pagination.page} de {pagination.totalPages}
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="btn-secondary px-3 py-1.5 text-xs flex items-center gap-1"
+                className="btn-secondary px-3 py-1.5 text-[14px] flex items-center gap-1"
               >
                 <ChevronLeft size={13} /> Anterior
               </button>
               <button
                 onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
                 disabled={page === pagination.totalPages}
-                className="btn-secondary px-3 py-1.5 text-xs flex items-center gap-1"
+                className="btn-secondary px-3 py-1.5 text-[14px] flex items-center gap-1"
               >
                 Siguiente <ChevronRight size={13} />
               </button>

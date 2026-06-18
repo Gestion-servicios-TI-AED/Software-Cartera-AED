@@ -5,6 +5,7 @@ import { getAllNegocioMovimientos } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
 import { filtrarKeysMovimiento } from '../utils/columnasExcluidas';
 import ConceptoHint from '../components/ConceptoHint';
+import { estadoBadgeClass } from '../utils/estados';
 
 function formatCOP(val) {
   if (val == null || val === '') return null;
@@ -13,19 +14,8 @@ function formatCOP(val) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n);
 }
 
-function estadoColor(estado) {
-  if (!estado) return 'bg-slate-100 text-slate-500';
-  const e = estado.toLowerCase();
-  if (e.includes('escriturado') || e.includes('activo') || e.includes('vigente') || e.includes('prometido'))
-    return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
-  if (e.includes('cancel') || e.includes('rescili') || e.includes('anulado'))
-    return 'bg-red-50 text-red-700 border border-red-200';
-  if (e.includes('mora') || e.includes('vencido') || e.includes('pendiente'))
-    return 'bg-amber-50 text-amber-700 border border-amber-200';
-  if (e.includes('promesa') || e.includes('proceso') || e.includes('tramite') || e.includes('libre'))
-    return 'bg-blue-50 text-blue-700 border border-blue-200';
-  return 'bg-slate-100 text-slate-500';
-}
+// Color del estado — centralizado en utils/estados.js
+const estadoColor = estadoBadgeClass;
 
 function formatCell(key, value) {
   if (value == null || value === '') return null;
@@ -70,34 +60,34 @@ function MovimientoRow({ mov }) {
     <>
       <tr
         onClick={() => setExpanded((e) => !e)}
-        className="border-b border-aed-border hover:bg-blue-50/40 cursor-pointer transition-colors"
+        className="border-b border-aed-border hover:bg-brand-tint cursor-pointer transition-colors"
       >
         <td className="pl-4 pr-2 py-2.5 w-6">
           <ChevronRight
             size={12}
             strokeWidth={2.5}
-            className={`text-slate-400 transition-transform ${expanded ? 'rotate-90 text-blue-500' : ''}`}
+            className={`text-slate-500 transition-transform ${expanded ? 'rotate-90 text-brand' : ''}`}
           />
         </td>
-        <td className="px-3 py-2.5 whitespace-nowrap text-[11px] text-slate-500">
+        <td className="px-3 py-2.5 whitespace-nowrap text-[13px] text-slate-500">
           {fecha ?? <span className="text-slate-300">—</span>}
         </td>
-        <td className="px-3 py-2.5 text-[12px] text-slate-700 max-w-[220px]">
+        <td className="px-3 py-2.5 text-[14px] text-slate-700 max-w-[220px]">
           <span className="line-clamp-1">{tipo ?? <span className="text-slate-300">—</span>}</span>
         </td>
-        <td className="px-3 py-2.5 whitespace-nowrap text-[12px] text-right font-medium text-slate-700">
+        <td className="px-3 py-2.5 whitespace-nowrap text-[14px] text-right font-medium text-slate-700">
           {valor ?? <span className="text-slate-300">—</span>}
         </td>
         <td className="px-3 py-2.5 whitespace-nowrap text-right">
           {estado && (
-            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${estadoBadgeColor(estado)}`}>
+            <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${estadoBadgeColor(estado)}`}>
               {estado}
             </span>
           )}
         </td>
       </tr>
       {expanded && (
-        <tr className="bg-blue-50/30 border-b border-aed-border">
+        <tr className="bg-brand-tint border-b border-aed-border">
           <td colSpan={5} className="px-5 py-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2.5">
               {fields.map((col) => {
@@ -106,7 +96,7 @@ function MovimientoRow({ mov }) {
                 return (
                   <div key={col}>
                     <p className="section-label mb-0.5 inline-flex items-center gap-1">{col}<ConceptoHint columna={col} hoja="movimiento" /></p>
-                    <p className="text-[11px] text-slate-700 break-words">
+                    <p className="text-[13px] text-slate-700 break-words">
                       {display ?? <span className="text-slate-300 italic">—</span>}
                     </p>
                   </div>
@@ -157,10 +147,10 @@ export default function FiduciaPropietario() {
           </svg>
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-[15px] font-bold text-slate-800 truncate">{propietario}</h1>
+          <h1 className="text-[18px] font-bold text-slate-800 truncate">{propietario}</h1>
         </div>
         {!loading && (
-          <span className="text-[11px] text-slate-400">
+          <span className="text-[13px] text-slate-500">
             {totalMov} movimiento{totalMov !== 1 ? 's' : ''}
           </span>
         )}
@@ -168,15 +158,15 @@ export default function FiduciaPropietario() {
 
       <div className="flex-1 p-5 flex flex-col gap-4">
         {loading ? (
-          <div className="flex items-center justify-center py-16 text-slate-400 text-[13px] gap-2">
-            <svg className="w-5 h-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+          <div className="flex items-center justify-center py-16 text-slate-500 text-[15px] gap-2">
+            <svg className="w-5 h-5 animate-spin text-brand" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
             Cargando...
           </div>
         ) : Object.keys(grupos).length === 0 ? (
-          <p className="text-center text-slate-400 text-[13px] py-16">
+          <p className="text-center text-slate-500 text-[15px] py-16">
             Sin movimientos encontrados para este propietario.
           </p>
         ) : (
@@ -190,30 +180,30 @@ export default function FiduciaPropietario() {
               <div key={grupo.referencia} className="card overflow-hidden">
                 <div className="bg-aed-base border-b border-aed-border px-5 py-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-[13px] font-semibold text-slate-800 font-mono flex-shrink-0">
+                    <span className="text-[15px] font-semibold text-slate-800 font-mono flex-shrink-0">
                       {grupo.referencia}
                     </span>
                     {nomenclatura && (
-                      <span className="text-[12px] text-slate-500 flex-shrink-0">· Apto {nomenclatura}</span>
+                      <span className="text-[14px] text-slate-500 flex-shrink-0">· Apto {nomenclatura}</span>
                     )}
                     {fideicomiso && (
-                      <span className="text-[11px] text-slate-400 truncate">· {fideicomiso}</span>
+                      <span className="text-[13px] text-slate-500 truncate">· {fideicomiso}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {estado && (
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${estadoColor(estado)}`}>
+                      <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded-full ${estadoColor(estado)}`}>
                         {estado}
                       </span>
                     )}
-                    <span className="text-[11px] text-slate-400">
+                    <span className="text-[13px] text-slate-500">
                       {grupo.movimientos.length} mov.
                     </span>
                   </div>
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-[12px]">
+                  <table className="w-full text-[14px]">
                     <thead>
                       <tr className="bg-white border-b border-aed-border">
                         <th className="w-6" />
