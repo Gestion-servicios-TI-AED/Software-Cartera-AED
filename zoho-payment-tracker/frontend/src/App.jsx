@@ -11,6 +11,7 @@ import FiduciaPropietario from './pages/FiduciaPropietario';
 import EncargoNomenclaturas from './pages/EncargoNomenclaturas';
 import ApartamentoDetalle from './pages/ApartamentoDetalle';
 import Resumen from './pages/Resumen';
+import Ajustes from './pages/Ajustes';
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="/fiducia/:id/apartamento/:nomenclatura" element={<ApartamentoDetalle />} />
             <Route path="/fiducia/:id" element={<FiduciaDetalle />} />
             <Route path="/resumen" element={<Resumen />} />
+            <Route path="/ajustes" element={<Ajustes />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
