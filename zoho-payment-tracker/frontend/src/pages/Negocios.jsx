@@ -420,14 +420,14 @@ function PlanSubTable({ rows }) {
 }
 
 function PlanDePagosZoho({ oportunidad }) {
-  const [formaPago, setFormaPago] = useState(null);
+  const [subforms, setSubforms] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
     getSubforms(oportunidad.id)
-      .then((subs) => { if (alive) setFormaPago(subs?.formaPago || []); })
-      .catch(() => { if (alive) setFormaPago([]); })
+      .then((s) => { if (alive) setSubforms(s || { formaPago: [], propuestaPago: [] }); })
+      .catch(() => { if (alive) setSubforms({ formaPago: [], propuestaPago: [] }); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [oportunidad.id]);
@@ -439,16 +439,38 @@ function PlanDePagosZoho({ oportunidad }) {
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
-        Cargando forma de pago…
+        Cargando…
       </p>
     );
   }
 
-  if (!formaPago || formaPago.length === 0) {
-    return <p className="px-4 py-4 text-[14px] text-slate-500 italic">Sin forma de pago registrada</p>;
+  const forma = subforms?.formaPago || [];
+  const propuesta = subforms?.propuestaPago || [];
+
+  if (forma.length === 0 && propuesta.length === 0) {
+    return <p className="px-4 py-4 text-[14px] text-slate-500 italic">Sin forma ni propuesta de pago registradas</p>;
   }
 
-  return <PlanSubTable rows={formaPago} />;
+  return (
+    <div className="flex flex-col gap-4 p-4">
+      {forma.length > 0 && (
+        <div>
+          <p className="section-label mb-2">Forma de pago</p>
+          <div className="rounded-lg border border-aed-border overflow-hidden">
+            <PlanSubTable rows={forma} />
+          </div>
+        </div>
+      )}
+      {propuesta.length > 0 && (
+        <div>
+          <p className="section-label mb-2">Propuesta de pago</p>
+          <div className="rounded-lg border border-aed-border overflow-hidden">
+            <PlanSubTable rows={propuesta} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function NegocioDetalle({ referencia }) {
@@ -585,8 +607,8 @@ function NegocioDetalle({ referencia }) {
         <MovimientosSection key={referencia} referencia={referencia} />
       </Accordion>
 
-      {/* 5. Forma de pago (oportunidad Zoho vinculada por referencia) */}
-      <Accordion icon={ClipboardList} title="Forma de pago" accent="#2563eb" defaultOpen={false}>
+      {/* 5. Forma y propuesta de pago (oportunidad Zoho vinculada por referencia) */}
+      <Accordion icon={ClipboardList} title="Forma y propuesta de pago" accent="#2563eb" defaultOpen={false}>
         {negocio.oportunidad ? (
           <PlanDePagosZoho oportunidad={negocio.oportunidad} />
         ) : (
