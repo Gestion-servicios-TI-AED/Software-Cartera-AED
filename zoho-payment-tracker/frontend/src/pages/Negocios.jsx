@@ -783,6 +783,16 @@ function cleanNombre(nombre) {
   return nombre.replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, '');
 }
 
+// Etiqueta de proyecto/fideicomiso para los filtros y el resumen.
+// Conserva el código numérico para que dos proyectos con el mismo nombre
+// (p.ej. "14607-…BAIA KABO…" y "99203-…BAIA KABO…") no se vean idénticos.
+function formatProyectoLabel(f) {
+  const s = String(f ?? '');
+  const code = (s.match(/^\d+/) || [''])[0];
+  const name = s.replace(/^\d+[\s-]+/, '').replace(/^P\.?A\.?\s*/i, '').trim();
+  return code ? `${code} · ${name}` : name;
+}
+
 function NegocioItem({ negocio, selected, onClick }) {
   const compradorPrincipal = cleanNombre(negocio.compradores?.[0]?.nombre);
   const extraCompradores = (negocio.compradores?.length ?? 0) - 1;
@@ -1008,7 +1018,7 @@ export default function Negocios() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Ref., nomenclatura, comprador o cédula…"
-                  className="input pl-7 text-[14px] h-8"
+                  className="input pl-7 text-[14px] h-8 py-0"
                 />
                 {search && (
                   <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600">
@@ -1029,7 +1039,7 @@ export default function Negocios() {
                 <select
                   value={estadoFilter}
                   onChange={(e) => setEstadoFilter(e.target.value)}
-                  className="input text-[14px] h-8 pr-2"
+                  className="input text-[14px] h-8 py-0 pr-2 leading-none"
                 >
                   <option value="">Todos los estados</option>
                   {estados.map((e) => <option key={e} value={e}>{e}</option>)}
@@ -1048,12 +1058,12 @@ export default function Negocios() {
                 <select
                   value={fideicomisoFilter}
                   onChange={(e) => setFideicomisoFilter(e.target.value)}
-                  className="input text-[14px] h-8 pr-2"
+                  className="input text-[14px] h-8 py-0 pr-2 leading-none"
                 >
                   <option value="">Todos los proyectos</option>
                   {fideicomisos.map((f) => (
                     <option key={f} value={f}>
-                      {String(f).replace(/^\d+[\s-]+/, '').replace(/^P\.?A\.?\s*/i, '').trim()}
+                      {formatProyectoLabel(f)}
                     </option>
                   ))}
                 </select>
@@ -1207,7 +1217,7 @@ export default function Negocios() {
                       {stats.porFideicomiso.map((f) => (
                         <div key={f.fideicomiso} className="flex items-center justify-between gap-2">
                           <span className="text-[13px] text-slate-600 truncate">
-                            {String(f.fideicomiso).replace(/^\d+[\s-]+/, '').replace(/^P\.?A\.?\s*/i, '').trim()}
+                            {formatProyectoLabel(f.fideicomiso)}
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-[14px] font-semibold text-slate-700 tabular-nums">{f.count}</span>

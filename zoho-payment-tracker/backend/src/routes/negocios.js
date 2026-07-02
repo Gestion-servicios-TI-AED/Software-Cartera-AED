@@ -167,10 +167,20 @@ async function runBackfill() {
     // ── Phase 1: Resumen sheet → upsert Negocio.datos + estado ────────────
     for (const hoja of hojas.filter((h) => h.nombreHoja === 'Movimientos')) {
       const filas = Array.isArray(hoja.filas) ? hoja.filas : [];
-      // Stored filas: old parser used wrong header, real header is at filas[2] (col 8 = 'Referencia')
+      const storedCols = Array.isArray(hoja.columnas) ? hoja.columnas : [];
+      // Two file shapes must both resolve to a header + data rows:
+      //  - legacy: header leaked into stored `filas` (col 8 = 'Referencia') → scan for it
+      //  - current: header correctly captured as `columnas`, `filas` is pure data
+      let headers, dataRows;
       const found = findHeaderInStoredFilas(filas, 'Referencia', 7);
-      if (!found) { console.warn('[backfill] Resumen: header row not found'); continue; }
-      const { headers, dataRows } = found;
+      if (found) {
+        ({ headers, dataRows } = found);
+      } else if (storedCols.findIndex((c) => (c || '').toLowerCase().trim() === 'referencia') === 7) {
+        headers = storedCols.map((c) => cleanStr(c) ?? '');
+        dataRows = filas;
+      } else {
+        console.warn('[backfill] Resumen: header row not found'); continue;
+      }
       const estadoIdx = headers.findIndex((h) => h.toLowerCase() === 'estado');
 
       const propietariosIdx = headers.findIndex((h) => h.toLowerCase() === 'propietarios');
