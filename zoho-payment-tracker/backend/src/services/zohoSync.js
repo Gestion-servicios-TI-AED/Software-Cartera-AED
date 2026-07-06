@@ -94,7 +94,7 @@ function isCotizacionField(f) {
 }
 
 function buildFieldsList(fields) {
-  const baseFields = ['Deal_Name', 'Stage', 'Contact_Name', 'Account_Name', 'Amount'];
+  const baseFields = ['Deal_Name', 'Stage', 'Contact_Name', 'Account_Name', 'Amount', 'Fecha_Inicio_Plan_de_Pagos'];
 
   const currencyFields = fields
     .filter((f) => f.data_type === 'currency')
@@ -240,6 +240,7 @@ function mapDeal(deal, {
     accountName: typeof deal.Account_Name === 'object' ? deal.Account_Name?.name : deal.Account_Name || null,
     referenciaRecaudo: recaudoField ? deal[recaudoField.api_name] || null : null,
     pagoSeparacion: pagoSepValue ? new Date(pagoSepValue) : null,
+    fechaInicioPlanPagos: deal.Fecha_Inicio_Plan_de_Pagos ? new Date(deal.Fecha_Inicio_Plan_de_Pagos) : null,
     camposFinancieros: Object.keys(camposFinancieros).length ? camposFinancieros : null,
     seccionInmueble: Object.keys(seccionInmueble).length ? seccionInmueble : null,
     seccionCotizacion: Object.keys(seccionCotizacion).length ? seccionCotizacion : null,
