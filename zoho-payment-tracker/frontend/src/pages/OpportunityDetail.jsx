@@ -112,16 +112,16 @@ function SubformTable({ rows }) {
 
 
 
-function SubformsAccordion({ opportunityId, pagoSeparacion }) {
+function SubformsAccordion({ opportunityId, fechaInicioPlanPagos }) {
   const [open, setOpen] = useState(false);
   const [subforms, setSubforms] = useState(null);
   const [loading, setLoading] = useState(false);
 
   // Enriquece las filas de Forma de Pago con una columna "Fecha estimada"
-  // calculada a partir de pagoSeparacion + N meses según el número de cuota.
+  // calculada a partir de fechaInicioPlanPagos + N meses según el número de cuota.
   function addDates(rows) {
-    if (!pagoSeparacion || !rows?.length) return rows;
-    const base = new Date(pagoSeparacion);
+    if (!fechaInicioPlanPagos || !rows?.length) return rows;
+    const base = new Date(fechaInicioPlanPagos);
     const cuotaKey = Object.keys(rows[0] || {}).find((k) =>
       rows.some((r) => String(r[k] || '').toLowerCase().includes('separaci'))
     );
@@ -190,7 +190,7 @@ function SubformsAccordion({ opportunityId, pagoSeparacion }) {
               <div>
                 <p className="section-label mb-2">Forma de Pago</p>
                 <SubformTable rows={addDates(subforms.formaPago)} />
-                {pagoSeparacion && subforms.formaPago?.length > 0 && (
+                {fechaInicioPlanPagos && subforms.formaPago?.length > 0 && (
                   <p className="text-[12px] text-slate-500 italic mt-2 px-1">
                     * Fechas estimadas con periodicidad mensual desde la fecha de separación. No representan fechas contractuales.
                   </p>
@@ -356,7 +356,7 @@ export default function OpportunityDetail() {
           )}
 
           {/* Subforms lazy */}
-          <SubformsAccordion opportunityId={id} pagoSeparacion={opportunity.pagoSeparacion} />
+          <SubformsAccordion opportunityId={id} fechaInicioPlanPagos={opportunity.fechaInicioPlanPagos} />
         </div>
 
       </div>
