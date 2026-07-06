@@ -19,6 +19,7 @@ model Opportunity {
   accountName        String?
   referenciaRecaudo  String?
   pagoSeparacion     DateTime?
+  fechaInicioPlanPagos DateTime?
 
   // Campos financieros dinámicos (todos los currency fields de Zoho)
   camposFinancieros  Json?
