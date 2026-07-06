@@ -254,7 +254,7 @@ function mapDeal(deal, {
   };
 }
 
-async function syncOpportunitiesFromZoho() {
+async function syncOpportunitiesFromZoho(force = false) {
   const log = await prisma.syncLog.create({ data: { status: 'running' } });
 
   try {
@@ -284,8 +284,8 @@ async function syncOpportunitiesFromZoho() {
     const fieldsList = buildFieldsList(fields);
     console.log(`[sync] Requesting ${fieldsList.length} fields per deal`);
 
-    // Sync incremental: en syncs sucesivos solo traer cambios recientes
-    const lastSuccess = await prisma.syncLog.findFirst({
+    // Sync incremental: en syncs sucesivos solo traer cambios recientes (salvo que se fuerce un full sync)
+    const lastSuccess = force ? null : await prisma.syncLog.findFirst({
       where: { status: 'success' },
       orderBy: { finishedAt: 'desc' },
     });

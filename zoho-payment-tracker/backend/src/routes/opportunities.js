@@ -162,8 +162,9 @@ router.get('/:id/subforms', async (req, res) => {
 // POST /api/sync — disparar sincronización manual
 router.post('/sync', async (req, res) => {
   // Responder inmediatamente y sincronizar en background
+  const force = req.query.full === 'true';
   res.json({ message: 'Sincronización iniciada' });
-  syncOpportunitiesFromZoho().catch((err) =>
+  syncOpportunitiesFromZoho(force).catch((err) =>
     console.error('[sync] Error en sync manual:', err.message)
   );
 });

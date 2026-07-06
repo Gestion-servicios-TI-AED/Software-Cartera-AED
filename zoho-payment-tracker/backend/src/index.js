@@ -39,8 +39,9 @@ app.get('/api/sync/status', async (req, res) => {
 
 // POST /api/sync — ruta directa
 app.post('/api/sync', async (req, res) => {
+  const force = req.query.full === 'true';
   res.json({ message: 'Sincronización iniciada' });
-  syncOpportunitiesFromZoho().catch((err) =>
+  syncOpportunitiesFromZoho(force).catch((err) =>
     console.error('[sync] Error en sync manual:', err.message)
   );
 });
