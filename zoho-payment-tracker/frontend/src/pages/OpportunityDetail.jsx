@@ -135,13 +135,15 @@ function SubformsAccordion({ opportunityId, fechaInicioPlanPagos }) {
         const n = parseInt(val, 10);
         if (!isNaN(n) && n > 0) {
           const d = new Date(base);
-          d.setMonth(d.getMonth() + n);
+          d.setUTCMonth(d.getUTCMonth() + n);
           fecha = d;
         }
       }
       if (!fecha) return row;
       return {
-        'Fecha estimada': fecha.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        // fechaInicioPlanPagos es un campo de solo-fecha de Zoho (medianoche UTC);
+        // formatear en UTC evita que se corra un día al mostrarla en husos detrás de UTC (ej. Bogotá).
+        'Fecha estimada': fecha.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }),
         ...row,
       };
     });
