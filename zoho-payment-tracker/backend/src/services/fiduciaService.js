@@ -359,7 +359,14 @@ async function processMovPorPropietarioSheet(columnas, filas) {
   const cuentaIdx     = colIdx(columnas, 'Cuenta Bancaria');
   const conceptoIdx   = colIdx(columnas, 'Concepto');
   const sucursalIdx   = colIdx(columnas, 'Sucursal');
-  const estadoIdx     = colIdx(columnas, 'Estado');
+  // La hoja trae dos columnas "Estado": la 1ª es el estado del inmueble
+  // (PROMETIDO, VENDIDO…) y la 2ª el del movimiento (APLICADO…). Igual que
+  // con 'Referencia', hay que quedarse con la ocurrencia correcta.
+  const estadoIdxs = columnas.reduce((acc, c, i) => {
+    if ((c || '').toLowerCase().trim() === 'estado') acc.push(i);
+    return acc;
+  }, []);
+  const estadoIdx     = estadoIdxs[1] ?? estadoIdxs[0] ?? -1;
   const obsIdx        = colIdx(columnas, 'Observaciones');
   const razonIdx      = colIdx(columnas, 'Razones / Justificaciones');
   const idUnidadIdx   = colIdx(columnas, 'ID Unidad');
