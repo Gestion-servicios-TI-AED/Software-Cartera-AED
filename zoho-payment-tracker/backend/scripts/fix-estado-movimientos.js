@@ -8,6 +8,14 @@
 // ID Movimiento, y actualiza los registros existentes. Es idempotente:
 // si el Estado ya es el correcto, no toca la fila.
 //
+// Resultado de la corrida (2026-07-07): 25.471 filas reparadas a su estado
+// real. Quedaron 2.031 filas SIN reparar (sinMatch): sus ID Movimiento no
+// aparecen en las hojas crudas actuales (archivos ya reemplazados), así que
+// conservan el estado del inmueble y NUNCA cuentan como pago APLICADO. Si la
+// Conciliación de un negocio parece subcontar pagos, revisar si sus
+// movimientos caen en este grupo. Se corrigen solas si el Excel que las
+// originó se vuelve a subir (el parser ya toma la columna correcta).
+//
 // Uso: node scripts/fix-estado-movimientos.js
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
