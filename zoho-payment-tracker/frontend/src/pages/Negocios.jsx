@@ -8,6 +8,7 @@ import HelpTip from '../components/HelpTip';
 import { ListaInfo, ListaFinanciera } from '../components/DatosFinancieros';
 import { ordenarFinanciero } from '../utils/ordenColumnas';
 import { estadoBadgeClass } from '../utils/estados';
+import { addFechaEstimada } from '../utils/planDePagos';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -444,12 +445,19 @@ function PlanDePagosZoho({ oportunidad }) {
     );
   }
 
-  const forma = subforms?.formaPago || [];
-  const propuesta = subforms?.propuestaPago || [];
+  const forma = addFechaEstimada(subforms?.formaPago || [], oportunidad.fechaInicioPlanPagos);
+  const propuesta = addFechaEstimada(subforms?.propuestaPago || [], oportunidad.fechaInicioPlanPagos);
+  const tieneFechas = (rows) => rows.some((r) => 'Fecha estimada' in r);
 
   if (forma.length === 0 && propuesta.length === 0) {
     return <p className="px-4 py-4 text-[14px] text-slate-500 italic">Sin forma ni propuesta de pago registradas</p>;
   }
+
+  const aviso = (
+    <p className="text-[12px] text-slate-500 italic mt-2 px-1">
+      * Fechas estimadas con periodicidad mensual desde la fecha de separación. No representan fechas contractuales.
+    </p>
+  );
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -459,6 +467,7 @@ function PlanDePagosZoho({ oportunidad }) {
           <div className="rounded-lg border border-aed-border overflow-hidden">
             <PlanSubTable rows={forma} />
           </div>
+          {tieneFechas(forma) && aviso}
         </div>
       )}
       {propuesta.length > 0 && (
@@ -467,6 +476,7 @@ function PlanDePagosZoho({ oportunidad }) {
           <div className="rounded-lg border border-aed-border overflow-hidden">
             <PlanSubTable rows={propuesta} />
           </div>
+          {tieneFechas(propuesta) && aviso}
         </div>
       )}
     </div>
