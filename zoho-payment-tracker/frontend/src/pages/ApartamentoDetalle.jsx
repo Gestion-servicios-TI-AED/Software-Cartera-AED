@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, User, Building2, BarChart3, History } from '
 import { getNomenclaturaDetail } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
 import { filtrarDatosResumen, filtrarKeysMovimiento } from '../utils/columnasExcluidas';
+import { separarUnidadesAdicionales } from '../utils/unidadesAdicionales';
 import ConceptoHint from '../components/ConceptoHint';
 import { ListaInfo, ListaFinanciera } from '../components/DatosFinancieros';
 import { ordenarFinanciero } from '../utils/ordenColumnas';
@@ -18,41 +19,9 @@ function formatCOP(val) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n);
 }
 
-const UNIDAD_LABELS = {
-  'PARQ': 'Parqueadero', 'PARQ.': 'Parqueadero',
-  'C.UTIL': 'Depósito',  'C.UTIL.': 'Depósito',
-  'DEP': 'Depósito',     'DEP.': 'Depósito',
-  'BOD': 'Bodega',       'BOD.': 'Bodega',
-  'LOC': 'Local',        'LOC.': 'Local',
-  'GAR': 'Garaje',       'GAR.': 'Garaje',
-};
-
-function formatUnidadesAdicionales(raw) {
-  const results = [];
-  const groupRe = /\(([^)]+)\)/g;
-  let m;
-  while ((m = groupRe.exec(raw)) !== null) {
-    for (const part of m[1].split('|')) {
-      const eq = part.indexOf('=');
-      if (eq === -1) continue;
-      const code = part.slice(0, eq).trim();
-      const val  = part.slice(eq + 1).trim();
-      if (!val) continue;
-      if (/INM|MATR/i.test(code)) continue;
-      const label = UNIDAD_LABELS[code] || UNIDAD_LABELS[code.toUpperCase()] || code.replace(/\.$/, '');
-      results.push(`${label} ${val}`);
-      break;
-    }
-  }
-  return results.length > 0 ? results.join('  ·  ') : null;
-}
-
 function formatCell(key, value) {
   if (value == null || value === '') return null;
   const k = (key || '').toLowerCase();
-  if (k.includes('unidades adicionales')) {
-    return formatUnidadesAdicionales(String(value)) ?? String(value);
-  }
   if (k.includes('fecha')) {
     const f = formatExcelDate(value);
     return f !== '—' ? f : String(value);
@@ -259,7 +228,7 @@ export default function ApartamentoDetalle() {
   }
 
   const { negocio, movimientos, totalMovimientos, encargo } = data;
-  const { apto, financiero } = categorizeDatos(filtrarDatosResumen(negocio.datos || {}));
+  const { apto, financiero } = categorizeDatos(separarUnidadesAdicionales(filtrarDatosResumen(negocio.datos || {})));
   const aptoEntries = Object.entries(apto);
   const finEntries  = ordenarFinanciero(Object.entries(financiero));
 

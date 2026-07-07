@@ -24,6 +24,8 @@ const RESUMEN = {
   'propietarios': 'Nombre de los compradores o empresa compradora.',
   'representante legal o apoderado': 'Representante legal cuando compra un ente jurídico (empresa).',
   'unidades adicionales': 'Cuando compran depósito y parqueadero, se coloca la descripción de estos.',
+  'parqueadero': 'Número del parqueadero adicional que compra el propietario, si aplica.',
+  'depósito': 'Número del depósito o cuarto útil adicional que compra el propietario, si aplica.',
   'fecha contrato': 'Fecha de vinculación.',
   'valor venta': 'Valor del inmueble.',
   'cuota inicial': 'Valor de la cuota inicial a pagar.',
