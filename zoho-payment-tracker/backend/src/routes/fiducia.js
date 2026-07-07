@@ -465,7 +465,7 @@ router.get('/encargos/:id/nomenclaturas/:nomenclatura', async (req, res) => {
       prisma.negocioMovimiento.count({ where: { negocioId: negocio.id } }),
       prisma.negocioMovimiento.findMany({
         where: { negocioId: negocio.id },
-        orderBy: [{ fechaContable: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
+        orderBy: [{ fechaContable: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
         take: 500,
       }),
     ]);
