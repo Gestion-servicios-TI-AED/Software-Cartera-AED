@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, X, ChevronDown, ChevronRight, User, Building2, BarChart3, History, RefreshCw, Download, CircleDot, Wallet, ClipboardList } from 'lucide-react';
+import { Search, X, ChevronDown, ChevronRight, User, Building2, BarChart3, History, RefreshCw, Download, CircleDot, Wallet, ClipboardList, Scale } from 'lucide-react';
 import { getNegocios, getNegocio, getNegocioMovimientos, triggerNegociosBackfill, getNegociosBackfillStatus, getNegociosStats, getSubforms } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
 import { filtrarDatosResumen, filtrarKeysMovimiento } from '../utils/columnasExcluidas';
@@ -8,7 +8,8 @@ import HelpTip from '../components/HelpTip';
 import { ListaInfo, ListaFinanciera } from '../components/DatosFinancieros';
 import { ordenarFinanciero } from '../utils/ordenColumnas';
 import { estadoBadgeClass } from '../utils/estados';
-import { addFechaEstimada } from '../utils/planDePagos';
+import { addFechaEstimada, formatFechaUTC } from '../utils/planDePagos';
+import { construirPlan, normalizarPagos, conciliar } from '../utils/conciliacion';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -483,6 +484,169 @@ function PlanDePagosZoho({ oportunidad }) {
   );
 }
 
+// ── Conciliación: plan de pagos (Zoho) vs pagos reales (fiducia) ────────────
+
+function badgeConciliacion(c) {
+  if (c.atrasada) return { txt: 'Atrasada', cls: 'text-red-700 bg-red-50' };
+  if (c.estado === 'pagada') return { txt: 'Pagada', cls: 'text-emerald-700 bg-emerald-50' };
+  if (c.estado === 'parcial') return { txt: 'Parcial', cls: 'text-amber-700 bg-amber-50' };
+  return { txt: 'Pendiente', cls: 'text-slate-600 bg-slate-100' };
+}
+
+// Etiquetas numéricas del subform ("1", "2"…) se muestran como "Cuota N".
+function labelCuota(etiqueta) {
+  return /^\d+$/.test(etiqueta) ? `Cuota ${etiqueta}` : etiqueta;
+}
+
+function ConciliacionSection({ negocio }) {
+  const oportunidad = negocio.oportunidad;
+  const [datos, setDatos] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!oportunidad) { setLoading(false); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const subs = await getSubforms(oportunidad.id);
+        // Todos los movimientos del negocio (loop defensivo si total > 200)
+        const movs = [];
+        let page = 1, totalPages = 1;
+        do {
+          const res = await getNegocioMovimientos(negocio.referencia, { page, limit: 200 });
+          movs.push(...(res.data || []));
+          totalPages = res.pagination?.totalPages ?? 1;
+          page += 1;
+        } while (page <= totalPages);
+        if (alive) setDatos({ subforms: subs || { formaPago: [], propuestaPago: [] }, movimientos: movs });
+      } catch (err) {
+        if (alive) setError(err.message);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [oportunidad?.id, negocio.referencia]);
+
+  if (!oportunidad) {
+    return <p className="px-4 py-4 text-[14px] text-slate-500 italic">Sin oportunidad de Zoho vinculada a esta referencia.</p>;
+  }
+  if (loading) {
+    return (
+      <p className="flex items-center gap-2 px-4 py-4 text-[14px] text-slate-500">
+        <svg className="w-4 h-4 animate-spin text-brand" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+        Cargando conciliación…
+      </p>
+    );
+  }
+  if (error) {
+    return <p className="px-4 py-4 text-[14px] text-red-500">Error cargando la conciliación: {error}</p>;
+  }
+
+  const planRows = datos.subforms.formaPago?.length ? datos.subforms.formaPago : (datos.subforms.propuestaPago || []);
+  const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos);
+  if (cuotasPlan.length === 0) {
+    return <p className="px-4 py-4 text-[14px] text-slate-500 italic">La oportunidad vinculada no tiene plan de pagos registrado.</p>;
+  }
+
+  const { cuotas, resumen } = conciliar(cuotasPlan, normalizarPagos(datos.movimientos));
+
+  return (
+    <div className="flex flex-col gap-4 p-4">
+      {/* Resumen */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-lg border border-aed-border bg-white p-3">
+          <p className="section-label mb-1">Total plan</p>
+          <p className="text-[15px] font-bold text-slate-800 tabular-nums">{formatCOP(resumen.totalPlan)}</p>
+        </div>
+        <div className="rounded-lg border border-aed-border bg-white p-3">
+          <p className="section-label mb-1">Total pagado</p>
+          <p className="text-[15px] font-bold text-emerald-600 tabular-nums">
+            {formatCOP(resumen.totalPagado) ?? '$ 0'}
+            <span className="ml-1 text-[12px] font-semibold text-slate-500">({resumen.porcentaje}%)</span>
+          </p>
+        </div>
+        <div className="rounded-lg border border-aed-border bg-white p-3">
+          <p className="section-label mb-1">Cuotas pagadas</p>
+          <p className="text-[15px] font-bold text-slate-800 tabular-nums">{resumen.cuotasPagadas}/{resumen.totalCuotas}</p>
+        </div>
+        <div className="rounded-lg border border-aed-border bg-white p-3">
+          <p className="section-label mb-1">En mora</p>
+          {resumen.cuotasEnMora > 0 ? (
+            <p className="text-[15px] font-bold text-red-600 tabular-nums">
+              {resumen.cuotasEnMora} {resumen.cuotasEnMora === 1 ? 'cuota' : 'cuotas'}
+              <span className="block text-[12px] font-semibold">{formatCOP(resumen.montoEnMora)}</span>
+            </p>
+          ) : (
+            <p className="text-[15px] font-bold text-slate-400">—</p>
+          )}
+        </div>
+      </div>
+
+      {/* Tabla de cuotas */}
+      <div className="rounded-lg border border-aed-border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-[14px]">
+            <thead>
+              <tr className="bg-aed-base border-b border-aed-border">
+                <th className="section-label px-3 py-2 text-left whitespace-nowrap">Cuota</th>
+                <th className="section-label px-3 py-2 text-left whitespace-nowrap">Fecha estimada</th>
+                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Valor plan</th>
+                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Cubierto</th>
+                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cuotas.map((c, i) => {
+                const badge = badgeConciliacion(c);
+                return (
+                  <tr key={i} className="border-b border-aed-border last:border-0 hover:bg-brand-tint">
+                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{labelCuota(c.etiqueta)}</td>
+                    <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+                      {c.fechaEstimada ? formatFechaUTC(c.fechaEstimada) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-slate-700 whitespace-nowrap tabular-nums">{formatCOP(c.valorPlan)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
+                      {c.cubierto > 0 ? (
+                        <span className={c.estado === 'pagada' ? 'text-emerald-600' : 'text-amber-600'}>{formatCOP(c.cubierto)}</span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${badge.cls}`}>{badge.txt}</span>
+                      {c.atrasada && c.fechaEstimada && (
+                        <span className="block text-[11px] text-red-500 mt-0.5">venció {formatFechaUTC(c.fechaEstimada)}</span>
+                      )}
+                      {c.estado === 'pagada' && c.fechaCubierta && (
+                        <span className="block text-[11px] text-slate-400 mt-0.5">pagada el {formatFechaUTC(c.fechaCubierta)}</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {resumen.saldoAFavor > 0 && (
+        <p className="text-[13px] font-semibold text-emerald-700 px-1">
+          Saldo a favor: {formatCOP(resumen.saldoAFavor)}
+        </p>
+      )}
+
+      <p className="text-[12px] text-slate-500 italic px-1">
+        * Conciliación estimada según fechas calculadas y pagos APLICADOS. No representa un estado de cuenta oficial.
+      </p>
+    </div>
+  );
+}
+
 function NegocioDetalle({ referencia }) {
   const [negocio, setNegocio] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -617,7 +781,12 @@ function NegocioDetalle({ referencia }) {
         <MovimientosSection key={referencia} referencia={referencia} />
       </Accordion>
 
-      {/* 5. Forma y propuesta de pago (oportunidad Zoho vinculada por referencia) */}
+      {/* 5. Conciliación plan vs pagos reales */}
+      <Accordion icon={Scale} title="Conciliación" accent="#0891b2" defaultOpen={false}>
+        <ConciliacionSection key={referencia} negocio={negocio} />
+      </Accordion>
+
+      {/* 6. Forma y propuesta de pago (oportunidad Zoho vinculada por referencia) */}
       <Accordion icon={ClipboardList} title="Forma y propuesta de pago" accent="#2563eb" defaultOpen={false}>
         {negocio.oportunidad ? (
           <PlanDePagosZoho oportunidad={negocio.oportunidad} />
