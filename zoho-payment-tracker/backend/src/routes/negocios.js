@@ -596,7 +596,7 @@ router.get('/stats', async (_req, res) => {
 async function findOportunidadByReferencia(referencia) {
   const select = {
     id: true, dealName: true, stage: true, referenciaRecaudo: true,
-    pagoSeparacion: true, camposFinancieros: true, lastSyncedAt: true,
+    pagoSeparacion: true, fechaInicioPlanPagos: true, camposFinancieros: true, lastSyncedAt: true,
   };
   // Coincidencia exacta primero; luego tolerante a espacios/formato.
   let opp = await prisma.opportunity.findFirst({ where: { referenciaRecaudo: referencia }, select });
