@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getOpportunity, getFieldsMetadata, getSubforms } from '../utils/api';
 import { formatCOP, formatDate, formatDateTime } from '../utils/format';
+import { addFechaEstimada } from '../utils/planDePagos';
 import StageBadge from '../components/StageBadge';
 
 function InfoRow({ label, children }) {
@@ -117,38 +118,6 @@ function SubformsAccordion({ opportunityId, fechaInicioPlanPagos }) {
   const [subforms, setSubforms] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Enriquece las filas de Forma de Pago con una columna "Fecha estimada"
-  // calculada a partir de fechaInicioPlanPagos + N meses según el número de cuota.
-  function addDates(rows) {
-    if (!fechaInicioPlanPagos || !rows?.length) return rows;
-    const base = new Date(fechaInicioPlanPagos);
-    const cuotaKey = Object.keys(rows[0] || {}).find((k) =>
-      rows.some((r) => String(r[k] || '').toLowerCase().includes('separaci'))
-    );
-    if (!cuotaKey) return rows;
-    return rows.map((row) => {
-      const val = String(row[cuotaKey] || '').trim();
-      let fecha = null;
-      if (val.toLowerCase().includes('separaci')) {
-        fecha = base;
-      } else {
-        const n = parseInt(val, 10);
-        if (!isNaN(n) && n > 0) {
-          const d = new Date(base);
-          d.setUTCMonth(d.getUTCMonth() + n);
-          fecha = d;
-        }
-      }
-      if (!fecha) return row;
-      return {
-        // fechaInicioPlanPagos es un campo de solo-fecha de Zoho (medianoche UTC);
-        // formatear en UTC evita que se corra un día al mostrarla en husos detrás de UTC (ej. Bogotá).
-        'Fecha estimada': fecha.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }),
-        ...row,
-      };
-    });
-  }
-
   function toggle() {
     setOpen((o) => {
       if (!o && subforms === null) {
@@ -191,7 +160,7 @@ function SubformsAccordion({ opportunityId, fechaInicioPlanPagos }) {
             <>
               <div>
                 <p className="section-label mb-2">Forma de Pago</p>
-                <SubformTable rows={addDates(subforms.formaPago)} />
+                <SubformTable rows={addFechaEstimada(subforms.formaPago, fechaInicioPlanPagos)} />
                 {fechaInicioPlanPagos && subforms.formaPago?.length > 0 && (
                   <p className="text-[12px] text-slate-500 italic mt-2 px-1">
                     * Fechas estimadas con periodicidad mensual desde la fecha de separación. No representan fechas contractuales.
