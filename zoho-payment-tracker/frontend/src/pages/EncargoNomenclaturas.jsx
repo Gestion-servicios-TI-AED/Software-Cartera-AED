@@ -119,8 +119,8 @@ export default function EncargoNomenclaturas() {
                 const saldoNum = item.saldoActual ? parseFloat(item.saldoActual) : 0;
                 return (
                   <button
-                    key={item.nomenclatura}
-                    onClick={() => navigate(`/fiducia/${id}/apartamento/${encodeURIComponent(item.nomenclatura)}`)}
+                    key={item.referencia}
+                    onClick={() => navigate(`/fiducia/${id}/apartamento/${encodeURIComponent(item.referencia)}`)}
                     className="group card p-4 text-left hover:border-brand-soft hover:shadow-md hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
                   >
                     <div className="flex items-start justify-between mb-2.5">

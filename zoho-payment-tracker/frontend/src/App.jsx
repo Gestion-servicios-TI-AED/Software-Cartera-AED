@@ -27,7 +27,7 @@ export default function App() {
             <Route path="/fiducia/movimientos" element={<FiduciaMovimientos />} />
             <Route path="/fiducia/propietario/:nombre" element={<FiduciaPropietario />} />
             <Route path="/fiducia/:id/nomenclaturas" element={<EncargoNomenclaturas />} />
-            <Route path="/fiducia/:id/apartamento/:nomenclatura" element={<ApartamentoDetalle />} />
+            <Route path="/fiducia/:id/apartamento/:referencia" element={<ApartamentoDetalle />} />
             <Route path="/fiducia/:id" element={<FiduciaDetalle />} />
             <Route path="/resumen" element={<Resumen />} />
             <Route path="/ajustes" element={<Ajustes />} />

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, User, Building2, BarChart3, History } from 'lucide-react';
-import { getNomenclaturaDetail } from '../utils/api';
+import { getApartamentoDetail } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
 import { filtrarDatosResumen, filtrarKeysMovimiento } from '../utils/columnasExcluidas';
 import { separarUnidadesAdicionales } from '../utils/unidadesAdicionales';
@@ -186,8 +186,8 @@ function MovimientoRow({ mov, fields }) {
 // ── Main page ─────────────────────────────────────────────────────────────
 
 export default function ApartamentoDetalle() {
-  const { id, nomenclatura: rawNom } = useParams();
-  const nomenclatura = decodeURIComponent(rawNom);
+  const { id, referencia: rawRef } = useParams();
+  const referencia = decodeURIComponent(rawRef);
   const navigate = useNavigate();
 
   const [data, setData]       = useState(null);
@@ -196,11 +196,11 @@ export default function ApartamentoDetalle() {
 
   useEffect(() => {
     setLoading(true);
-    getNomenclaturaDetail(id, nomenclatura)
+    getApartamentoDetail(id, referencia)
       .then(setData)
       .catch((err) => setError(err.response?.data?.error || err.message))
       .finally(() => setLoading(false));
-  }, [id, nomenclatura]);
+  }, [id, referencia]);
 
   if (loading) {
     return (
@@ -249,7 +249,7 @@ export default function ApartamentoDetalle() {
           </svg>
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-[18px] font-bold text-slate-800 truncate">{nomenclatura}</h1>
+          <h1 className="text-[18px] font-bold text-slate-800 truncate">{negocio.datos?.Nomenclatura ?? negocio.referencia}</h1>
         </div>
         <span className="text-[13px] text-slate-500">
           {encargo?.nombre}

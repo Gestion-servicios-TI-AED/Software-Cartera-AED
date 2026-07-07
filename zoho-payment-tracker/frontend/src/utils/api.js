@@ -87,8 +87,8 @@ export async function getNomenclaturas(encargoId, params = {}) {
   return data;
 }
 
-export async function getNomenclaturaDetail(encargoId, nomenclatura) {
-  const { data } = await api.get(`/fiducia/encargos/${encargoId}/nomenclaturas/${encodeURIComponent(nomenclatura)}`);
+export async function getApartamentoDetail(encargoId, referencia) {
+  const { data } = await api.get(`/fiducia/encargos/${encargoId}/negocio/${encodeURIComponent(referencia)}`);
   return data;
 }
 

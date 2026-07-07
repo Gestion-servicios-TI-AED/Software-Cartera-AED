@@ -425,10 +425,15 @@ router.get('/encargos/:id/nomenclaturas', async (req, res) => {
   }
 });
 
-// GET /api/fiducia/encargos/:id/nomenclaturas/:nomenclatura — detalle de una nomenclatura (desde Negocio)
-router.get('/encargos/:id/nomenclaturas/:nomenclatura', async (req, res) => {
+// GET /api/fiducia/encargos/:id/negocio/:referencia — detalle de un apartamento (desde Negocio)
+//
+// Se identifica por Referencia (clave única de Negocio), NO por Nomenclatura:
+// el número de apartamento se repite entre edificios/etapas de un mismo
+// fideicomiso (ej. "6C" existe en varias torres), así que buscar solo por
+// Nomenclatura + Fideicomiso podía devolver un apartamento equivocado.
+router.get('/encargos/:id/negocio/:referencia', async (req, res) => {
   try {
-    const nomenclatura = decodeURIComponent(req.params.nomenclatura);
+    const referencia = decodeURIComponent(req.params.referencia);
 
     const encargo = await prisma.encargFiduciario.findUnique({
       where: { id: req.params.id },
@@ -436,28 +441,14 @@ router.get('/encargos/:id/nomenclaturas/:nomenclatura', async (req, res) => {
     });
     if (!encargo) return res.status(404).json({ error: 'Encargo no encontrado' });
 
-    // Buscar el Negocio: primero con fideicomiso + nomenclatura, luego solo por nomenclatura
-    const andCondsBase = [{ datos: { path: ['Nomenclatura'], equals: nomenclatura } }];
-    if (encargo.codigo) {
-      andCondsBase.push({ datos: { path: ['Fideicomiso'], string_contains: encargo.codigo } });
-    }
-
-    let negocio = await prisma.negocio.findFirst({
-      where: { AND: andCondsBase },
+    const negocio = await prisma.negocio.findUnique({
+      where: { referencia },
       include: { compradores: { orderBy: { orden: 'asc' } } },
     });
 
-    // Fallback sin filtro de fideicomiso
-    if (!negocio && encargo.codigo) {
-      negocio = await prisma.negocio.findFirst({
-        where: { datos: { path: ['Nomenclatura'], equals: nomenclatura } },
-        include: { compradores: { orderBy: { orden: 'asc' } } },
-      });
-    }
-
     if (!negocio) {
       return res.status(404).json({
-        error: 'Negocio no encontrado para esta nomenclatura. Ejecuta el backfill en el módulo Negocios.',
+        error: 'Negocio no encontrado para esta referencia. Ejecuta el backfill en el módulo Negocios.',
       });
     }
 
@@ -471,7 +462,7 @@ router.get('/encargos/:id/nomenclaturas/:nomenclatura', async (req, res) => {
     ]);
 
     res.json({
-      nomenclatura,
+      nomenclatura: negocio.datos?.Nomenclatura ?? null,
       encargo,
       negocio: {
         id:          negocio.id,
@@ -490,7 +481,7 @@ router.get('/encargos/:id/nomenclaturas/:nomenclatura', async (req, res) => {
       totalMovimientos,
     });
   } catch (err) {
-    console.error('[fiducia/nomenclatura-detail]', err.message);
+    console.error('[fiducia/apartamento-detail]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
