@@ -643,7 +643,7 @@ function ConciliacionSection({ negocio }) {
       )}
 
       <p className="text-[12px] text-slate-500 italic px-1">
-        * Conciliación estimada según fechas calculadas y pagos APLICADOS. No representa un estado de cuenta oficial.
+        * Conciliación estimada según fechas calculadas, pagos aplicados y reversas (desistimientos y devoluciones). No representa un estado de cuenta oficial.
       </p>
     </div>
   );
