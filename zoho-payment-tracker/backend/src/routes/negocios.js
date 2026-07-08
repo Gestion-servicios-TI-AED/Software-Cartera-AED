@@ -1,6 +1,11 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
-const { excluirEnResumen, excluirEnMovimiento } = require('../config/columnasExcluidas');
+const { excluirEnResumen } = require('../config/columnasExcluidas');
+const {
+  resolverColumnasMovPorPropietario,
+  parseCompradoresCell,
+  extraerDatosMovimiento,
+} = require('../services/movPorPropietarioParser');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -11,56 +16,6 @@ function cleanRef(ref) {
   if (ref == null) return null;
   const s = String(ref).trim().replace(/\.0+$/, '');
   return s === '' ? null : s;
-}
-
-// Parse one or many compradores from a raw cell.
-// Handles all known formats:
-//   Single:  "NOMBRE (100%)"  /  "12345678 NOMBRE (100%)"  /  "NOMBRE"
-//   Multi:   "NOMBRE_A (12.5%) 28869349 NOMBRE_B (12.5%) ..."
-// rawNroId / rawPct are separate columns used only when the name cell is plain text.
-// Always returns an array (empty if nothing parseable).
-function parseCompradoresCell(rawNombre, rawNroId, rawPct) {
-  if (!rawNombre || String(rawNombre).trim() === '') return [];
-  const s = String(rawNombre).replace(/[\r\n]/g, ' ').trim();
-
-  const pctPattern = /\((\d+\.?\d*)%\)/g;
-  const segments = [];
-  let lastEnd = 0;
-  let m;
-  while ((m = pctPattern.exec(s)) !== null) {
-    segments.push({ text: s.slice(lastEnd, m.index).trim(), pct: parseFloat(m[1]) });
-    lastEnd = m.index + m[0].length;
-  }
-  const remaining = s.slice(lastEnd).trim();
-  if (remaining) segments.push({ text: remaining, pct: null });
-
-  // Single-person path: no embedded (PCT%) — use separate columns
-  if (segments.length === 1 && segments[0].pct === null) {
-    const nombre = segments[0].text.replace(/^\d+\s+/, '').trim();
-    let porcentaje = null;
-    if (rawPct != null) {
-      const p = parseFloat(String(rawPct).replace(/[^0-9.]/g, ''));
-      if (!isNaN(p)) porcentaje = p;
-    }
-    const nroId = rawNroId != null ? String(rawNroId).trim() || null : null;
-    return nombre ? [{ nombre, nroId, porcentaje }] : [];
-  }
-
-  const isSingleEmbedded = segments.length === 1; // one person, pct was embedded
-  return segments
-    .map(({ text, pct }) => {
-      const clean = text.replace(/^\|+\s*/, ''); // strip | separator that Excel embeds
-      if (!clean) return null;
-      const idMatch = clean.match(/^(\d{4,12})\s+([\s\S]+)/);
-      let nroId = idMatch ? idMatch[1] : null;
-      // Single person with embedded (%): use separate rawNroId column if no ID in text
-      if (!nroId && isSingleEmbedded && rawNroId != null) {
-        nroId = String(rawNroId).trim() || null;
-      }
-      const nombre = (idMatch ? idMatch[2] : clean).trim();
-      return nombre ? { nombre, nroId, porcentaje: pct } : null;
-    })
-    .filter(Boolean);
 }
 
 // ── Backfill ───────────────────────────────────────────────────────────────
@@ -84,25 +39,6 @@ function cleanStr(v) {
   if (v == null) return null;
   const s = String(v).replace(/[\r\n]/g, ' ').trim();
   return s === '' ? null : s;
-}
-
-// Parse date string: "dd/mm/yyyy", "dd-mm-yyyy", or Excel serial number → Date
-function parseFechaStr(s) {
-  if (!s) return null;
-  const str = String(s).trim();
-  // Excel serial (integer ≥ 20000 → year ≥ 1954)
-  if (/^\d+$/.test(str)) {
-    const serial = parseInt(str, 10);
-    if (serial >= 20000) {
-      const dt = new Date((serial - 25569) * 86400000);
-      return isNaN(dt.getTime()) ? null : dt;
-    }
-  }
-  // dd/mm/yyyy or dd-mm-yyyy
-  const m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (!m) return null;
-  const dt = new Date(+m[3], +m[2] - 1, +m[1]);
-  return isNaN(dt.getTime()) ? null : dt;
 }
 
 // Extract the most recent saldo from datos, using chronological comparison for dated keys
@@ -226,54 +162,17 @@ async function runBackfill() {
       const filas = Array.isArray(hoja.filas) ? hoja.filas : [];
       // Stored columnas are correct for this sheet (auto-detection picked the right row)
       const storedCols = Array.isArray(hoja.columnas) ? hoja.columnas : [];
-
-      // Find key column indices from stored headers
-      const ci = (name) => {
-        const target = name.toLowerCase();
-        return storedCols.findIndex((c) => (c || '').toLowerCase().trim() === target);
-      };
-      const ciOr = (...names) => {
-        for (const n of names) { const i = ci(n); if (i !== -1) return i; }
-        return -1;
-      };
-
-      // Col 7 = index 6 = Referencia (negocio key)
-      const refIdxs = storedCols.reduce((a, c, i) => { if ((c||'').toLowerCase().trim() === 'referencia') a.push(i); return a; }, []);
-      const negRefIdx = refIdxs[0] ?? 6;
-      const movRefIdx = refIdxs[1] ?? -1;
-
-      const nroIdIdx   = ciOr('Nro ID Propietario', 'Nro ID Propietario 1');
-      const propIdx    = ciOr('Propietario', 'Propietario 1');
-      const pctIdx     = ciOr('% Participación', '% Participación 1');
-      const tipoMovIdx = ci('Tipo Movimiento');
-      const fechaContIdx  = ci('Fecha Contable');
-      const valorIdx      = ci('Valor');
-      const comentIdx     = ci('Comentarios');
-      const fechaBancoIdx = ci('Fecha Mov. Banco');
-      const cuentaIdx     = ci('Cuenta Bancaria');
-      const conceptoIdx   = ci('Concepto');
-      const sucursalIdx   = ci('Sucursal');
-      // La hoja trae dos columnas "Estado": la 1ª es el estado del inmueble
-      // (PROMETIDO, VENDIDO…) y la 2ª el del movimiento (APLICADO…). Igual
-      // que con 'Referencia', hay que quedarse con la ocurrencia correcta
-      // (mismo fix aplicado en fiduciaService.js, commit 37a72d1).
-      const estadoIdxs = storedCols.reduce((a, c, i) => { if ((c||'').toLowerCase().trim() === 'estado') a.push(i); return a; }, []);
-      const estadoIdx     = estadoIdxs[1] ?? estadoIdxs[0] ?? -1;
-      const obsIdx        = ci('Observaciones');
-      const razonIdx      = ci('Razones / Justificaciones');
-      const idUnidadIdx   = ci('ID Unidad');
-      const idMovIdx      = ciOr('ID Movimiento', 'ID Interno');
-      const idPersonaIdx  = ci('ID Persona');
+      const idx = resolverColumnasMovPorPropietario(storedCols);
 
       const negMap = new Map();
       for (const row of filas) {
-        const referencia = cleanRef(cleanStr(row[negRefIdx]));
+        const referencia = cleanRef(cleanStr(row[idx.negRefIdx]));
         if (!referencia) continue;
 
         if (!negMap.has(referencia)) negMap.set(referencia, { compradores: new Map(), movimientos: [] });
         const entry = negMap.get(referencia);
 
-        const comps = parseCompradoresCell(row[propIdx], row[nroIdIdx], pctIdx !== -1 ? row[pctIdx] : null);
+        const comps = parseCompradoresCell(row[idx.propIdx], row[idx.nroIdIdx], idx.pctIdx !== -1 ? row[idx.pctIdx] : null);
         for (const comp of comps) {
           const byId   = comp.nroId ? entry.compradores.get(comp.nroId) : undefined;
           const byName = entry.compradores.get(comp.nombre);
@@ -291,28 +190,8 @@ async function runBackfill() {
           }
         }
 
-        const idMovimiento = cleanStr(row[idMovIdx]);
-        if (idMovimiento) {
-          const v = (idx) => (idx !== -1 ? cleanStr(row[idx]) : null);
-          const fechaContable = parseFechaStr(v(fechaContIdx));
-          const datos = {};
-          const movFields = [
-            ['Tipo Movimiento', tipoMovIdx], ['Fecha Contable', fechaContIdx],
-            ['Valor', valorIdx], ['Comentarios', comentIdx],
-            ['Fecha Mov. Banco', fechaBancoIdx], ['Cuenta Bancaria', cuentaIdx],
-            ['Concepto', conceptoIdx], ['Sucursal', sucursalIdx],
-            ['Referencia Movimiento', movRefIdx], ['Estado', estadoIdx],
-            ['Observaciones', obsIdx], ['Razones / Justificaciones', razonIdx],
-            ['ID Unidad', idUnidadIdx], ['ID Movimiento', idMovIdx],
-            ['ID Persona', idPersonaIdx], ['Nro ID Propietario', nroIdIdx],
-          ];
-          for (const [name, idx] of movFields) {
-            if (excluirEnMovimiento(name)) continue; // columnas "no aplica" (Sucursal)
-            const val = v(idx);
-            if (val !== null) datos[name] = val;
-          }
-          entry.movimientos.push({ idMovimiento, referencia, fechaContable, datos });
-        }
+        const mov = extraerDatosMovimiento(row, idx);
+        if (mov) entry.movimientos.push({ ...mov, referencia });
       }
 
       let compCount = 0, movCount = 0;

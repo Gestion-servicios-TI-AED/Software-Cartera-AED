@@ -1,7 +1,12 @@
 const XLSX = require('xlsx');
 const XlsxPopulate = require('xlsx-populate');
 const { PrismaClient } = require('@prisma/client');
-const { excluirEnResumen, excluirEnMovimiento } = require('../config/columnasExcluidas');
+const { excluirEnResumen } = require('../config/columnasExcluidas');
+const {
+  resolverColumnasMovPorPropietario,
+  parseCompradoresCell,
+  extraerDatosMovimiento,
+} = require('./movPorPropietarioParser');
 
 const prisma = new PrismaClient();
 
@@ -215,59 +220,6 @@ function cleanNegRef(raw) {
   return s === '' ? null : s;
 }
 
-// Parse one or many compradores from a raw cell string.
-// Handles all known formats from the fiducia Excel:
-//   Single:  "NOMBRE (100%)"
-//            "12345678 NOMBRE (100%)"
-//   Multi:   "NOMBRE_A (12.5%) 28869349 NOMBRE_B (12.5%) 38237361 NOMBRE_C (12.5%) ..."
-//            (first person may lack an ID; last person may lack a percentage)
-// rawNroId / rawPct are the separate columns from Mov_Por_Propietario (used when the
-// name cell doesn't embed that information).
-function parseCompradoresCell(rawNombre, rawNroId, rawPct) {
-  if (!rawNombre || String(rawNombre).trim() === '') return [];
-  const s = String(rawNombre).replace(/[\r\n]/g, ' ').trim();
-
-  // Split by (PCT%) markers — each segment holds the ID+name of the NEXT person.
-  const pctPattern = /\((\d+\.?\d*)%\)/g;
-  const segments = [];
-  let lastEnd = 0;
-  let m;
-  while ((m = pctPattern.exec(s)) !== null) {
-    segments.push({ text: s.slice(lastEnd, m.index).trim(), pct: parseFloat(m[1]) });
-    lastEnd = m.index + m[0].length;
-  }
-  const remaining = s.slice(lastEnd).trim();
-  if (remaining) segments.push({ text: remaining, pct: null });
-
-  // Single-person path: no (PCT%) found at all and no ID prefix → use separate columns
-  if (segments.length === 1 && segments[0].pct === null) {
-    let nombre = segments[0].text.replace(/^\d+\s+/, '').trim();
-    let porcentaje = null;
-    if (rawPct != null) {
-      const p = parseFloat(String(rawPct).replace(/[^0-9.]/g, ''));
-      if (!isNaN(p)) porcentaje = p;
-    }
-    const nroId = rawNroId != null ? String(rawNroId).trim() || null : null;
-    return nombre ? [{ nombre, nroId, porcentaje }] : [];
-  }
-
-  // Multi (or single with embedded PCT%) — derive each person from segments
-  const isSingleEmbedded = segments.length === 1;
-  return segments
-    .map(({ text, pct }) => {
-      const clean = text.replace(/^\|+\s*/, ''); // strip | separator that Excel embeds
-      if (!clean) return null;
-      const idMatch = clean.match(/^(\d{4,12})\s+([\s\S]+)/);
-      let nroId = idMatch ? idMatch[1] : null;
-      if (!nroId && isSingleEmbedded && rawNroId != null) {
-        nroId = String(rawNroId).trim() || null;
-      }
-      const nombre = (idMatch ? idMatch[2] : clean).trim();
-      return nombre ? { nombre, nroId, porcentaje: pct } : null;
-    })
-    .filter(Boolean);
-}
-
 function cleanStr(v) {
   if (v == null) return null;
   const s = String(v).replace(/[\r\n]/g, ' ').trim();
@@ -340,53 +292,19 @@ async function processResumenSheet(columnas, filas) {
 
 // Hoja Mov_Por_Propietario — upsert compradores + insert movements (dedup by idMovimiento)
 async function processMovPorPropietarioSheet(columnas, filas) {
-  // Find all occurrences of 'Referencia' (col 7 = negocio ref, col 20 = mov ref)
-  const refIdxs = columnas.reduce((acc, c, i) => {
-    if ((c || '').toLowerCase().trim() === 'referencia') acc.push(i);
-    return acc;
-  }, []);
-  const negRefIdx = refIdxs[0] ?? 6;   // Col 7 (index 6) — links to Negocio
-  const movRefIdx = refIdxs[1] ?? -1;  // Col 20 (index 19) — payment reference
-
-  const nroIdIdx      = colIdx(columnas, 'Nro ID Propietario') !== -1 ? colIdx(columnas, 'Nro ID Propietario') : colIdx(columnas, 'Nro ID Propietario 1');
-  const propIdx       = colIdx(columnas, 'Propietario') !== -1 ? colIdx(columnas, 'Propietario') : colIdx(columnas, 'Propietario 1');
-  const pctIdx        = colIdx(columnas, '% Participación') !== -1 ? colIdx(columnas, '% Participación') : colIdx(columnas, '% Participación 1');
-  const tipoMovIdx    = colIdx(columnas, 'Tipo Movimiento');
-  const fechaContIdx  = colIdx(columnas, 'Fecha Contable');
-  const valorIdx      = colIdx(columnas, 'Valor');
-  const comentIdx     = colIdx(columnas, 'Comentarios');
-  const fechaBancoIdx = colIdx(columnas, 'Fecha Mov. Banco');
-  const cuentaIdx     = colIdx(columnas, 'Cuenta Bancaria');
-  const conceptoIdx   = colIdx(columnas, 'Concepto');
-  const sucursalIdx   = colIdx(columnas, 'Sucursal');
-  // La hoja trae dos columnas "Estado": la 1ª es el estado del inmueble
-  // (PROMETIDO, VENDIDO…) y la 2ª el del movimiento (APLICADO…). Igual que
-  // con 'Referencia', hay que quedarse con la ocurrencia correcta.
-  const estadoIdxs = columnas.reduce((acc, c, i) => {
-    if ((c || '').toLowerCase().trim() === 'estado') acc.push(i);
-    return acc;
-  }, []);
-  const estadoIdx     = estadoIdxs[1] ?? estadoIdxs[0] ?? -1;
-  const obsIdx        = colIdx(columnas, 'Observaciones');
-  const razonIdx      = colIdx(columnas, 'Razones / Justificaciones');
-  const idUnidadIdx   = colIdx(columnas, 'ID Unidad');
-  // Dedup key: prefer 'ID Movimiento', fall back to 'ID Interno'
-  const idMovIdx      = colIdx(columnas, 'ID Movimiento') !== -1
-    ? colIdx(columnas, 'ID Movimiento')
-    : colIdx(columnas, 'ID Interno');
-  const idPersonaIdx  = colIdx(columnas, 'ID Persona');
+  const idx = resolverColumnasMovPorPropietario(columnas);
 
   // Group by negocio referencia
   const negMap = new Map(); // referencia → { compradores: Map, movimientos: [] }
   for (const row of filas) {
-    const referencia = cleanNegRef(row[negRefIdx]);
+    const referencia = cleanNegRef(row[idx.negRefIdx]);
     if (!referencia) continue;
 
     if (!negMap.has(referencia)) negMap.set(referencia, { compradores: new Map(), movimientos: [] });
     const entry = negMap.get(referencia);
 
     // Compradores (unique by nroId, or nombre as fallback; enrich nroId if seen later)
-    const comps = parseCompradoresCell(row[propIdx], row[nroIdIdx], pctIdx !== -1 ? row[pctIdx] : null);
+    const comps = parseCompradoresCell(row[idx.propIdx], row[idx.nroIdIdx], idx.pctIdx !== -1 ? row[idx.pctIdx] : null);
     for (const comp of comps) {
       const byId   = comp.nroId ? entry.compradores.get(comp.nroId) : undefined;
       const byName = entry.compradores.get(comp.nombre);
@@ -404,28 +322,8 @@ async function processMovPorPropietarioSheet(columnas, filas) {
       }
     }
 
-    // Movement
-    const idMovimiento = cleanStr(row[idMovIdx]);
-    if (idMovimiento) {
-      const v = (idx) => (idx !== -1 ? cleanStr(row[idx]) : null);
-      const datos = {};
-      const movFields = [
-        ['Tipo Movimiento', tipoMovIdx], ['Fecha Contable', fechaContIdx],
-        ['Valor', valorIdx], ['Comentarios', comentIdx],
-        ['Fecha Mov. Banco', fechaBancoIdx], ['Cuenta Bancaria', cuentaIdx],
-        ['Concepto', conceptoIdx], ['Sucursal', sucursalIdx],
-        ['Referencia Movimiento', movRefIdx], ['Estado', estadoIdx],
-        ['Observaciones', obsIdx], ['Razones / Justificaciones', razonIdx],
-        ['ID Unidad', idUnidadIdx], ['ID Movimiento', idMovIdx],
-        ['ID Persona', idPersonaIdx], ['Nro ID Propietario', nroIdIdx],
-      ];
-      for (const [name, idx] of movFields) {
-        if (excluirEnMovimiento(name)) continue; // columnas "no aplica" (Sucursal)
-        const val = v(idx);
-        if (val !== null) datos[name] = val;
-      }
-      entry.movimientos.push({ idMovimiento, referencia, datos });
-    }
+    const mov = extraerDatosMovimiento(row, idx);
+    if (mov) entry.movimientos.push({ ...mov, referencia });
   }
 
   let compCreated = 0, movCreated = 0;
@@ -465,6 +363,7 @@ async function processMovPorPropietarioSheet(columnas, filas) {
           negocioId: negocio.id,
           referencia: m.referencia,
           idMovimiento: m.idMovimiento,
+          fechaContable: m.fechaContable ?? null,
           datos: m.datos,
         })),
       });
