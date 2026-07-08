@@ -523,14 +523,24 @@ function CuotaRow({ c }) {
         <tr className="bg-brand-tint border-b border-aed-border">
           <td colSpan={9} className="px-5 py-3">
             <div className="flex flex-col gap-1.5">
-              {c.pagosAplicados.map((p, i) => (
-                <div key={i} className="flex items-center justify-between gap-4 text-[13px]">
-                  <span className="text-slate-500">{p.fecha ? formatFechaUTC(p.fecha) : 'Sin fecha'}</span>
-                  <span className={`font-medium tabular-nums ${p.valor < 0 ? 'text-red-600' : 'text-slate-700'}`}>
-                    {p.valor < 0 ? '-' : ''}{formatCOP(Math.abs(p.valor))}
-                  </span>
-                </div>
-              ))}
+              {c.pagosAplicados.map((p, i) => {
+                const mismoMonto = Math.abs(p.destinado - p.valor) < 1;
+                return (
+                  <div key={i} className="flex items-center justify-between gap-4 text-[13px]">
+                    <span className="text-slate-500">{p.fecha ? formatFechaUTC(p.fecha) : 'Sin fecha'}</span>
+                    <div className="text-right">
+                      <span className={`font-medium tabular-nums ${p.valor < 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                        {p.valor < 0 ? '-' : ''}{formatCOP(Math.abs(p.valor))}
+                      </span>
+                      {!mismoMonto && (
+                        <span className={`block text-[11px] mt-0.5 ${p.destinado < 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                          destinado a esta cuota: {p.destinado < 0 ? '-' : ''}{formatCOP(Math.abs(p.destinado))}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </td>
         </tr>

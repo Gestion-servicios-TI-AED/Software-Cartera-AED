@@ -98,7 +98,14 @@ function pagosEnTramo(prefijos, desde, hasta) {
   for (const p of prefijos) {
     const lo = Math.min(antes, p.acumulado);
     const hi = Math.max(antes, p.acumulado);
-    if (hi > desde && lo < hasta) resultado.push({ fecha: p.fecha, valor: p.valor });
+    if (hi > desde && lo < hasta) {
+      // Porción del pago que realmente cae dentro de esta cuota (el ancho de
+      // la superposición). Con el mismo signo del pago: si es una reversa,
+      // lo destinado también es negativo (consume de lo ya asignado aquí).
+      const solape = Math.min(hi, hasta) - Math.max(lo, desde);
+      const destinado = p.valor >= 0 ? solape : -solape;
+      resultado.push({ fecha: p.fecha, valor: p.valor, destinado });
+    }
     antes = p.acumulado;
   }
   return resultado;
