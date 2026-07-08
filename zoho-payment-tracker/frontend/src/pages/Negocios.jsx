@@ -461,6 +461,71 @@ function labelCuota(etiqueta) {
   return /^\d+$/.test(etiqueta) ? `Cuota ${etiqueta}` : etiqueta;
 }
 
+// Fila de cuota expandible: al hacer clic (si tiene pagos) despliega los
+// pagos reales que cayeron en su tramo de la cascada — mismo patrón visual
+// que MovimientoRow (flecha a la izquierda, colapsa/expande).
+function CuotaRow({ c }) {
+  const [expanded, setExpanded] = useState(false);
+  const badge = badgeConciliacion(c);
+  const tienePagos = c.pagosAplicados && c.pagosAplicados.length > 0;
+
+  return (
+    <>
+      <tr
+        onClick={() => tienePagos && setExpanded((e) => !e)}
+        className={`border-b border-aed-border last:border-0 hover:bg-brand-tint ${tienePagos ? 'cursor-pointer' : ''}`}
+      >
+        <td className="pl-3 pr-1 py-2 w-6">
+          {tienePagos && (
+            <ChevronRight
+              size={12}
+              strokeWidth={2.5}
+              className={`text-slate-500 transition-transform ${expanded ? 'rotate-90 text-brand' : ''}`}
+            />
+          )}
+        </td>
+        <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{labelCuota(c.etiqueta)}</td>
+        <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+          {c.fechaEstimada ? formatFechaUTC(c.fechaEstimada) : '—'}
+        </td>
+        <td className="px-3 py-2 text-right text-slate-700 whitespace-nowrap tabular-nums">{formatCOP(c.valorPlan)}</td>
+        <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
+          {c.cubierto > 0 ? (
+            <span className={c.estado === 'pagada' ? 'text-emerald-600' : 'text-amber-600'}>{formatCOP(c.cubierto)}</span>
+          ) : (
+            <span className="text-slate-300">—</span>
+          )}
+        </td>
+        <td className="px-3 py-2 text-right whitespace-nowrap">
+          <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${badge.cls}`}>{badge.txt}</span>
+          {c.atrasada && c.fechaEstimada && (
+            <span className="block text-[11px] text-red-500 mt-0.5">venció {formatFechaUTC(c.fechaEstimada)}</span>
+          )}
+          {c.estado === 'pagada' && c.fechaCubierta && (
+            <span className="block text-[11px] text-slate-400 mt-0.5">pagada el {formatFechaUTC(c.fechaCubierta)}</span>
+          )}
+        </td>
+      </tr>
+      {expanded && tienePagos && (
+        <tr className="bg-brand-tint border-b border-aed-border">
+          <td colSpan={6} className="px-5 py-3">
+            <div className="flex flex-col gap-1.5">
+              {c.pagosAplicados.map((p, i) => (
+                <div key={i} className="flex items-center justify-between gap-4 text-[13px]">
+                  <span className="text-slate-500">{p.fecha ? formatFechaUTC(p.fecha) : 'Sin fecha'}</span>
+                  <span className={`font-medium tabular-nums ${p.valor < 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                    {p.valor < 0 ? '-' : ''}{formatCOP(Math.abs(p.valor))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 function ConciliacionSection({ negocio }) {
   const oportunidad = negocio.oportunidad;
   const [datos, setDatos] = useState(null);
@@ -556,6 +621,7 @@ function ConciliacionSection({ negocio }) {
           <table className="w-full text-[14px]">
             <thead>
               <tr className="bg-aed-base border-b border-aed-border">
+                <th className="w-6" />
                 <th className="section-label px-3 py-2 text-left whitespace-nowrap">Cuota</th>
                 <th className="section-label px-3 py-2 text-left whitespace-nowrap">Fecha estimada</th>
                 <th className="section-label px-3 py-2 text-right whitespace-nowrap">Valor plan</th>
@@ -564,34 +630,7 @@ function ConciliacionSection({ negocio }) {
               </tr>
             </thead>
             <tbody>
-              {cuotas.map((c, i) => {
-                const badge = badgeConciliacion(c);
-                return (
-                  <tr key={i} className="border-b border-aed-border last:border-0 hover:bg-brand-tint">
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{labelCuota(c.etiqueta)}</td>
-                    <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
-                      {c.fechaEstimada ? formatFechaUTC(c.fechaEstimada) : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-right text-slate-700 whitespace-nowrap tabular-nums">{formatCOP(c.valorPlan)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
-                      {c.cubierto > 0 ? (
-                        <span className={c.estado === 'pagada' ? 'text-emerald-600' : 'text-amber-600'}>{formatCOP(c.cubierto)}</span>
-                      ) : (
-                        <span className="text-slate-300">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                      <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${badge.cls}`}>{badge.txt}</span>
-                      {c.atrasada && c.fechaEstimada && (
-                        <span className="block text-[11px] text-red-500 mt-0.5">venció {formatFechaUTC(c.fechaEstimada)}</span>
-                      )}
-                      {c.estado === 'pagada' && c.fechaCubierta && (
-                        <span className="block text-[11px] text-slate-400 mt-0.5">pagada el {formatFechaUTC(c.fechaCubierta)}</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {cuotas.map((c, i) => <CuotaRow key={i} c={c} />)}
             </tbody>
           </table>
         </div>
