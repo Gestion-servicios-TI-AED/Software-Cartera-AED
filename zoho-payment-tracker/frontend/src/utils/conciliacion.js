@@ -53,13 +53,26 @@ export function construirPlan(rows, fechaBase) {
   return plan;
 }
 
-// Pagos reales: solo APLICADOS con valor positivo, ordenados por fecha
-// contable ascendente (sin fecha al final — igual cuentan en la bolsa).
+// Tipos de movimiento que representan una reversa real de pago (desistimiento,
+// devolución) y por eso se incluyen sin importar su Estado: muchos de estos
+// quedaron con un Estado irrecuperable tras el bug de la columna duplicada
+// (ver fiduciaService.js), pero su Tipo Movimiento sí es confiable.
+const TIPOS_REVERSA_SIEMPRE = ['DESISTIMIENTOS', 'DEVOLUCION MAYOR VALOR PAGADO'];
+
+// Pagos reales: movimientos APLICADO (cualquier signo — antes se descartaban
+// los negativos por error) más las reversas reconocidas de arriba, sin
+// importar su Estado. Ordenados por fecha contable ascendente (sin fecha al
+// final — igual cuentan en la bolsa).
 export function normalizarPagos(movimientos) {
   return (movimientos || [])
-    .filter((m) => String(m.datos?.Estado || '').trim().toUpperCase() === 'APLICADO')
+    .filter((m) => {
+      const estado = String(m.datos?.Estado || '').trim().toUpperCase();
+      if (estado === 'APLICADO') return true;
+      const tipo = String(m.datos?.['Tipo Movimiento'] || '').trim().toUpperCase();
+      return TIPOS_REVERSA_SIEMPRE.includes(tipo);
+    })
     .map((m) => ({ fecha: m.fechaContable ? new Date(m.fechaContable) : null, valor: parseMonto(m.datos?.Valor) }))
-    .filter((p) => !isNaN(p.valor) && p.valor > 0)
+    .filter((p) => !isNaN(p.valor) && p.valor !== 0)
     .sort((a, b) => {
       if (!a.fecha && !b.fecha) return 0;
       if (!a.fecha) return 1;
@@ -68,19 +81,43 @@ export function normalizarPagos(movimientos) {
     });
 }
 
+// Pagos (con su fecha y valor completos, sin prorratear) cuyo propio tramo en
+// el acumulado se cruza con [desde, hasta). Un pago que cubre el final de una
+// cuota y el inicio de la siguiente aparece completo en ambas — decisión
+// explícita de diseño, no un bug.
+//
+// Limitación conocida y aceptada: si una reversa hace bajar el acumulado y un
+// pago posterior vuelve a cruzar ese mismo rango numérico, ese pago posterior
+// puede aparecer también en una cuota anterior a la que en verdad pertenece
+// cronológicamente. Resolverlo requeriría un modelo de "dueño" por rango en
+// vez de superposición numérica, fuera de alcance por ahora (ver verificación
+// de este archivo, que reproduce y documenta el caso).
+function pagosEnTramo(prefijos, desde, hasta) {
+  let antes = 0;
+  const resultado = [];
+  for (const p of prefijos) {
+    const lo = Math.min(antes, p.acumulado);
+    const hi = Math.max(antes, p.acumulado);
+    if (hi > desde && lo < hasta) resultado.push({ fecha: p.fecha, valor: p.valor });
+    antes = p.acumulado;
+  }
+  return resultado;
+}
+
 // Cascada acumulada. Una cuota no pagada cuya fecha estimada ya venció queda
 // marcada "atrasada". fechaCubierta = fecha del pago cuyo acumulado alcanzó
 // el requerido acumulado del plan hasta esa cuota.
 export function conciliar(cuotasPlan, pagos) {
   const totalPagado = pagos.reduce((s, p) => s + p.valor, 0);
   let acumuladoPago = 0;
-  const prefijos = pagos.map((p) => ({ fecha: p.fecha, acumulado: (acumuladoPago += p.valor) }));
+  const prefijos = pagos.map((p) => ({ fecha: p.fecha, valor: p.valor, acumulado: (acumuladoPago += p.valor) }));
 
   const hoy = new Date();
   let disponible = totalPagado;
   let requerido = 0;
 
   const cuotas = cuotasPlan.map((c) => {
+    const requeridoAntes = requerido;
     const cubierto = Math.max(0, Math.min(c.valorPlan, disponible));
     disponible -= cubierto;
     requerido += c.valorPlan;
@@ -91,7 +128,8 @@ export function conciliar(cuotasPlan, pagos) {
       fechaCubierta = p ? p.fecha : null;
     }
     const atrasada = estado !== 'pagada' && c.fechaEstimada != null && c.fechaEstimada < hoy;
-    return { ...c, cubierto, estado, atrasada, fechaCubierta };
+    const pagosAplicados = pagosEnTramo(prefijos, requeridoAntes, requerido);
+    return { ...c, cubierto, estado, atrasada, fechaCubierta, pagosAplicados };
   });
 
   const totalPlan = cuotas.reduce((s, c) => s + c.valorPlan, 0);
