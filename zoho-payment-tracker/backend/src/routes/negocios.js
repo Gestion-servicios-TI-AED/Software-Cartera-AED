@@ -253,7 +253,12 @@ async function runBackfill() {
       const cuentaIdx     = ci('Cuenta Bancaria');
       const conceptoIdx   = ci('Concepto');
       const sucursalIdx   = ci('Sucursal');
-      const estadoIdx     = ci('Estado');
+      // La hoja trae dos columnas "Estado": la 1ª es el estado del inmueble
+      // (PROMETIDO, VENDIDO…) y la 2ª el del movimiento (APLICADO…). Igual
+      // que con 'Referencia', hay que quedarse con la ocurrencia correcta
+      // (mismo fix aplicado en fiduciaService.js, commit 37a72d1).
+      const estadoIdxs = storedCols.reduce((a, c, i) => { if ((c||'').toLowerCase().trim() === 'estado') a.push(i); return a; }, []);
+      const estadoIdx     = estadoIdxs[1] ?? estadoIdxs[0] ?? -1;
       const obsIdx        = ci('Observaciones');
       const razonIdx      = ci('Razones / Justificaciones');
       const idUnidadIdx   = ci('ID Unidad');
