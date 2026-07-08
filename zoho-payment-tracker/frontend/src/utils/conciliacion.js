@@ -5,11 +5,21 @@
 import { detectarCuotaKey, fechaEstimadaCuota } from './planDePagos.js';
 
 // Parsea un valor monetario a número. NaN para vacíos y fechas dd/mm/aaaa.
+//
+// Hay dos formatos distintos en juego: los montos del plan de Zoho vienen
+// formateados a la colombiana ("$ 4.877.904", el punto es separador de
+// miles), mientras que el Valor de los movimientos de fiducia es un número
+// plano de Excel serializado tal cual ("361446462.5", el punto SÍ es
+// decimal). Se intenta primero como número plano (preserva el decimal real);
+// solo si eso falla se cae al modo "quitar todo lo que no sea dígito", que
+// interpreta los puntos como separadores de miles.
 export function parseMonto(v) {
   if (v == null || v === '') return NaN;
   if (typeof v === 'number') return v;
   const s = String(v).trim();
   if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(s)) return NaN; // es una fecha
+  const plano = Number(s);
+  if (!isNaN(plano)) return plano;
   return parseFloat(s.replace(/[^0-9-]/g, ''));
 }
 
