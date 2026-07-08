@@ -128,8 +128,9 @@ export function conciliar(cuotasPlan, pagos) {
       fechaCubierta = p ? p.fecha : null;
     }
     const atrasada = estado !== 'pagada' && c.fechaEstimada != null && c.fechaEstimada < hoy;
+    const diasAtraso = atrasada ? Math.floor((hoy.getTime() - c.fechaEstimada.getTime()) / 86400000) : null;
     const pagosAplicados = pagosEnTramo(prefijos, requeridoAntes, requerido);
-    return { ...c, cubierto, estado, atrasada, fechaCubierta, pagosAplicados };
+    return { ...c, cubierto, estado, atrasada, diasAtraso, fechaCubierta, pagosAplicados };
   });
 
   const totalPlan = cuotas.reduce((s, c) => s + c.valorPlan, 0);

@@ -488,10 +488,23 @@ function CuotaRow({ c }) {
         <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
           {c.fechaEstimada ? formatFechaUTC(c.fechaEstimada) : '—'}
         </td>
+        <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+          {c.estado === 'pagada' && c.fechaCubierta ? formatFechaUTC(c.fechaCubierta) : '—'}
+        </td>
         <td className="px-3 py-2 text-right text-slate-700 whitespace-nowrap tabular-nums">{formatCOP(c.valorPlan)}</td>
         <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
           {c.cubierto > 0 ? (
             <span className={c.estado === 'pagada' ? 'text-emerald-600' : 'text-amber-600'}>{formatCOP(c.cubierto)}</span>
+          ) : (
+            <span className="text-slate-300">—</span>
+          )}
+        </td>
+        <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
+          {formatCOP(c.valorPlan - c.cubierto)}
+        </td>
+        <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
+          {c.atrasada && c.diasAtraso != null ? (
+            <span className="text-red-600 font-medium">{c.diasAtraso}</span>
           ) : (
             <span className="text-slate-300">—</span>
           )}
@@ -508,7 +521,7 @@ function CuotaRow({ c }) {
       </tr>
       {expanded && tienePagos && (
         <tr className="bg-brand-tint border-b border-aed-border">
-          <td colSpan={6} className="px-5 py-3">
+          <td colSpan={9} className="px-5 py-3">
             <div className="flex flex-col gap-1.5">
               {c.pagosAplicados.map((p, i) => (
                 <div key={i} className="flex items-center justify-between gap-4 text-[13px]">
@@ -623,9 +636,12 @@ function ConciliacionSection({ negocio }) {
               <tr className="bg-aed-base border-b border-aed-border">
                 <th className="w-6" />
                 <th className="section-label px-3 py-2 text-left whitespace-nowrap">Cuota</th>
-                <th className="section-label px-3 py-2 text-left whitespace-nowrap">Fecha estimada</th>
-                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Valor plan</th>
-                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Cubierto</th>
+                <th className="section-label px-3 py-2 text-left whitespace-nowrap">Fecha esperada</th>
+                <th className="section-label px-3 py-2 text-left whitespace-nowrap">Fecha de pago</th>
+                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Valor de la cuota</th>
+                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Valor pagado</th>
+                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Diferencia</th>
+                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Días de atraso</th>
                 <th className="section-label px-3 py-2 text-right whitespace-nowrap">Estado</th>
               </tr>
             </thead>
