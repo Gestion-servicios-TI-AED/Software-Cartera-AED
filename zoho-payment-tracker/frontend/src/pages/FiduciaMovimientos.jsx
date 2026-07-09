@@ -165,40 +165,47 @@ export default function FiduciaMovimientos() {
   const [search,           setSearch]           = useState('');
   const [fideicomisoFilter, setFideicomisoFilter] = useState('');
   const [estadoFilter,     setEstadoFilter]     = useState('');
+  const [tipoMovFilter,    setTipoMovFilter]    = useState('');
+  const [estadoMovFilter,  setEstadoMovFilter]  = useState('');
   const [fechaDesde,       setFechaDesde]       = useState('');
   const [fechaHasta,       setFechaHasta]       = useState('');
+  const [datePreset,       setDatePreset]       = useState('');
 
   const debouncedSearch = useDebounce(search);
 
   const filtersRef = useRef({});
-  filtersRef.current = { debouncedSearch, fideicomisoFilter, estadoFilter, fechaDesde, fechaHasta };
+  filtersRef.current = { debouncedSearch, fideicomisoFilter, estadoFilter, tipoMovFilter, estadoMovFilter, fechaDesde, fechaHasta };
 
   const fetchData = useCallback((p = 1) => {
-    const { debouncedSearch: s, fideicomisoFilter: f, estadoFilter: e, fechaDesde: fd, fechaHasta: fh } = filtersRef.current;
+    const { debouncedSearch: s, fideicomisoFilter: f, estadoFilter: e, tipoMovFilter: tm, estadoMovFilter: em, fechaDesde: fd, fechaHasta: fh } = filtersRef.current;
     setLoading(true);
     getAllNegocioMovimientos({
-      search:      s  || undefined,
-      fideicomiso: f  || undefined,
-      estado:      e  || undefined,
-      fechaDesde:  fd || undefined,
-      fechaHasta:  fh || undefined,
-      page:        p,
-      limit:       50,
+      search:          s  || undefined,
+      fideicomiso:     f  || undefined,
+      estado:          e  || undefined,
+      tipoMovimiento:  tm || undefined,
+      estadoMovimiento: em || undefined,
+      fechaDesde:      fd || undefined,
+      fechaHasta:      fh || undefined,
+      page:            p,
+      limit:           50,
     })
       .then((res) => { setResult(res); setPage(p); })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { fetchData(1); }, [debouncedSearch, fideicomisoFilter, estadoFilter, fechaDesde, fechaHasta, fetchData]);
+  useEffect(() => { fetchData(1); }, [debouncedSearch, fideicomisoFilter, estadoFilter, tipoMovFilter, estadoMovFilter, fechaDesde, fechaHasta, fetchData]);
 
-  const clearAll  = () => { setSearch(''); setFideicomisoFilter(''); setEstadoFilter(''); setFechaDesde(''); setFechaHasta(''); };
-  const hasFilters = search || fideicomisoFilter || estadoFilter || fechaDesde || fechaHasta;
+  const clearAll  = () => { setSearch(''); setFideicomisoFilter(''); setEstadoFilter(''); setTipoMovFilter(''); setEstadoMovFilter(''); setFechaDesde(''); setFechaHasta(''); setDatePreset(''); };
+  const hasFilters = search || fideicomisoFilter || estadoFilter || tipoMovFilter || estadoMovFilter || fechaDesde || fechaHasta;
 
   const pagination   = result?.pagination;
   const movimientos  = result?.data        || [];
   const fideicomisos = result?.fideicomisos || [];
   const estados      = result?.estados      || [];
+  const tiposMov     = result?.tiposMovimiento || [];
+  const estadosMov   = result?.estadosMovimiento || [];
 
   return (
     <div className="flex flex-col min-h-screen bg-aed-base">
@@ -220,6 +227,7 @@ export default function FiduciaMovimientos() {
       <div className="flex-1 p-5 flex flex-col gap-4">
         {/* ── Filtros ── */}
         <div className="card p-4 flex flex-col gap-3">
+          {/* Fila 1: Búsqueda + Proyecto + Estado */}
           <div className="flex flex-wrap gap-3 items-end">
             {/* Búsqueda */}
             <div className="flex-1 min-w-52">
@@ -230,7 +238,7 @@ export default function FiduciaMovimientos() {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Referencia, comprador o cédula…"
+                  placeholder="Referencia, comprador, cédula, ID movimiento o nomenclatura…"
                   className="input w-full pl-9 pr-8 py-2 text-[15px]"
                 />
                 {search && (
@@ -274,14 +282,45 @@ export default function FiduciaMovimientos() {
             )}
           </div>
 
-          {/* Rango de fechas */}
+          {/* Fila 2: Tipo movimiento + Estado movimiento */}
+          <div className="flex flex-wrap gap-3 items-end">
+            {tiposMov.length > 0 && (
+              <div className="min-w-52">
+                <label className="section-label block mb-1">Tipo movimiento</label>
+                <select
+                  value={tipoMovFilter}
+                  onChange={(e) => setTipoMovFilter(e.target.value)}
+                  className="input w-full py-2 px-3 text-[15px]"
+                >
+                  <option value="">Todos los tipos</option>
+                  {tiposMov.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            )}
+
+            {estadosMov.length > 0 && (
+              <div className="min-w-44">
+                <label className="section-label block mb-1">Estado movimiento</label>
+                <select
+                  value={estadoMovFilter}
+                  onChange={(e) => setEstadoMovFilter(e.target.value)}
+                  className="input w-full py-2 px-3 text-[15px]"
+                >
+                  <option value="">Todos los estados</option>
+                  {estadosMov.map((e) => <option key={e} value={e}>{e}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Fila 3: Rango de fechas + preset */}
           <div className="flex flex-wrap gap-3 items-end">
             <div>
               <label className="section-label block mb-1">Fecha contable desde</label>
               <input
                 type="date"
                 value={fechaDesde}
-                onChange={(e) => setFechaDesde(e.target.value)}
+                onChange={(e) => { setFechaDesde(e.target.value); setDatePreset(''); }}
                 className="input py-2 px-3 text-[15px]"
               />
             </div>
@@ -290,9 +329,36 @@ export default function FiduciaMovimientos() {
               <input
                 type="date"
                 value={fechaHasta}
-                onChange={(e) => setFechaHasta(e.target.value)}
+                onChange={(e) => { setFechaHasta(e.target.value); setDatePreset(''); }}
                 className="input py-2 px-3 text-[15px]"
               />
+            </div>
+            <div className="flex gap-1">
+              {[
+                { label: 'Último mes', months: 1 },
+                { label: 'Últimos 3 meses', months: 3 },
+                { label: 'Últimos 6 meses', months: 6 },
+                { label: 'Último año', months: 12 },
+              ].map(({ label, months }) => (
+                <button
+                  key={months}
+                  onClick={() => {
+                    const now = new Date();
+                    const hasta = now.toISOString().slice(0, 10);
+                    const desde = new Date(now.getFullYear(), now.getMonth() - months, now.getDate()).toISOString().slice(0, 10);
+                    setFechaDesde(desde);
+                    setFechaHasta(hasta);
+                    setDatePreset(String(months));
+                  }}
+                  className={`px-2.5 py-1.5 rounded-md border text-[13px] font-medium transition-colors ${
+                    datePreset === String(months)
+                      ? 'bg-brand-soft border-brand text-brand-strong'
+                      : 'bg-white border-aed-border text-slate-600 hover:bg-aed-base'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
             {hasFilters && (
               <button

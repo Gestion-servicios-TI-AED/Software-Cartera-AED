@@ -338,7 +338,7 @@ router.get('/', async (req, res) => {
 // GET /api/negocios/movimientos — todos los movimientos con contexto de negocio
 router.get('/movimientos', async (req, res) => {
   try {
-    const { search, fideicomiso, estado, fechaDesde, fechaHasta, page = '1', limit = '50' } = req.query;
+    const { search, fideicomiso, estado, tipoMovimiento, estadoMovimiento, fechaDesde, fechaHasta, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
 
@@ -355,27 +355,48 @@ router.get('/movimientos', async (req, res) => {
       ];
     }
 
-    // Resolver IDs de negocios que coinciden con los filtros
+    // Resolver IDs de negocios que coinciden con los filtros de negocio
+    const hasNegocioFilters = Object.keys(negocioWhere).length > 0;
     let negocioIds = null;
-    if (Object.keys(negocioWhere).length > 0) {
+    if (hasNegocioFilters) {
       const matching = await prisma.negocio.findMany({
         where: negocioWhere,
         select: { id: true },
       });
       negocioIds = matching.map((n) => n.id);
+      // Si hay filtros de negocio pero ninguno coincide, devolver vacío
       if (negocioIds.length === 0) {
         return res.json({
           data: [],
           pagination: { total: 0, page: pageNum, limit: limitNum, totalPages: 0 },
           fideicomisos: [],
           estados: [],
+          tiposMovimiento: [],
+          estadosMovimiento: [],
         });
       }
     }
 
     // Filtros que viven en NegocioMovimiento
     const movWhere = {};
-    if (negocioIds !== null) movWhere.negocioId = { in: negocioIds };
+
+    // Condición OR: negocios que coinciden O idMovimiento que coincide
+    const orConditions = [];
+    if (negocioIds !== null) {
+      orConditions.push({ negocioId: { in: negocioIds } });
+    }
+    if (search) {
+      orConditions.push({ idMovimiento: { contains: search, mode: 'insensitive' } });
+    }
+    if (orConditions.length > 0) {
+      movWhere.OR = orConditions;
+    }
+    if (tipoMovimiento) {
+      movWhere.AND = [...(movWhere.AND || []), { datos: { path: ['Tipo Movimiento'], equals: tipoMovimiento } }];
+    }
+    if (estadoMovimiento) {
+      movWhere.AND = [...(movWhere.AND || []), { datos: { path: ['Estado'], equals: estadoMovimiento } }];
+    }
     if (fechaDesde || fechaHasta) {
       movWhere.fechaContable = {};
       if (fechaDesde) movWhere.fechaContable.gte = new Date(fechaDesde);
@@ -401,15 +422,12 @@ router.get('/movimientos', async (req, res) => {
       }),
     ]);
 
-    // Opciones de filtro (solo cuando no hay filtros activos)
-    const noFilters = !search && !fideicomiso && !estado && !fechaDesde && !fechaHasta;
-    const [fideicomisosRaw, estadosRaw] = await Promise.all([
-      noFilters
-        ? prisma.$queryRaw`SELECT DISTINCT datos->>'Fideicomiso' AS fideicomiso FROM "Negocio" WHERE datos->>'Fideicomiso' IS NOT NULL AND datos->>'Fideicomiso' != '' ORDER BY 1`
-        : Promise.resolve(null),
-      noFilters
-        ? prisma.negocio.findMany({ select: { estado: true }, where: { estado: { not: null } }, distinct: ['estado'], orderBy: { estado: 'asc' } })
-        : Promise.resolve(null),
+    // Opciones de filtro — siempre se devuelven
+    const [fideicomisosRaw, estadosRaw, tiposMovRaw, estadosMovRaw] = await Promise.all([
+      prisma.$queryRaw`SELECT DISTINCT datos->>'Fideicomiso' AS fideicomiso FROM "Negocio" WHERE datos->>'Fideicomiso' IS NOT NULL AND datos->>'Fideicomiso' != '' ORDER BY 1`,
+      prisma.negocio.findMany({ select: { estado: true }, where: { estado: { not: null } }, distinct: ['estado'], orderBy: { estado: 'asc' } }),
+      prisma.$queryRaw`SELECT DISTINCT datos->>'Tipo Movimiento' AS tipo FROM "NegocioMovimiento" WHERE datos->>'Tipo Movimiento' IS NOT NULL AND datos->>'Tipo Movimiento' != '' ORDER BY 1`,
+      prisma.$queryRaw`SELECT DISTINCT datos->>'Estado' AS estado FROM "NegocioMovimiento" WHERE datos->>'Estado' IS NOT NULL AND datos->>'Estado' != '' ORDER BY 1`,
     ]);
 
     res.json({
@@ -431,6 +449,8 @@ router.get('/movimientos', async (req, res) => {
       pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
       ...(fideicomisosRaw ? { fideicomisos: fideicomisosRaw.map((r) => r.fideicomiso).filter(Boolean) } : {}),
       ...(estadosRaw ? { estados: estadosRaw.map((e) => e.estado).filter(Boolean) } : {}),
+      ...(tiposMovRaw ? { tiposMovimiento: tiposMovRaw.map((r) => r.tipo).filter(Boolean) } : {}),
+      ...(estadosMovRaw ? { estadosMovimiento: estadosMovRaw.map((r) => r.estado).filter(Boolean) } : {}),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
