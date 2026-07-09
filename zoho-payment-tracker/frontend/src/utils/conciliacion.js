@@ -50,6 +50,19 @@ export function construirPlan(rows, fechaBase) {
       fechaEstimada: cuotaKey ? fechaEstimadaCuota(fechaBase, row[cuotaKey]) : null,
     });
   });
+
+  // Si la última cuota no tiene fecha (ej. "Saldo Contraentrega"), asignarle
+  // un mes después de la fecha estimada de la cuota anterior.
+  if (plan.length >= 2) {
+    const last = plan[plan.length - 1];
+    const prev = plan[plan.length - 2];
+    if (!last.fechaEstimada && prev.fechaEstimada) {
+      const d = new Date(prev.fechaEstimada);
+      d.setUTCMonth(d.getUTCMonth() + 1);
+      last.fechaEstimada = d;
+    }
+  }
+
   return plan;
 }
 
@@ -71,7 +84,7 @@ export function normalizarPagos(movimientos) {
       const tipo = String(m.datos?.['Tipo Movimiento'] || '').trim().toUpperCase();
       return TIPOS_REVERSA_SIEMPRE.includes(tipo);
     })
-    .map((m) => ({ fecha: m.fechaContable ? new Date(m.fechaContable) : null, valor: parseMonto(m.datos?.Valor) }))
+    .map((m) => ({ id: m.idMovimiento ?? null, fecha: m.fechaContable ? new Date(m.fechaContable) : null, valor: parseMonto(m.datos?.Valor) }))
     .filter((p) => !isNaN(p.valor) && p.valor !== 0)
     .sort((a, b) => {
       if (!a.fecha && !b.fecha) return 0;
@@ -104,7 +117,7 @@ function pagosEnTramo(prefijos, desde, hasta) {
       // lo destinado también es negativo (consume de lo ya asignado aquí).
       const solape = Math.min(hi, hasta) - Math.max(lo, desde);
       const destinado = p.valor >= 0 ? solape : -solape;
-      resultado.push({ fecha: p.fecha, valor: p.valor, destinado });
+      resultado.push({ id: p.id, fecha: p.fecha, valor: p.valor, destinado });
     }
     antes = p.acumulado;
   }
@@ -117,7 +130,7 @@ function pagosEnTramo(prefijos, desde, hasta) {
 export function conciliar(cuotasPlan, pagos) {
   const totalPagado = pagos.reduce((s, p) => s + p.valor, 0);
   let acumuladoPago = 0;
-  const prefijos = pagos.map((p) => ({ fecha: p.fecha, valor: p.valor, acumulado: (acumuladoPago += p.valor) }));
+  const prefijos = pagos.map((p) => ({ id: p.id, fecha: p.fecha, valor: p.valor, acumulado: (acumuladoPago += p.valor) }));
 
   const hoy = new Date();
   let disponible = totalPagado;
@@ -142,6 +155,8 @@ export function conciliar(cuotasPlan, pagos) {
 
   const totalPlan = cuotas.reduce((s, c) => s + c.valorPlan, 0);
   const enMora = cuotas.filter((c) => c.atrasada);
+  const maxDiasAtraso = enMora.length > 0 ? Math.max(...enMora.map((c) => c.diasAtraso ?? 0)) : 0;
+  const saldoContraentrega = cuotas.length > 0 ? cuotas[cuotas.length - 1] : null;
   const resumen = {
     totalPlan,
     totalPagado,
@@ -150,7 +165,9 @@ export function conciliar(cuotasPlan, pagos) {
     totalCuotas: cuotas.length,
     cuotasEnMora: enMora.length,
     montoEnMora: enMora.reduce((s, c) => s + (c.valorPlan - c.cubierto), 0),
+    maxDiasAtraso,
     saldoAFavor: Math.max(0, totalPagado - totalPlan),
+    saldoContraentrega,
   };
   return { cuotas, resumen };
 }

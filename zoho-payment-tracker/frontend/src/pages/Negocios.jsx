@@ -527,7 +527,10 @@ function CuotaRow({ c }) {
                 const mismoMonto = Math.abs(p.destinado - p.valor) < 1;
                 return (
                   <div key={i} className="flex items-center justify-between gap-4 text-[13px]">
-                    <span className="text-slate-500">{p.fecha ? formatFechaUTC(p.fecha) : 'Sin fecha'}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-slate-500">{p.fecha ? formatFechaUTC(p.fecha) : 'Sin fecha'}</span>
+                      {p.id && <span className="text-[12px] text-brand font-semibold font-mono bg-brand-tint px-1.5 py-0.5 rounded">Mov {p.id}</span>}
+                    </div>
                     <div className="text-right">
                       <span className={`font-medium tabular-nums ${p.valor < 0 ? 'text-red-600' : 'text-slate-700'}`}>
                         {p.valor < 0 ? '-' : ''}{formatCOP(Math.abs(p.valor))}
@@ -631,12 +634,35 @@ function ConciliacionSection({ negocio }) {
             <p className="text-[15px] font-bold text-red-600 tabular-nums">
               {resumen.cuotasEnMora} {resumen.cuotasEnMora === 1 ? 'cuota' : 'cuotas'}
               <span className="block text-[12px] font-semibold">{formatCOP(resumen.montoEnMora)}</span>
+              <span className="block text-[12px] font-semibold">{resumen.maxDiasAtraso} días</span>
             </p>
           ) : (
             <p className="text-[15px] font-bold text-slate-400">—</p>
           )}
         </div>
       </div>
+
+      {resumen.saldoContraentrega && (
+        <div className="rounded-lg border border-aed-border bg-white p-3">
+          <p className="section-label mb-1">Saldo Contraentrega</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[15px] font-bold text-slate-800 tabular-nums">{formatCOP(resumen.saldoContraentrega.valorPlan)}</p>
+              {resumen.saldoContraentrega.cubierto > 0 && (
+                <p className="text-[12px] text-amber-600">Pagado: {formatCOP(resumen.saldoContraentrega.cubierto)}</p>
+              )}
+            </div>
+            <div className="text-right">
+              {resumen.saldoContraentrega.fechaEstimada ? (
+                <p className="text-[13px] text-slate-600">{formatFechaUTC(resumen.saldoContraentrega.fechaEstimada)}</p>
+              ) : (
+                <p className="text-[13px] text-slate-400">—</p>
+              )}
+              <p className="text-[12px] text-slate-500">Fecha esperada</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabla de cuotas */}
       <div className="rounded-lg border border-aed-border overflow-hidden">
@@ -796,7 +822,7 @@ function NegocioDetalle({ referencia }) {
       </Accordion>
 
       {/* 3. Estructura financiera */}
-      <Accordion icon={BarChart3} title="Estructura financiera y abonos" badge={finEntries.length} accent="#059669" defaultOpen>
+      <Accordion icon={BarChart3} title="Estructura financiera y abonos" badge={finEntries.length} accent="#059669" defaultOpen={false}>
         {finEntries.length > 0 ? (
           <ListaFinanciera entries={finEntries} format={formatCell} />
         ) : (
@@ -804,14 +830,14 @@ function NegocioDetalle({ referencia }) {
         )}
       </Accordion>
 
-      {/* 4. Movimientos */}
-      <Accordion icon={History} title="Historial de movimientos" badge={negocio.totalMovimientos} accent="#d97706" defaultOpen={false}>
-        <MovimientosSection key={referencia} referencia={referencia} />
-      </Accordion>
-
-      {/* 5. Conciliación plan vs pagos reales */}
+      {/* 4. Conciliación plan vs pagos reales */}
       <Accordion icon={Scale} title="Conciliación" accent="#0891b2" defaultOpen={false}>
         <ConciliacionSection key={referencia} negocio={negocio} />
+      </Accordion>
+
+      {/* 5. Movimientos */}
+      <Accordion icon={History} title="Historial de movimientos" badge={negocio.totalMovimientos} accent="#d97706" defaultOpen={false}>
+        <MovimientosSection key={referencia} referencia={referencia} />
       </Accordion>
 
       {/* 6. Forma y propuesta de pago (oportunidad Zoho vinculada por referencia) */}
