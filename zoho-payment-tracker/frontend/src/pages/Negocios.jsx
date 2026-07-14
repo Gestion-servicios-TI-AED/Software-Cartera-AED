@@ -9,7 +9,7 @@ import { ListaInfo, ListaFinanciera } from '../components/DatosFinancieros';
 import { ordenarFinanciero } from '../utils/ordenColumnas';
 import { estadoBadgeClass } from '../utils/estados';
 import { addFechaEstimada, formatFechaUTC } from '../utils/planDePagos';
-import { descripcionProyecto } from '../utils/proyectos';
+import { descripcionProyecto, obtenerProyecto, desglosarPiso } from '../utils/proyectos';
 import { construirPlan, normalizarPagos, conciliar, parseMonto } from '../utils/conciliacion';
 import { separarUnidadesAdicionales } from '../utils/unidadesAdicionales';
 import * as XLSX from 'xlsx';
@@ -764,15 +764,17 @@ function NegocioDetalle({ referencia }) {
   const saldo = negocio.saldoActual ?? null;
   const saldoFmt = saldo != null ? formatCOP(saldo) : null;
 
-  // Extraer código numérico del Fideicomiso y buscar su descripción
+  // Extraer código numérico del Fideicomiso y separar Etapa / Torres
   const fideicomisoRaw = negocio.datos?.Fideicomiso || '';
   const codigoMatch = String(fideicomisoRaw).match(/^(\d+)/);
-  const proyectoDesc = codigoMatch ? descripcionProyecto(codigoMatch[1]) : null;
+  const proyectoInfo = codigoMatch ? obtenerProyecto(codigoMatch[1]) : null;
 
-  // Extraer PISO de la oportunidad de Zoho
-  const pisoZoho = negocio.oportunidad?.seccionInmueble?.Piso
+  // Separar el Piso de la oportunidad de Zoho ("Kabo - Torre 4 - Piso 1")
+  // en Torre ("Kabo 4") y Piso ("1")
+  const pisoRaw = negocio.oportunidad?.seccionInmueble?.Piso
     || negocio.oportunidad?.seccionInmueble?.Piso_Lista
     || null;
+  const pisoInfo = desglosarPiso(pisoRaw);
 
   return (
     <div className="flex flex-col gap-3 p-5">
@@ -842,15 +844,29 @@ function NegocioDetalle({ referencia }) {
 
       {/* 2. Apartamento */}
       <Accordion icon={Building2} title="Info del apartamento" badge={aptoEntries.length} accent="#7c3aed" defaultOpen>
-        {proyectoDesc && (
-          <div className="px-4 py-2.5 flex items-center gap-2 border-b border-aed-border">
-            <span className="text-[12px] font-medium text-slate-500">Proyecto:</span>
-            <span className="text-[13px] font-semibold text-slate-700">{proyectoDesc}</span>
-            {pisoZoho && (
+        {(proyectoInfo || pisoInfo) && (
+          <div className="px-4 py-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-aed-border">
+            {proyectoInfo?.etapa && (
+              <>
+                <span className="text-[12px] font-medium text-slate-500">Etapa:</span>
+                <span className="text-[13px] font-semibold text-slate-700">{proyectoInfo.etapa}</span>
+                <span className="text-slate-300 mx-1">·</span>
+              </>
+            )}
+            {proyectoInfo?.torres && (
+              <>
+                <span className="text-[12px] font-medium text-slate-500">Torres:</span>
+                <span className="text-[13px] font-semibold text-slate-700">{proyectoInfo.torres}</span>
+              </>
+            )}
+            {pisoInfo && (
               <>
                 <span className="text-slate-300 mx-1">·</span>
+                <span className="text-[12px] font-medium text-slate-500">Torre:</span>
+                <span className="text-[13px] font-semibold text-slate-700">{pisoInfo.torre}</span>
+                <span className="text-slate-300 mx-1">·</span>
                 <span className="text-[12px] font-medium text-slate-500">Piso:</span>
-                <span className="text-[13px] font-semibold text-slate-700">{pisoZoho}</span>
+                <span className="text-[13px] font-semibold text-slate-700">{pisoInfo.piso}</span>
               </>
             )}
           </div>
