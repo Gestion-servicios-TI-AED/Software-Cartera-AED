@@ -269,7 +269,7 @@ router.get('/', async (req, res) => {
 
     const where = {};
     if (estado) where.estado = { contains: estado, mode: 'insensitive' };
-    if (fideicomiso) where.datos = { path: ['Fideicomiso'], equals: fideicomiso };
+    if (fideicomiso) where.datos = { path: ['Fideicomiso'], string_contains: fideicomiso };
     if (saldoPendiente === 'true') where.saldoActual = { gt: 0 };
     if (search) {
       where.OR = [
@@ -345,7 +345,7 @@ router.get('/movimientos', async (req, res) => {
     // Filtros que viven en el modelo Negocio
     const negocioWhere = {};
     if (estado) negocioWhere.estado = { contains: estado, mode: 'insensitive' };
-    if (fideicomiso) negocioWhere.datos = { path: ['Fideicomiso'], equals: fideicomiso };
+    if (fideicomiso) negocioWhere.datos = { path: ['Fideicomiso'], string_contains: fideicomiso };
     if (search) {
       negocioWhere.OR = [
         { referencia: { contains: search, mode: 'insensitive' } },
@@ -500,7 +500,8 @@ router.get('/stats', async (_req, res) => {
 async function findOportunidadByReferencia(referencia) {
   const select = {
     id: true, dealName: true, stage: true, referenciaRecaudo: true,
-    pagoSeparacion: true, fechaInicioPlanPagos: true, camposFinancieros: true, lastSyncedAt: true,
+    pagoSeparacion: true, fechaInicioPlanPagos: true, camposFinancieros: true,
+    seccionInmueble: true, lastSyncedAt: true,
   };
   // Coincidencia exacta primero; luego tolerante a espacios/formato.
   let opp = await prisma.opportunity.findFirst({ where: { referenciaRecaudo: referencia }, select });

@@ -9,7 +9,8 @@ import { ListaInfo, ListaFinanciera } from '../components/DatosFinancieros';
 import { ordenarFinanciero } from '../utils/ordenColumnas';
 import { estadoBadgeClass } from '../utils/estados';
 import { addFechaEstimada, formatFechaUTC } from '../utils/planDePagos';
-import { construirPlan, normalizarPagos, conciliar } from '../utils/conciliacion';
+import { descripcionProyecto } from '../utils/proyectos';
+import { construirPlan, normalizarPagos, conciliar, parseMonto } from '../utils/conciliacion';
 import { separarUnidadesAdicionales } from '../utils/unidadesAdicionales';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -607,7 +608,24 @@ function ConciliacionSection({ negocio }) {
     return <p className="px-4 py-4 text-[14px] text-slate-500 italic">La oportunidad vinculada no tiene plan de pagos registrado.</p>;
   }
 
+  // Usar VALOR VENTA del negocio como total del plan
+  const valorVentaKey = Object.keys(negocio.datos || {}).find((k) => k.toLowerCase() === 'valor venta');
+  const valorVenta = valorVentaKey ? parseMonto(negocio.datos[valorVentaKey]) : null;
+
+  // Recalcular la última cuota (Saldo Contraentrega) para que cuadre con VALOR VENTA
+  if (valorVenta != null && !isNaN(valorVenta) && cuotasPlan.length >= 2) {
+    const sumaResto = cuotasPlan.slice(0, -1).reduce((s, c) => s + c.valorPlan, 0);
+    const lastCuota = cuotasPlan[cuotasPlan.length - 1];
+    lastCuota.valorPlan = valorVenta - sumaResto;
+  }
+
   const { cuotas, resumen } = conciliar(cuotasPlan, normalizarPagos(datos.movimientos));
+
+  if (valorVenta != null && !isNaN(valorVenta)) {
+    resumen.totalPlan = valorVenta;
+    resumen.porcentaje = valorVenta > 0 ? Math.round((resumen.totalPagado / valorVenta) * 100) : 0;
+    resumen.saldoAFavor = Math.max(0, resumen.totalPagado - valorVenta);
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -746,6 +764,16 @@ function NegocioDetalle({ referencia }) {
   const saldo = negocio.saldoActual ?? null;
   const saldoFmt = saldo != null ? formatCOP(saldo) : null;
 
+  // Extraer código numérico del Fideicomiso y buscar su descripción
+  const fideicomisoRaw = negocio.datos?.Fideicomiso || '';
+  const codigoMatch = String(fideicomisoRaw).match(/^(\d+)/);
+  const proyectoDesc = codigoMatch ? descripcionProyecto(codigoMatch[1]) : null;
+
+  // Extraer PISO de la oportunidad de Zoho
+  const pisoZoho = negocio.oportunidad?.seccionInmueble?.Piso
+    || negocio.oportunidad?.seccionInmueble?.Piso_Lista
+    || null;
+
   return (
     <div className="flex flex-col gap-3 p-5">
       {/* Header */}
@@ -814,6 +842,19 @@ function NegocioDetalle({ referencia }) {
 
       {/* 2. Apartamento */}
       <Accordion icon={Building2} title="Info del apartamento" badge={aptoEntries.length} accent="#7c3aed" defaultOpen>
+        {proyectoDesc && (
+          <div className="px-4 py-2.5 flex items-center gap-2 border-b border-aed-border">
+            <span className="text-[12px] font-medium text-slate-500">Proyecto:</span>
+            <span className="text-[13px] font-semibold text-slate-700">{proyectoDesc}</span>
+            {pisoZoho && (
+              <>
+                <span className="text-slate-300 mx-1">·</span>
+                <span className="text-[12px] font-medium text-slate-500">Piso:</span>
+                <span className="text-[13px] font-semibold text-slate-700">{pisoZoho}</span>
+              </>
+            )}
+          </div>
+        )}
         {aptoEntries.length > 0 ? (
           <ListaInfo entries={aptoEntries} hoja="resumen" format={formatCell} />
         ) : (
@@ -1294,11 +1335,15 @@ export default function Negocios() {
                   className="input text-[14px] h-8 py-0 pr-2 leading-none"
                 >
                   <option value="">Todos los proyectos</option>
-                  {fideicomisos.map((f) => (
-                    <option key={f} value={f}>
-                      {formatProyectoLabel(f)}
-                    </option>
-                  ))}
+                  {fideicomisos.map((f) => {
+                    const match = String(f).match(/^(\d{4,6})/);
+                    const desc = match ? descripcionProyecto(match[1]) : null;
+                    return (
+                      <option key={f} value={f}>
+                        {desc || formatProyectoLabel(f)}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             )}

@@ -93,6 +93,18 @@ function isCotizacionField(f) {
   ) && !EXCLUDED_TYPES.includes(f.data_type);
 }
 
+function isContactField(f) {
+  const name = (f.api_name || '').toLowerCase();
+  const label = (f.field_label || '').toLowerCase();
+  return (
+    f.data_type === 'email' || f.data_type === 'phone' ||
+    name === 'email' || name === 'phone' || name === 'secondary_email' ||
+    name === 'mobile' || name === 'fax' ||
+    label === 'email' || label === 'phone' || label === 'mobile' ||
+    label.includes('correo') || label.includes('teléfono') || label.includes('telefono')
+  ) && !EXCLUDED_TYPES.includes(f.data_type);
+}
+
 function buildFieldsList(fields) {
   const baseFields = ['Deal_Name', 'Stage', 'Contact_Name', 'Account_Name', 'Amount', 'Fecha_Inicio_Plan_de_Pagos'];
 
@@ -127,6 +139,10 @@ function buildFieldsList(fields) {
     })
     .map((f) => f.api_name);
 
+  const contactFields = fields
+    .filter((f) => isContactField(f))
+    .map((f) => f.api_name);
+
   // Campos de descripción de pago (textarea, alternativa a subform)
   // Subforms — se incluyen en el GET del deal y Zoho los devuelve inline
   const subformFields = ['Forma_de_Pago', 'Propuesta_de_Pago'];
@@ -139,6 +155,7 @@ function buildFieldsList(fields) {
       ...cotizacionFields,
       ...recaudoFields,
       ...pagoSepFields,
+      ...contactFields,
       ...subformFields,
     ]),
   ];
@@ -211,6 +228,7 @@ function mapDeal(deal, {
   cotizacionApiNames,
   recaudoField,
   pagoSepField,
+  contactApiNames,
 }) {
   const camposFinancieros = {};
   for (const apiName of currencyApiNames) {
@@ -227,6 +245,11 @@ function mapDeal(deal, {
     if (deal[apiName] !== undefined) seccionCotizacion[apiName] = deal[apiName];
   }
 
+  const contactInfo = {};
+  for (const apiName of contactApiNames) {
+    if (deal[apiName] != null && deal[apiName] !== '') contactInfo[apiName] = deal[apiName];
+  }
+
   const pagoSepValue = pagoSepField ? deal[pagoSepField.api_name] : null;
 
   return {
@@ -234,8 +257,8 @@ function mapDeal(deal, {
     dealName: deal.Deal_Name || 'Sin nombre',
     stage: deal.Stage || null,
     contactName: typeof deal.Contact_Name === 'object' ? deal.Contact_Name?.name : deal.Contact_Name || null,
-    contactEmail: null, // se obtiene solo en vista detalle si se necesita
-    contactPhone: null,
+    contactEmail: contactInfo.Email || contactInfo.email || null,
+    contactPhone: contactInfo.Phone || contactInfo.phone || contactInfo.Mobile || null,
     contactId: typeof deal.Contact_Name === 'object' ? deal.Contact_Name?.id : null,
     accountName: typeof deal.Account_Name === 'object' ? deal.Account_Name?.name : deal.Account_Name || null,
     referenciaRecaudo: recaudoField ? deal[recaudoField.api_name] || null : null,
@@ -302,7 +325,12 @@ async function syncOpportunitiesFromZoho(force = false) {
     });
     console.log(`[sync] Fetched ${allDeals.length} deals total, ${deals.length} con Pago Separación`);
 
-    const fieldMap = { currencyApiNames, inmuebleApiNames, cotizacionApiNames, recaudoField, pagoSepField };
+    const contactApiNames = fields
+      .filter((f) => isContactField(f) && !EXCLUDED_TYPES.includes(f.data_type))
+      .map((f) => f.api_name);
+    console.log(`[sync] Contact fields to request: ${contactApiNames.join(', ') || 'NINGUNO'}`);
+
+    const fieldMap = { currencyApiNames, inmuebleApiNames, cotizacionApiNames, recaudoField, pagoSepField, contactApiNames };
 
     // 4. Persistir en lotes de 50 upserts en paralelo
     const BATCH_SIZE = 50;
@@ -325,6 +353,49 @@ async function syncOpportunitiesFromZoho(force = false) {
         console.log(`[sync] Saved ${saved}/${deals.length} records...`);
       }
     }
+
+    // 5. Enriquecer contactos: obtener email/teléfono de los Contactos vinculados
+    const contactIds = [...new Set(deals
+      .map((d) => {
+        const cid = typeof d.Contact_Name === 'object' ? d.Contact_Name?.id : null;
+        return cid;
+      })
+      .filter(Boolean)
+    )];
+    console.log(`[sync] Fetching contact details for ${contactIds.length} unique contacts...`);
+
+    const CONTACT_FIELDS = 'Email,Phone,Mobile';
+    const contactMap = {};
+    for (let i = 0; i < contactIds.length; i += BATCH_SIZE) {
+      const batch = contactIds.slice(i, i + BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map((cid) => zohoGet(`/Contacts/${cid}`, { fields: CONTACT_FIELDS }))
+      );
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value?.data) {
+          const c = r.value.data;
+          contactMap[c.id] = {
+            email: c.Email || null,
+            phone: c.Phone || c.Mobile || null,
+          };
+        }
+      }
+    }
+
+    // Actualizar solo los registros que tengan contacto y les falten datos
+    let enriched = 0;
+    for (const deal of deals) {
+      const cid = typeof deal.Contact_Name === 'object' ? deal.Contact_Name?.id : null;
+      if (!cid || !contactMap[cid]) continue;
+      const { email, phone } = contactMap[cid];
+      if (!email && !phone) continue;
+      await prisma.opportunity.updateMany({
+        where: { zohoId: deal.id, OR: [{ contactEmail: null }, { contactPhone: null }] },
+        data: { contactEmail: email, contactPhone: phone },
+      });
+      enriched++;
+    }
+    console.log(`[sync] Enriched ${enriched} records with contact email/phone`);
 
     await prisma.syncLog.update({
       where: { id: log.id },

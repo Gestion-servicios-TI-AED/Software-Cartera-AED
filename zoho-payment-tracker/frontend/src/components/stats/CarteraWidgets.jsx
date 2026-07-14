@@ -1,4 +1,5 @@
 import { formatCOP, formatDate } from '../../utils/format';
+import { descripcionProyecto } from '../../utils/proyectos';
 
 function shortFideicomiso(raw) {
   if (!raw) return '—';
@@ -40,7 +41,11 @@ export function AvancePorProyecto({ data }) {
           <div key={p.fideicomiso}>
             <div className="flex items-baseline justify-between gap-3 mb-1">
               <span className="text-[14px] text-slate-700 font-medium truncate" title={p.fideicomiso}>
-                {shortFideicomiso(p.fideicomiso)}
+                {(() => {
+                  const match = String(p.fideicomiso).match(/^(\d{4,6})/);
+                  const desc = match ? descripcionProyecto(match[1]) : null;
+                  return desc || shortFideicomiso(p.fideicomiso);
+                })()}
                 <span className="text-slate-500 font-normal ml-1.5">· {p.count}</span>
               </span>
               <span className={`text-[14px] font-semibold tabular-nums ${c.text}`}>{p.pct}%</span>

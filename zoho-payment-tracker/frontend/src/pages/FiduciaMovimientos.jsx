@@ -5,6 +5,7 @@ import { formatExcelDate } from '../utils/format';
 import { filtrarKeysMovimiento } from '../utils/columnasExcluidas';
 import ConceptoHint from '../components/ConceptoHint';
 import { estadoBadgeClass } from '../utils/estados';
+import { descripcionProyecto } from '../utils/proyectos';
 
 function useDebounce(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
@@ -259,9 +260,15 @@ export default function FiduciaMovimientos() {
                   className="input w-full py-2 px-3 text-[15px]"
                 >
                   <option value="">Todos los proyectos</option>
-                  {fideicomisos.map((f) => (
-                    <option key={f} value={f}>{shortFideicomiso(f)}</option>
-                  ))}
+                  {fideicomisos.map((f) => {
+                    const match = String(f).match(/^(\d{4,6})/);
+                    const desc = match ? descripcionProyecto(match[1]) : null;
+                    return (
+                      <option key={f} value={f}>
+                        {desc || shortFideicomiso(f)}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             )}

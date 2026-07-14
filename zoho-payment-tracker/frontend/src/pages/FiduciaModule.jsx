@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getEncargos, uploadFiducia, deleteEncargo, updateEncargo } from '../utils/api';
 import { formatDateTime } from '../utils/format';
+import { descripcionProyecto } from '../utils/proyectos';
 
 function UploadModal({ onClose, onUploaded }) {
   const inputRef = useRef(null);
@@ -128,6 +129,8 @@ export default function FiduciaModule() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [search, setSearch] = useState('');
+  const [proyectoFilter, setProyectoFilter] = useState('');
+  const [codigos, setCodigos] = useState([]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(null);
@@ -135,11 +138,12 @@ export default function FiduciaModule() {
   const [editForm, setEditForm] = useState({ nombre: '', codigo: '' });
   const [showUpload, setShowUpload] = useState(false);
 
-  async function load(s = search, p = page) {
+  async function load(s = search, p = page, proj = proyectoFilter) {
     setLoading(true);
     try {
-      const res = await getEncargos({ search: s || undefined, page: p, limit: 20 });
+      const res = await getEncargos({ search: s || undefined, proyecto: proj || undefined, page: p, limit: 20 });
       setData(res);
+      if (res.codigos) setCodigos(res.codigos);
     } catch {
       setData(null);
     } finally {
@@ -215,7 +219,7 @@ export default function FiduciaModule() {
       </header>
 
       <div className="flex-1 p-5 flex flex-col gap-4">
-        {/* Search bar */}
+        {/* Search bar + filtro proyecto */}
         <div className="flex items-center gap-3">
           <div className="relative flex-1 max-w-sm">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -229,6 +233,23 @@ export default function FiduciaModule() {
               className="input w-full pl-9 pr-4 py-2 text-[15px]"
             />
           </div>
+          {codigos.length > 0 && (
+            <select
+              value={proyectoFilter}
+              onChange={(e) => { setProyectoFilter(e.target.value); setPage(1); load(search, 1, e.target.value); }}
+              className="input py-2 px-3 text-[15px] max-w-xs"
+            >
+              <option value="">Todos los proyectos</option>
+              {codigos.map((c) => {
+                const desc = descripcionProyecto(c);
+                return (
+                  <option key={c} value={c}>
+                    {desc || c}
+                  </option>
+                );
+              })}
+            </select>
+          )}
           {pagination && (
             <span className="text-[14px] text-slate-500">{pagination.total} encargo{pagination.total !== 1 ? 's' : ''}</span>
           )}
@@ -296,7 +317,12 @@ export default function FiduciaModule() {
                         <>
                           <p className="font-medium text-slate-800 truncate max-w-xs">{enc.nombre}</p>
                           {enc.codigo && (
-                            <span className="text-[12px] font-mono text-brand-strong bg-brand-soft border border-brand-soft px-1.5 py-0.5 rounded mt-0.5 inline-block">{enc.codigo}</span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[12px] font-mono text-brand-strong bg-brand-soft border border-brand-soft px-1.5 py-0.5 rounded">{enc.codigo}</span>
+                              {descripcionProyecto(enc.codigo) && (
+                                <span className="text-[12px] text-slate-500 truncate">{descripcionProyecto(enc.codigo)}</span>
+                              )}
+                            </div>
                           )}
                         </>
                       )}

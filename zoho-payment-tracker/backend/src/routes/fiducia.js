@@ -40,19 +40,21 @@ router.post('/upload', upload.single('archivo'), async (req, res) => {
 // GET /api/fiducia/encargos — lista paginada con búsqueda
 router.get('/encargos', async (req, res) => {
   try {
-    const { search, page = '1', limit = '20' } = req.query;
+    const { search, proyecto, page = '1', limit = '20' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
 
-    const where = search
-      ? {
-          OR: [
-            { nombre: { contains: search, mode: 'insensitive' } },
-            { codigo: { contains: search, mode: 'insensitive' } },
-            { archivoNombre: { contains: search, mode: 'insensitive' } },
-          ],
-        }
-      : {};
+    const where = {};
+    if (search) {
+      where.OR = [
+        { nombre: { contains: search, mode: 'insensitive' } },
+        { codigo: { contains: search, mode: 'insensitive' } },
+        { archivoNombre: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (proyecto) {
+      where.codigo = { contains: proyecto, mode: 'insensitive' };
+    }
 
     const [total, encargos] = await Promise.all([
       prisma.encargFiduciario.count({ where }),
@@ -70,9 +72,18 @@ router.get('/encargos', async (req, res) => {
       }),
     ]);
 
+    // Códigos únicos para el dropdown de filtro
+    const codigosRaw = await prisma.encargFiduciario.findMany({
+      select: { codigo: true },
+      where: { codigo: { not: null } },
+      distinct: ['codigo'],
+      orderBy: { codigo: 'asc' },
+    });
+
     res.json({
       data: encargos,
       pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
+      codigos: codigosRaw.map((c) => c.codigo).filter(Boolean),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
