@@ -760,7 +760,6 @@ function NegocioDetalle({ referencia }) {
   const finEntries = ordenarFinanciero(Object.entries(financiero));
 
   const nomenclatura = negocio.datos?.Nomenclatura;
-  const inventario = negocio.datos?.Inventario;
   const saldo = negocio.saldoActual ?? null;
   const saldoFmt = saldo != null ? formatCOP(saldo) : null;
 
@@ -784,11 +783,15 @@ function NegocioDetalle({ referencia }) {
           <div className="min-w-0">
             <p className="text-[12px] text-slate-500 mb-0.5 uppercase tracking-wide">Referencia</p>
             <h2 className="font-heading text-[19px] font-bold text-ink font-mono">{negocio.referencia}</h2>
-            {(nomenclatura || inventario) && (
-              <p className="text-[14px] text-slate-500 mt-0.5">
-                {nomenclatura && <span className="font-medium text-slate-700">Apto {nomenclatura}</span>}
-                {nomenclatura && inventario && <span className="mx-1.5 text-slate-300">·</span>}
-                {inventario && <span>{inventario}</span>}
+            {(nomenclatura || proyectoInfo?.etapa || pisoInfo) && (
+              <p className="text-[15px] font-semibold text-brand-strong mt-0.5">
+                {nomenclatura && <span>Apto {nomenclatura}</span>}
+                {nomenclatura && (proyectoInfo?.etapa || pisoInfo) && <span className="mx-1.5 text-slate-300">·</span>}
+                {proyectoInfo?.etapa && <span>Etapa {proyectoInfo.etapa}</span>}
+                {proyectoInfo?.etapa && pisoInfo && <span className="mx-1.5 text-slate-300">·</span>}
+                {pisoInfo?.torre && <span>Torre {pisoInfo.torre}</span>}
+                {pisoInfo?.torre && pisoInfo?.piso && <span className="mx-1.5 text-slate-300">·</span>}
+                {pisoInfo?.piso && <span>Piso {pisoInfo.piso}</span>}
               </p>
             )}
           </div>
