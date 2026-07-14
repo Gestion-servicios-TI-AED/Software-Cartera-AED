@@ -243,7 +243,7 @@ export default function Inventario() {
       <div className="w-[320px] flex-shrink-0 bg-white border-r border-aed-border flex flex-col min-w-0">
         <div className="px-3 py-3 border-b border-aed-border">
           <div className="flex items-center gap-2 mb-2">
-            <h1 className="text-[15px] font-bold text-slate-800 flex-1">Inventario</h1>
+            <h1 className="text-[15px] font-bold text-slate-800 flex-1">Inmuebles</h1>
             {pagination && !isEmpty && (
               <span className="text-[12px] text-slate-500 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
                 {pagination.total}
@@ -252,7 +252,7 @@ export default function Inventario() {
             <button
               onClick={triggerSync}
               disabled={syncing}
-              title="Sincronizar inventario desde Zoho"
+              title="Sincronizar inmuebles desde Zoho"
               className="w-7 h-7 flex items-center justify-center rounded-md border border-aed-border bg-white hover:bg-aed-base disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <RefreshCw size={12} className={`text-slate-500 ${syncing ? 'animate-spin' : ''}`} />
@@ -364,13 +364,13 @@ export default function Inventario() {
             <div className="w-14 h-14 rounded-2xl bg-white border border-aed-border flex items-center justify-center mb-4">
               <Warehouse size={24} className="text-slate-300" />
             </div>
-            <p className="text-[16px] font-medium text-slate-600 mb-1">Sin inventario cargado</p>
+            <p className="text-[16px] font-medium text-slate-600 mb-1">Sin inmuebles cargados</p>
             <p className="text-[14px] text-slate-500 mb-5 max-w-xs">
-              Haz clic en Sincronizar para traer todo el inventario desde el módulo Products de Zoho.
+              Haz clic en Sincronizar para traer todos los inmuebles desde el módulo Products de Zoho.
             </p>
             <button onClick={triggerSync} disabled={syncing} className="btn-primary text-[14px] px-5 py-2 gap-2 disabled:opacity-60">
               <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
-              {syncing ? 'Sincronizando…' : 'Sincronizar inventario'}
+              {syncing ? 'Sincronizando…' : 'Sincronizar inmuebles'}
             </button>
           </div>
         ) : (
