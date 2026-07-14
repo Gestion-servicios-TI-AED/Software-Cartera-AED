@@ -31,7 +31,25 @@ async function zohoGet(path, params = {}) {
 
 async function syncFieldMetadata() {
   console.log('[sync] Fetching field metadata from Zoho...');
-  const data = await zohoGet('/settings/fields', { module: 'Deals' });
+  let data;
+  try {
+    data = await zohoGet('/settings/fields', { module: 'Deals' });
+  } catch (err) {
+    // Sin acceso en vivo (ej. token sin el scope ZohoCRM.settings.fields.READ)
+    // — servir desde DB los metadatos de la última sincronización exitosa en
+    // vez de abortar todo el sync, mismo patrón que el fallback de subforms.
+    console.error('[sync] No se pudo traer metadatos de campos en vivo:', err.message);
+    const cached = await prisma.zohoFieldMetadata.findMany();
+    if (cached.length === 0) throw err;
+    console.log(`[sync] Usando ${cached.length} campos guardados en DB (fallback)`);
+    return cached.map((f) => ({
+      api_name: f.apiName,
+      field_label: f.fieldLabel,
+      data_type: f.dataType,
+      section_name: f.sectionName,
+      custom_field: f.isCustom,
+    }));
+  }
   const fields = data.fields || [];
 
   // Guardar en lotes de 50 para no sobrecargar la BD
@@ -261,7 +279,7 @@ function mapDeal(deal, {
     contactPhone: contactInfo.Phone || contactInfo.phone || contactInfo.Mobile || null,
     contactId: typeof deal.Contact_Name === 'object' ? deal.Contact_Name?.id : null,
     accountName: typeof deal.Account_Name === 'object' ? deal.Account_Name?.name : deal.Account_Name || null,
-    referenciaRecaudo: recaudoField ? deal[recaudoField.api_name] || null : null,
+    referenciaRecaudo: recaudoField && deal[recaudoField.api_name] != null ? String(deal[recaudoField.api_name]) : null,
     pagoSeparacion: pagoSepValue ? new Date(pagoSepValue) : null,
     fechaInicioPlanPagos: deal.Fecha_Inicio_Plan_de_Pagos ? new Date(deal.Fecha_Inicio_Plan_de_Pagos) : null,
     camposFinancieros: Object.keys(camposFinancieros).length ? camposFinancieros : null,
