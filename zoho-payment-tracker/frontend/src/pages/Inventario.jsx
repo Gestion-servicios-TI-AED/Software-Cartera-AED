@@ -161,10 +161,12 @@ function InventarioItemRow({ item, selected, onClick }) {
 
 function useSync(onSuccess) {
   const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState(null);
   const pollRef = useRef(null);
 
   const trigger = useCallback(async () => {
     setSyncing(true);
+    setError(null);
     try {
       await triggerInventarioSync();
     } catch {
@@ -178,7 +180,14 @@ function useSync(onSuccess) {
         if (!res.running) {
           clearInterval(pollRef.current);
           setSyncing(false);
-          if (res.result?.ok) onSuccess();
+          if (res.result?.ok) {
+            onSuccess();
+          } else {
+            // result.error (falló en el backend) o result null (el servidor se
+            // reinició a mitad de la sincronización, ej. nodemon) — en ambos
+            // casos hay que avisar, nunca quedar en silencio.
+            setError(res.result?.error || 'La sincronización no terminó correctamente. Intenta de nuevo.');
+          }
         }
       } catch {
         /* seguir intentando */
@@ -186,12 +195,13 @@ function useSync(onSuccess) {
       if (attempts > 120) {
         clearInterval(pollRef.current);
         setSyncing(false);
+        setError('La sincronización tardó demasiado y se canceló. Intenta de nuevo.');
       }
     }, 2000);
   }, [onSuccess]);
 
   useEffect(() => () => clearInterval(pollRef.current), []);
-  return { syncing, trigger };
+  return { syncing, error, trigger };
 }
 
 export default function Inventario() {
@@ -231,7 +241,7 @@ export default function Inventario() {
 
   useEffect(() => { fetchList(1); }, [debouncedSearch, proyectoFilter, categoriaFilter, estadoFilter, fetchList]);
 
-  const { syncing, trigger: triggerSync } = useSync(() => fetchList(1));
+  const { syncing, error: syncError, trigger: triggerSync } = useSync(() => fetchList(1));
 
   const clearFilters = () => { setSearch(''); setProyectoFilter(''); setCategoriaFilter(''); setEstadoFilter(''); };
   const hasFilters = search || proyectoFilter || categoriaFilter || estadoFilter;
@@ -258,6 +268,12 @@ export default function Inventario() {
               <RefreshCw size={12} className={`text-slate-500 ${syncing ? 'animate-spin' : ''}`} />
             </button>
           </div>
+
+          {syncError && (
+            <p className="text-[12px] text-red-600 bg-red-50 border border-red-100 rounded-md px-2 py-1.5 mb-2">
+              {syncError}
+            </p>
+          )}
 
           <div className="flex flex-col gap-2.5">
             <div className="field">
@@ -372,6 +388,7 @@ export default function Inventario() {
               <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
               {syncing ? 'Sincronizando…' : 'Sincronizar inmuebles'}
             </button>
+            {syncError && <p className="text-[13px] text-red-600 mt-3 max-w-xs">{syncError}</p>}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center px-8">
