@@ -108,6 +108,26 @@ export async function getNegocioMovimientos(referencia, params = {}) {
   return data;
 }
 
+export async function getInventario(params = {}) {
+  const { data } = await api.get('/inventario', { params });
+  return data;
+}
+
+export async function getInventarioItem(id) {
+  const { data } = await api.get(`/inventario/${id}`);
+  return data;
+}
+
+export async function triggerInventarioSync() {
+  const { data } = await api.post('/inventario/sync');
+  return data;
+}
+
+export async function getInventarioSyncStatus() {
+  const { data } = await api.get('/inventario/sync/status');
+  return data;
+}
+
 export async function getAllNegocioMovimientos(params = {}) {
   const { data } = await api.get('/negocios/movimientos', { params });
   return data;

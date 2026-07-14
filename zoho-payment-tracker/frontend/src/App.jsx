@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Negocios from './pages/Negocios';
+import Inventario from './pages/Inventario';
 import Dashboard from './pages/Dashboard';
 import OpportunityDetail from './pages/OpportunityDetail';
 import FiduciaModule from './pages/FiduciaModule';
@@ -21,6 +22,7 @@ export default function App() {
         <div className="flex-1 overflow-y-auto">
           <Routes>
             <Route path="/" element={<Negocios />} />
+            <Route path="/inventario" element={<Inventario />} />
             <Route path="/oportunidades" element={<Dashboard />} />
             <Route path="/opportunity/:id" element={<OpportunityDetail />} />
             <Route path="/fiducia" element={<FiduciaModule />} />

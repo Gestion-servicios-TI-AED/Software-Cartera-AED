@@ -38,6 +38,31 @@ model Opportunity {
   updatedAt          DateTime  @updatedAt
 }
 
+model InventarioItem {
+  id                String    @id @default(uuid())
+  zohoId            String    @unique
+  nombre            String?
+  proyecto          String?
+  torre             String?
+  piso              String?
+  categoria         String?
+  estado            String?
+  referenciaRecaudo String?
+
+  // Todos los demás campos del Product de Zoho, tal cual (sin metadatos
+  // internos $ de Zoho, que se filtran antes de guardar).
+  datos             Json?
+
+  lastSyncedAt      DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([proyecto])
+  @@index([categoria])
+  @@index([estado])
+  @@index([referenciaRecaudo])
+}
+
 model EncargFiduciario {
   id            String                 @id @default(uuid())
   nombre        String
