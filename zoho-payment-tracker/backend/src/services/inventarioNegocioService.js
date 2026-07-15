@@ -31,41 +31,6 @@ function obtenerEtapaTorre(proyectoTorreRaw) {
   return (info && ETAPA_POR_TORRE[`${info.proyecto.toUpperCase()} ${info.torre}`]) ?? '0';
 }
 
-// Resuelve el inmueble (Product de Zoho) de cada negocio: primero por
-// Referencia de Recaudo directa; si no calza (pasa cuando la Referencia
-// viene truncada/enmascarada con "****" en el Excel de origen), por
-// Nomenclatura → Código de inmueble, igual que el respaldo del detalle de
-// negocio. Devuelve un Map de Negocio.referencia → { datos } de InventarioItem.
-async function resolverInventarioPorNegocio(negocios) {
-  const refs = negocios.map((n) => n.referencia);
-  const items = refs.length
-    ? await prisma.inventarioItem.findMany({
-        where: { referenciaRecaudo: { in: refs } },
-        select: { referenciaRecaudo: true, datos: true },
-      })
-    : [];
-  const porReferencia = new Map(items.map((it) => [it.referenciaRecaudo, it]));
-
-  const pendientes = negocios
-    .filter((n) => !porReferencia.has(n.referencia))
-    .map((n) => ({ referencia: n.referencia, codigo: n.datos?.Nomenclatura }))
-    .filter((p) => p.codigo != null && /^\d+$/.test(String(p.codigo)));
-  if (pendientes.length) {
-    const encontrados = await Promise.all(
-      pendientes.map((p) =>
-        prisma.inventarioItem.findFirst({
-          where: { datos: { path: ['C_digo_inmueble'], equals: Number(p.codigo) } },
-          select: { datos: true },
-        })
-      )
-    );
-    pendientes.forEach((p, i) => {
-      if (encontrados[i]) porReferencia.set(p.referencia, encontrados[i]);
-    });
-  }
-  return porReferencia;
-}
-
 // Valores crudos de Proyecto_Torre en BD, agrupados por la etapa que les
 // corresponde según ETAPA_POR_TORRE. Se usa para resolver el filtro de
 // Etapa en SQL (`= ANY(...)`) sin duplicar la regla ahí.
@@ -227,6 +192,5 @@ module.exports = {
   parseProyectoTorre,
   formatearProyectoTorre,
   obtenerEtapaTorre,
-  resolverInventarioPorNegocio,
   listarNegociosInventario,
 };

@@ -10,7 +10,7 @@ const {
   parseProyectoTorre,
   formatearProyectoTorre,
   obtenerEtapaTorre,
-  resolverInventarioPorNegocio,
+  listarNegociosInventario,
 } = require('../services/inventarioNegocioService');
 
 const router = express.Router();
@@ -266,61 +266,16 @@ router.get('/backfill/status', (req, res) => {
 
 // ── CRUD ───────────────────────────────────────────────────────────────────
 
-// GET /api/negocios?search=&estado=&etapa=&page=&limit=
+// GET /api/negocios?search=&estado=&etapa=&saldoPendiente=&page=&limit=
 router.get('/', async (req, res) => {
   try {
     const { search, estado, etapa, saldoPendiente, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
-
     const noFilters = !search && !estado && !etapa;
 
-    // Etapa de cada negocio (vía su inmueble asociado), solo cuando hace
-    // falta: para poblar las opciones del filtro (sin filtros activos) o
-    // para resolver qué negocios caen en la etapa pedida.
-    let etapaPorReferencia = null;
-    if (noFilters || etapa) {
-      const todosNegocios = await prisma.negocio.findMany({ select: { referencia: true, datos: true } });
-      const inventarioPorNegocio = await resolverInventarioPorNegocio(todosNegocios);
-      etapaPorReferencia = new Map(
-        todosNegocios.map((n) => [n.referencia, obtenerEtapaTorre(inventarioPorNegocio.get(n.referencia)?.datos?.Proyecto_Torre)])
-      );
-    }
-
-    const where = {};
-    const andConditions = [];
-    if (estado) where.estado = { contains: estado, mode: 'insensitive' };
-    if (saldoPendiente === 'true') where.saldoActual = { gt: 0 };
-    if (search) {
-      andConditions.push({
-        OR: [
-          { referencia: { contains: search, mode: 'insensitive' } },
-          { compradores: { some: { nombre: { contains: search, mode: 'insensitive' } } } },
-          { compradores: { some: { nroId: { contains: search, mode: 'insensitive' } } } },
-          { datos: { path: ['Nomenclatura'], string_contains: search } },
-        ],
-      });
-    }
-    if (etapa) {
-      const referenciasEtapa = [...etapaPorReferencia.entries()]
-        .filter(([, et]) => et === etapa)
-        .map(([referencia]) => referencia);
-      andConditions.push({ referencia: { in: referenciasEtapa } });
-    }
-    if (andConditions.length) where.AND = andConditions;
-
-    const [total, negocios, estadosRaw] = await Promise.all([
-      prisma.negocio.count({ where }),
-      prisma.negocio.findMany({
-        where,
-        skip: (pageNum - 1) * limitNum,
-        take: limitNum,
-        orderBy: { referencia: 'asc' },
-        include: {
-          compradores: { orderBy: { orden: 'asc' } },
-          _count: { select: { movimientos: true } },
-        },
-      }),
+    const [{ data, total, etapasDisponibles }, estadosRaw] = await Promise.all([
+      listarNegociosInventario({ search, estado, etapa, saldoPendiente, page: pageNum, limit: limitNum }),
       noFilters
         ? prisma.negocio.findMany({
             select: { estado: true },
@@ -331,28 +286,8 @@ router.get('/', async (req, res) => {
         : Promise.resolve(null),
     ]);
 
-    // Project Code / Proyecto+Torre+Etapa de Zoho Products para esta página,
-    // con el mismo respaldo por Nomenclatura que usa el detalle de negocio
-    // cuando la Referencia de Recaudo viene truncada/enmascarada en el Excel.
-    const inventarioPorNegocioPagina = await resolverInventarioPorNegocio(negocios);
-
     res.json({
-      data: negocios.map((n) => {
-        const inv = inventarioPorNegocioPagina.get(n.referencia);
-        const info = parseProyectoTorre(inv?.datos?.Proyecto_Torre);
-        return {
-          id: n.id,
-          referencia: n.referencia,
-          estado: n.estado,
-          datos: n.datos,
-          saldoActual: n.saldoActual,
-          compradores: n.compradores,
-          totalMovimientos: n._count.movimientos,
-          projectCode: inv?.datos?.Project_Code ?? null,
-          proyectoTorre: info ? formatearProyectoTorre(info) : null,
-          etapa: info ? obtenerEtapaTorre(inv.datos.Proyecto_Torre) : null,
-        };
-      }),
+      data,
       pagination: {
         total,
         page: pageNum,
@@ -360,7 +295,7 @@ router.get('/', async (req, res) => {
         totalPages: Math.ceil(total / limitNum),
       },
       ...(estadosRaw ? { estados: estadosRaw.map((e) => e.estado).filter(Boolean) } : {}),
-      ...(noFilters ? { etapas: [...new Set(etapaPorReferencia.values())].sort((a, b) => Number(a) - Number(b)) } : {}),
+      ...(noFilters ? { etapas: etapasDisponibles } : {}),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
