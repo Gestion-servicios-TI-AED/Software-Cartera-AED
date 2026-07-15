@@ -123,6 +123,26 @@ function categorizeDatos(datos) {
   return { apto, financiero, otros };
 }
 
+// Traduce un subconjunto de campos del Product de Zoho (InventarioItem.datos)
+// al mismo formato [etiqueta, valor] que categorizeDatos, para inmuebles que
+// todavía no tienen Negocio.datos (Excel de Movimientos) del cual sacar esta
+// información. Ampliable si hace falta más adelante.
+function categorizeInventarioDatos(datosInmueble) {
+  if (!datosInmueble) return [];
+  const campos = [
+    ['Código de inmueble', datosInmueble.C_digo_inmueble],
+    ['Categoría', datosInmueble.Product_Category],
+    ['Tipo', datosInmueble.Tipo_Apto],
+    ['Área privada (m²)', datosInmueble.Area_Privada_en_M2],
+    ['Área construida (m²)', datosInmueble.Area_Construida_en_M2],
+    ['Piso', datosInmueble.Piso],
+    ['Alcobas', datosInmueble.No_Alcobas],
+    ['Baños', datosInmueble.No_Ba_os],
+    ['Estrato', datosInmueble.Estrato],
+  ];
+  return campos.filter(([, v]) => v != null && String(v).trim() !== '');
+}
+
 // ── Sub-components ──────────────────────────────────────────────────────────
 
 function Accordion({ icon: Icon, title, badge, children, defaultOpen = true, accent = '#0f766e' }) {
@@ -756,7 +776,9 @@ function NegocioDetalle({ id }) {
   }
 
   const { apto, financiero } = categorizeDatos(separarUnidadesAdicionales(filtrarDatosResumen(negocio.datos || {})));
-  const aptoEntriesBase = Object.entries(apto);
+  const aptoEntriesBase = negocio.datos
+    ? Object.entries(apto)
+    : categorizeInventarioDatos(negocio.inventarioDatos);
   const finEntries = ordenarFinanciero(Object.entries(financiero));
 
   const nomenclatura = negocio.datos?.Nomenclatura;
