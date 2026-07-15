@@ -5,6 +5,8 @@ const path = require('path');
 const cron = require('node-cron');
 const { PrismaClient } = require('@prisma/client');
 const { syncOpportunitiesFromZoho } = require('./services/zohoSync');
+const { requireAuth } = require('./middleware/auth');
+const authRouter = require('./routes/auth');
 const opportunitiesRouter = require('./routes/opportunities');
 const fieldsRouter = require('./routes/fields');
 const fiduciaRouter = require('./routes/fiducia');
@@ -18,6 +20,15 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
 app.use(express.json());
+
+// Login y health check quedan fuera del candado de acceso
+app.use('/api/auth', authRouter);
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Todo lo demás bajo /api requiere sesión válida
+app.use('/api', requireAuth);
 
 // Rutas
 app.use('/api/opportunities', opportunitiesRouter);
@@ -46,11 +57,6 @@ app.post('/api/sync', async (req, res) => {
   syncOpportunitiesFromZoho(force).catch((err) =>
     console.error('[sync] Error en sync manual:', err.message)
   );
-});
-
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Servir el frontend en producción

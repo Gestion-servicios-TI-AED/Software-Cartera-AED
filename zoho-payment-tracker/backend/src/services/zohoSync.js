@@ -390,8 +390,10 @@ async function syncOpportunitiesFromZoho(force = false) {
         batch.map((cid) => zohoGet(`/Contacts/${cid}`, { fields: CONTACT_FIELDS }))
       );
       for (const r of results) {
-        if (r.status === 'fulfilled' && r.value?.data) {
-          const c = r.value.data;
+        // zohoGet devuelve la respuesta cruda de Zoho, que envuelve el
+        // registro en un arreglo `data: [contacto]` incluso al pedir un solo id.
+        const c = r.status === 'fulfilled' ? r.value?.data?.[0] : null;
+        if (c?.id) {
           contactMap[c.id] = {
             email: c.Email || null,
             phone: c.Phone || c.Mobile || null,
@@ -400,7 +402,8 @@ async function syncOpportunitiesFromZoho(force = false) {
       }
     }
 
-    // Actualizar solo los registros que tengan contacto y les falten datos
+    // Actualizar el email/teléfono del contacto vinculado — siempre, no solo
+    // la primera vez, para reflejar cambios posteriores en Zoho.
     let enriched = 0;
     for (const deal of deals) {
       const cid = typeof deal.Contact_Name === 'object' ? deal.Contact_Name?.id : null;
@@ -408,7 +411,7 @@ async function syncOpportunitiesFromZoho(force = false) {
       const { email, phone } = contactMap[cid];
       if (!email && !phone) continue;
       await prisma.opportunity.updateMany({
-        where: { zohoId: deal.id, OR: [{ contactEmail: null }, { contactPhone: null }] },
+        where: { zohoId: deal.id },
         data: { contactEmail: email, contactPhone: phone },
       });
       enriched++;

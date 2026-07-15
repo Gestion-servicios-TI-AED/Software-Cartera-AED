@@ -5,6 +5,34 @@ const api = axios.create({
   timeout: 30000,
 });
 
+// Si la sesión expira a mitad de uso, cualquier llamada a la API devuelve 401
+// — recargar para que App.jsx vuelva a mostrar el login en vez de dejar la
+// pantalla en un estado de error a medias.
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401 && !err.config?.url?.includes('/auth/')) {
+      window.location.reload();
+    }
+    return Promise.reject(err);
+  }
+);
+
+export async function login(password) {
+  const { data } = await api.post('/auth/login', { password });
+  return data;
+}
+
+export async function logout() {
+  const { data } = await api.post('/auth/logout');
+  return data;
+}
+
+export async function checkAuth() {
+  const { data } = await api.get('/auth/check');
+  return data;
+}
+
 export async function getOpportunities(params = {}) {
   const { data } = await api.get('/opportunities', { params });
   return data;

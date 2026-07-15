@@ -1,8 +1,9 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Settings } from 'lucide-react';
+import { Settings, LogOut } from 'lucide-react';
 import { NAV_ITEMS } from '../config/navItems';
 import { useHiddenNav } from '../utils/navPrefs';
+import { logout } from '../utils/api';
 
 function SidebarItem({ to, Icon, label, color, exact }) {
   const location = useLocation();
@@ -40,9 +41,17 @@ function SidebarItem({ to, Icon, label, color, exact }) {
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({ onLogout }) {
   const { hidden } = useHiddenNav();
   const items = NAV_ITEMS.filter((item) => !hidden.has(item.key));
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      onLogout?.();
+    }
+  };
 
   return (
     <aside className="w-[60px] bg-white border-r border-aed-border flex flex-col items-center py-4 gap-1.5 flex-shrink-0 h-screen sticky top-0">
@@ -77,6 +86,15 @@ export default function Sidebar() {
       <div className="mt-auto w-8 h-8 rounded-full bg-gradient-to-br from-brand-soft to-emerald-100 flex items-center justify-center text-[13px] font-bold text-brand-strong flex-shrink-0">
         RG
       </div>
+
+      <button
+        onClick={handleLogout}
+        title="Cerrar sesión"
+        aria-label="Cerrar sesión"
+        className="w-8 h-8 mt-1 flex items-center justify-center rounded-[10px] text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors flex-shrink-0"
+      >
+        <LogOut size={16} strokeWidth={1.9} />
+      </button>
     </aside>
   );
 }
