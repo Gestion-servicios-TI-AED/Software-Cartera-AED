@@ -186,6 +186,114 @@ async function listarNegociosInventario({ search, estado, etapa, saldoPendiente,
   };
 }
 
+// Busca la oportunidad de Zoho vinculada a un negocio por su referencia.
+// La clave de unión es Negocio.referencia ↔ Opportunity.referenciaRecaudo.
+async function findOportunidadByReferencia(referencia) {
+  if (!referencia) return null;
+  const select = {
+    id: true, dealName: true, stage: true, referenciaRecaudo: true,
+    pagoSeparacion: true, fechaInicioPlanPagos: true, camposFinancieros: true,
+    seccionInmueble: true, lastSyncedAt: true,
+  };
+  // Coincidencia exacta primero; luego tolerante a espacios/formato.
+  let opp = await prisma.opportunity.findFirst({ where: { referenciaRecaudo: referencia }, select });
+  if (!opp && referencia.length >= 6) {
+    opp = await prisma.opportunity.findFirst({
+      where: { referenciaRecaudo: { contains: referencia, mode: 'insensitive' } },
+      select,
+    });
+  }
+  return opp;
+}
+
+// Dado un InventarioItem, resuelve el id del Negocio vinculado: directo por
+// Referencia de Recaudo, si no por Nomenclatura → Código de inmueble, igual
+// que el respaldo que ya usaba el detalle de negocio. null si no hay match.
+async function resolverNegocioIdDesdeInmueble(inmueble) {
+  if (inmueble.referenciaRecaudo) {
+    const negocio = await prisma.negocio.findUnique({
+      where: { referencia: inmueble.referenciaRecaudo },
+      select: { id: true },
+    });
+    if (negocio) return negocio.id;
+  }
+  if (inmueble.datos?.C_digo_inmueble != null) {
+    const negocio = await prisma.negocio.findFirst({
+      where: { datos: { path: ['Nomenclatura'], equals: String(inmueble.datos.C_digo_inmueble) } },
+      select: { id: true },
+    });
+    if (negocio) return negocio.id;
+  }
+  return null;
+}
+
+const INCLUDE_NEGOCIO_DETALLE = {
+  compradores: { orderBy: { orden: 'asc' } },
+  _count: { select: { movimientos: true } },
+};
+
+// Detalle unificado de una fila del módulo de Negocios, a partir del id
+// prefijado que devuelve listarNegociosInventario(). undefined si el
+// prefijo no se reconoce; null si el recurso no existe.
+async function obtenerNegocioPorId(id) {
+  if (id.startsWith('inv-')) {
+    const inventarioId = id.slice('inv-'.length);
+    const inmueble = await prisma.inventarioItem.findUnique({ where: { id: inventarioId } });
+    if (!inmueble) return null;
+
+    const negocioId = await resolverNegocioIdDesdeInmueble(inmueble);
+    const negocio = negocioId
+      ? await prisma.negocio.findUnique({ where: { id: negocioId }, include: INCLUDE_NEGOCIO_DETALLE })
+      : null;
+
+    const oportunidad = await findOportunidadByReferencia(negocio?.referencia ?? null);
+    const info = parseProyectoTorre(inmueble.datos?.Proyecto_Torre);
+    return {
+      id,
+      tieneNegocio: !!negocio,
+      referencia: negocio?.referencia ?? null,
+      estado: negocio?.estado ?? null,
+      datos: negocio?.datos ?? null,
+      saldoActual: negocio?.saldoActual ?? null,
+      compradores: negocio?.compradores ?? [],
+      totalMovimientos: negocio?._count?.movimientos ?? 0,
+      oportunidad,
+      codigoInmueble: inmueble.datos?.C_digo_inmueble ?? null,
+      projectCode: inmueble.datos?.Project_Code ?? null,
+      proyectoTorre: info ? formatearProyectoTorre(info) : null,
+      etapa: info ? obtenerEtapaTorre(inmueble.datos.Proyecto_Torre) : null,
+      inventarioDatos: inmueble.datos ?? null,
+      negocioId: negocio?.id ?? null,
+    };
+  }
+
+  if (id.startsWith('neg-')) {
+    const negocioId = id.slice('neg-'.length);
+    const negocio = await prisma.negocio.findUnique({ where: { id: negocioId }, include: INCLUDE_NEGOCIO_DETALLE });
+    if (!negocio) return null;
+    const oportunidad = await findOportunidadByReferencia(negocio.referencia);
+    return {
+      id,
+      tieneNegocio: true,
+      referencia: negocio.referencia,
+      estado: negocio.estado,
+      datos: negocio.datos,
+      saldoActual: negocio.saldoActual,
+      compradores: negocio.compradores,
+      totalMovimientos: negocio._count.movimientos,
+      oportunidad,
+      codigoInmueble: null,
+      projectCode: null,
+      proyectoTorre: null,
+      etapa: null,
+      inventarioDatos: null,
+      negocioId: negocio.id,
+    };
+  }
+
+  return undefined;
+}
+
 module.exports = {
   prisma,
   ETAPA_POR_TORRE,
@@ -193,4 +301,7 @@ module.exports = {
   formatearProyectoTorre,
   obtenerEtapaTorre,
   listarNegociosInventario,
+  findOportunidadByReferencia,
+  resolverNegocioIdDesdeInmueble,
+  obtenerNegocioPorId,
 };
