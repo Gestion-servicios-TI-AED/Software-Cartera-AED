@@ -775,11 +775,12 @@ function NegocioDetalle({ referencia }) {
     || null;
   const pisoInfo = desglosarPiso(pisoRaw);
 
-  // Etapa y Código de Inmueble se muestran como un campo más de la lista,
-  // igual que Nomenclatura — no como chips aparte.
+  // Etapa, Código de Inmueble y Project Code se muestran como un campo más
+  // de la lista, igual que Nomenclatura — no como chips aparte.
   const aptoEntries = [
     ...(proyectoInfo?.etapa ? [['Etapa', proyectoInfo.etapa]] : []),
     ...(negocio.codigoInmueble ? [['Código de Inmueble', negocio.codigoInmueble]] : []),
+    ...(negocio.projectCode ? [['Project Code', negocio.projectCode]] : []),
     ...aptoEntriesBase,
   ];
 

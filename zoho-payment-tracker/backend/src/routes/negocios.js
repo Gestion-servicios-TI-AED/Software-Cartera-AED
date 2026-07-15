@@ -529,12 +529,36 @@ router.get('/:referencia', async (req, res) => {
     const oportunidad = await findOportunidadByReferencia(referencia);
     // Código de Inmueble de Zoho Products — cruzado por la misma Referencia
     // de Recaudo que ya se usa para vincular Negocio ↔ InventarioItem.
-    const inmueble = await prisma.inventarioItem.findFirst({
+    // Si no hay match directo (pasa en ~57 casos), dos respaldos en orden:
+    //  1. El Inmueble.id que trae la oportunidad de Zoho vinculada (el dato
+    //     "oficial" — el lookup real de Deals a Products), cuando exista.
+    //  2. La Nomenclatura del Excel cuando venga en crudo como el código
+    //     numérico de Zoho (heurística, pero cubre casos sin oportunidad).
+    let inmueble = await prisma.inventarioItem.findFirst({
       where: { referenciaRecaudo: referencia },
       select: { datos: true },
     });
+    if (!inmueble) {
+      const inmuebleId = oportunidad?.seccionInmueble?.Inmueble?.id;
+      if (inmuebleId) {
+        inmueble = await prisma.inventarioItem.findFirst({
+          where: { zohoId: inmuebleId },
+          select: { datos: true },
+        });
+      }
+    }
+    if (!inmueble) {
+      const nomenclatura = negocio.datos?.Nomenclatura;
+      if (nomenclatura != null && /^\d+$/.test(String(nomenclatura))) {
+        inmueble = await prisma.inventarioItem.findFirst({
+          where: { datos: { path: ['C_digo_inmueble'], equals: Number(nomenclatura) } },
+          select: { datos: true },
+        });
+      }
+    }
     const codigoInmueble = inmueble?.datos?.C_digo_inmueble ?? null;
-    res.json({ ...negocio, totalMovimientos: negocio._count.movimientos, oportunidad, codigoInmueble });
+    const projectCode = inmueble?.datos?.Project_Code ?? null;
+    res.json({ ...negocio, totalMovimientos: negocio._count.movimientos, oportunidad, codigoInmueble, projectCode });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
