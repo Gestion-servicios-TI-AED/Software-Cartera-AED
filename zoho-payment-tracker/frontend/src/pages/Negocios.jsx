@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, X, ChevronDown, ChevronRight, User, Building2, BarChart3, History, RefreshCw, Download, CircleDot, Wallet, ClipboardList, Scale } from 'lucide-react';
+import { Search, X, ChevronDown, ChevronRight, User, Building2, Layers, BarChart3, History, RefreshCw, Download, CircleDot, Wallet, ClipboardList, Scale } from 'lucide-react';
 import { getNegocios, getNegocio, getNegocioMovimientos, triggerNegociosBackfill, getNegociosBackfillStatus, getNegociosStats, getSubforms } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
 import { filtrarDatosResumen, filtrarKeysMovimiento } from '../utils/columnasExcluidas';
@@ -9,7 +9,7 @@ import { ListaInfo, ListaFinanciera } from '../components/DatosFinancieros';
 import { ordenarFinanciero } from '../utils/ordenColumnas';
 import { estadoBadgeClass } from '../utils/estados';
 import { addFechaEstimada, formatFechaUTC } from '../utils/planDePagos';
-import { descripcionProyecto, obtenerProyecto, desglosarPiso } from '../utils/proyectos';
+import { obtenerProyecto, desglosarPiso } from '../utils/proyectos';
 import { construirPlan, normalizarPagos, conciliar, parseMonto } from '../utils/conciliacion';
 import { separarUnidadesAdicionales } from '../utils/unidadesAdicionales';
 import * as XLSX from 'xlsx';
@@ -94,7 +94,7 @@ function formatCell(key, value) {
 
 // Classify datos fields into apartment vs financial vs other
 const APTO_KEYS = [
-  'nomenclatura', 'area', 'área', 'm2', 'm²', 'tipo inmueble', 'categoria', 'categoría',
+  'nomenclatura', 'area', 'área', 'm2', 'm²', 'tipo inmueble',
   'inventario', 'fideicomiso', 'etapa', 'torre', 'bloque', 'edificio',
   'matricula', 'matrícula', 'folio', 'parqueadero', 'garaje', 'parking',
   'deposito', 'depósito', 'bodega', 'notaria', 'notaría', 'escritura',
@@ -792,15 +792,21 @@ function NegocioDetalle({ referencia }) {
           <div className="min-w-0">
             <p className="text-[12px] text-slate-500 mb-0.5 uppercase tracking-wide">Referencia</p>
             <h2 className="font-heading text-[19px] font-bold text-ink font-mono">{negocio.referencia}</h2>
-            {(nomenclatura || proyectoInfo?.etapa || pisoInfo) && (
+            {(negocio.projectCode || nomenclatura || proyectoInfo?.etapa || pisoInfo) && (
               <p className="text-[15px] font-semibold text-brand-strong mt-0.5">
-                {nomenclatura && <span>Apto {nomenclatura}</span>}
-                {nomenclatura && (proyectoInfo?.etapa || pisoInfo) && <span className="mx-1.5 text-slate-300">·</span>}
-                {proyectoInfo?.etapa && <span>Etapa {proyectoInfo.etapa}</span>}
-                {proyectoInfo?.etapa && pisoInfo && <span className="mx-1.5 text-slate-300">·</span>}
-                {pisoInfo?.torre && <span>Torre {pisoInfo.torre}</span>}
-                {pisoInfo?.torre && pisoInfo?.piso && <span className="mx-1.5 text-slate-300">·</span>}
-                {pisoInfo?.piso && <span>Piso {pisoInfo.piso}</span>}
+                {negocio.projectCode ? (
+                  <span>{negocio.projectCode}</span>
+                ) : (
+                  <>
+                    {nomenclatura && <span>Apto {nomenclatura}</span>}
+                    {nomenclatura && (proyectoInfo?.etapa || pisoInfo) && <span className="mx-1.5 text-slate-300">·</span>}
+                    {proyectoInfo?.etapa && <span>Etapa {proyectoInfo.etapa}</span>}
+                    {proyectoInfo?.etapa && pisoInfo && <span className="mx-1.5 text-slate-300">·</span>}
+                    {pisoInfo?.torre && <span>Torre {pisoInfo.torre}</span>}
+                    {pisoInfo?.torre && pisoInfo?.piso && <span className="mx-1.5 text-slate-300">·</span>}
+                    {pisoInfo?.piso && <span>Piso {pisoInfo.piso}</span>}
+                  </>
+                )}
               </p>
             )}
           </div>
@@ -1058,7 +1064,7 @@ function cleanNombre(nombre) {
   return nombre.replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, '');
 }
 
-// Etiqueta de proyecto/fideicomiso para los filtros y el resumen.
+// Etiqueta de proyecto/fideicomiso para el resumen.
 // Conserva el código numérico para que dos proyectos con el mismo nombre
 // (p.ej. "14607-…BAIA KABO…" y "99203-…BAIA KABO…") no se vean idénticos.
 function formatProyectoLabel(f) {
@@ -1073,7 +1079,6 @@ function NegocioItem({ negocio, selected, onClick }) {
   const extraCompradores = (negocio.compradores?.length ?? 0) - 1;
   const isSelected = selected === negocio.referencia;
   const nomenclatura = negocio.datos?.Nomenclatura;
-  const inventario = negocio.datos?.Inventario;
   const saldo = formatSaldoCompact(getSaldoActual(negocio.datos));
   const saldoNum = saldo ? parseFloat(String(getSaldoActual(negocio.datos)).replace(/[^0-9.-]/g, '')) : null;
 
@@ -1089,14 +1094,12 @@ function NegocioItem({ negocio, selected, onClick }) {
       )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className={`text-[14px] font-semibold font-mono truncate ${isSelected ? 'text-brand-strong' : 'text-slate-700'}`}>
-            {negocio.referencia}
+          <p className={`text-[14px] font-semibold truncate ${isSelected ? 'text-brand-strong' : 'text-slate-700'}`}>
+            {negocio.projectCode || (nomenclatura ? `Apto ${nomenclatura}` : negocio.referencia)}
           </p>
-          {(nomenclatura || inventario) && (
+          {negocio.proyectoTorre && (
             <p className="text-[13px] text-slate-500 truncate mt-0.5">
-              {nomenclatura && <span className="font-medium">Apto {nomenclatura}</span>}
-              {nomenclatura && inventario && <span className="mx-1 text-slate-300">·</span>}
-              {inventario && <span>{inventario}</span>}
+              {negocio.proyectoTorre} - Etapa {negocio.etapa}
             </p>
           )}
           {compradorPrincipal && (
@@ -1165,37 +1168,37 @@ export default function Negocios() {
   const [negocios, setNegocios] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [estados, setEstados] = useState([]);
-  const [fideicomisos, setFideicomisos] = useState([]);
+  const [etapas, setEtapas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
 
   const [search, setSearch] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
-  const [fideicomisoFilter, setFideicomisoFilter] = useState('');
+  const [etapaFilter, setEtapaFilter] = useState('');
   const [saldoPendiente, setSaldoPendiente] = useState(false);
   const [selected, setSelected] = useState(null);
   const [stats, setStats] = useState(null);
 
   const debouncedSearch = useDebounce(search);
   const filtersRef = useRef({});
-  filtersRef.current = { debouncedSearch, estadoFilter, fideicomisoFilter, saldoPendiente };
+  filtersRef.current = { debouncedSearch, estadoFilter, etapaFilter, saldoPendiente };
 
   const fetchList = useCallback((p = 1) => {
-    const { debouncedSearch: s, estadoFilter: e, fideicomisoFilter: f, saldoPendiente: sp } = filtersRef.current;
+    const { debouncedSearch: s, estadoFilter: e, etapaFilter: et, saldoPendiente: sp } = filtersRef.current;
     setLoading(true);
-    getNegocios({ search: s || undefined, estado: e || undefined, fideicomiso: f || undefined, saldoPendiente: sp || undefined, page: p, limit: 50 })
+    getNegocios({ search: s || undefined, estado: e || undefined, etapa: et || undefined, saldoPendiente: sp || undefined, page: p, limit: 50 })
       .then((res) => {
         setNegocios(res.data);
         setPagination(res.pagination);
         if (res.estados) setEstados(res.estados);
-        if (res.fideicomisos) setFideicomisos(res.fideicomisos);
+        if (res.etapas) setEtapas(res.etapas);
         setPage(p);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { fetchList(1); }, [debouncedSearch, estadoFilter, fideicomisoFilter, saldoPendiente, fetchList]);
+  useEffect(() => { fetchList(1); }, [debouncedSearch, estadoFilter, etapaFilter, saldoPendiente, fetchList]);
 
   const loadStats = useCallback(() => {
     getNegociosStats().then(setStats).catch(() => {});
@@ -1207,10 +1210,10 @@ export default function Negocios() {
 
   const [exporting, setExporting] = useState(false);
   const handleExport = useCallback(async (fmt) => {
-    const { debouncedSearch: s, estadoFilter: e, fideicomisoFilter: f, saldoPendiente: sp } = filtersRef.current;
+    const { debouncedSearch: s, estadoFilter: e, etapaFilter: et, saldoPendiente: sp } = filtersRef.current;
     setExporting(true);
     try {
-      const res = await getNegocios({ search: s || undefined, estado: e || undefined, fideicomiso: f || undefined, saldoPendiente: sp || undefined, page: 1, limit: 9999 });
+      const res = await getNegocios({ search: s || undefined, estado: e || undefined, etapa: et || undefined, saldoPendiente: sp || undefined, page: 1, limit: 9999 });
       const date = new Date().toISOString().slice(0, 10);
       const base = `negocios-${date}`;
       if (fmt === 'xlsx') exportExcel(res.data, `${base}.xlsx`);
@@ -1223,8 +1226,8 @@ export default function Negocios() {
     }
   }, []);
 
-  const clearFilters = () => { setSearch(''); setEstadoFilter(''); setFideicomisoFilter(''); setSaldoPendiente(false); };
-  const hasFilters = search || estadoFilter || fideicomisoFilter || saldoPendiente;
+  const clearFilters = () => { setSearch(''); setEstadoFilter(''); setEtapaFilter(''); setSaldoPendiente(false); };
+  const hasFilters = search || estadoFilter || etapaFilter || saldoPendiente;
   const isEmpty = !loading && pagination?.total === 0 && !hasFilters;
 
   // ── Resizable sidebar ──────────────────────────────────────────────────────
@@ -1322,29 +1325,23 @@ export default function Negocios() {
               </div>
             )}
 
-            {/* Fideicomiso filter */}
-            {fideicomisos.length > 0 && (
+            {/* Etapa filter */}
+            {etapas.length > 0 && (
               <div className="field">
                 <label className="field-label">
-                  <Building2 size={13} className="text-[#7c3aed]" />
-                  Proyecto
-                  <HelpTip text="Filtra por el proyecto / fideicomiso al que pertenece el negocio." />
+                  <Layers size={13} className="text-[#7c3aed]" />
+                  Etapa
+                  <HelpTip text="Filtra por la etapa del inmueble asociado al negocio. Los proyectos sin etapa numerada y los negocios sin inmueble asociado se agrupan en Etapa 0." />
                 </label>
                 <select
-                  value={fideicomisoFilter}
-                  onChange={(e) => setFideicomisoFilter(e.target.value)}
+                  value={etapaFilter}
+                  onChange={(e) => setEtapaFilter(e.target.value)}
                   className="input text-[14px] h-8 py-0 pr-2 leading-none"
                 >
-                  <option value="">Todos los proyectos</option>
-                  {fideicomisos.map((f) => {
-                    const match = String(f).match(/^(\d{4,6})/);
-                    const desc = match ? descripcionProyecto(match[1]) : null;
-                    return (
-                      <option key={f} value={f}>
-                        {desc || formatProyectoLabel(f)}
-                      </option>
-                    );
-                  })}
+                  <option value="">Todas las etapas</option>
+                  {etapas.map((et) => (
+                    <option key={et} value={et}>Etapa {et}</option>
+                  ))}
                 </select>
               </div>
             )}
