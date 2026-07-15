@@ -756,7 +756,7 @@ function NegocioDetalle({ referencia }) {
   }
 
   const { apto, financiero } = categorizeDatos(separarUnidadesAdicionales(filtrarDatosResumen(negocio.datos || {})));
-  const aptoEntries = Object.entries(apto);
+  const aptoEntriesBase = Object.entries(apto);
   const finEntries = ordenarFinanciero(Object.entries(financiero));
 
   const nomenclatura = negocio.datos?.Nomenclatura;
@@ -774,6 +774,14 @@ function NegocioDetalle({ referencia }) {
     || negocio.oportunidad?.seccionInmueble?.Piso_Lista
     || null;
   const pisoInfo = desglosarPiso(pisoRaw);
+
+  // Etapa y Código de Inmueble se muestran como un campo más de la lista,
+  // igual que Nomenclatura — no como chips aparte.
+  const aptoEntries = [
+    ...(proyectoInfo?.etapa ? [['Etapa', proyectoInfo.etapa]] : []),
+    ...(negocio.codigoInmueble ? [['Código de Inmueble', negocio.codigoInmueble]] : []),
+    ...aptoEntriesBase,
+  ];
 
   return (
     <div className="flex flex-col gap-3 p-5">
@@ -847,33 +855,6 @@ function NegocioDetalle({ referencia }) {
 
       {/* 2. Apartamento */}
       <Accordion icon={Building2} title="Info del apartamento" badge={aptoEntries.length} accent="#7c3aed" defaultOpen>
-        {(proyectoInfo || pisoInfo) && (
-          <div className="px-4 py-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-aed-border">
-            {proyectoInfo?.etapa && (
-              <>
-                <span className="text-[12px] font-medium text-slate-500">Etapa:</span>
-                <span className="text-[13px] font-semibold text-slate-700">{proyectoInfo.etapa}</span>
-                <span className="text-slate-300 mx-1">·</span>
-              </>
-            )}
-            {proyectoInfo?.torres && (
-              <>
-                <span className="text-[12px] font-medium text-slate-500">Torres:</span>
-                <span className="text-[13px] font-semibold text-slate-700">{proyectoInfo.torres}</span>
-              </>
-            )}
-            {pisoInfo && (
-              <>
-                <span className="text-slate-300 mx-1">·</span>
-                <span className="text-[12px] font-medium text-slate-500">Torre:</span>
-                <span className="text-[13px] font-semibold text-slate-700">{pisoInfo.torre}</span>
-                <span className="text-slate-300 mx-1">·</span>
-                <span className="text-[12px] font-medium text-slate-500">Piso:</span>
-                <span className="text-[13px] font-semibold text-slate-700">{pisoInfo.piso}</span>
-              </>
-            )}
-          </div>
-        )}
         {aptoEntries.length > 0 ? (
           <ListaInfo entries={aptoEntries} hoja="resumen" format={formatCell} />
         ) : (

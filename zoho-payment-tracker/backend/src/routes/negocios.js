@@ -527,7 +527,14 @@ router.get('/:referencia', async (req, res) => {
     });
     if (!negocio) return res.status(404).json({ error: 'Negocio no encontrado' });
     const oportunidad = await findOportunidadByReferencia(referencia);
-    res.json({ ...negocio, totalMovimientos: negocio._count.movimientos, oportunidad });
+    // Código de Inmueble de Zoho Products — cruzado por la misma Referencia
+    // de Recaudo que ya se usa para vincular Negocio ↔ InventarioItem.
+    const inmueble = await prisma.inventarioItem.findFirst({
+      where: { referenciaRecaudo: referencia },
+      select: { datos: true },
+    });
+    const codigoInmueble = inmueble?.datos?.C_digo_inmueble ?? null;
+    res.json({ ...negocio, totalMovimientos: negocio._count.movimientos, oportunidad, codigoInmueble });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -318,7 +318,13 @@ async function syncOpportunitiesFromZoho(force = false) {
     const currencyApiNames = fields.filter((f) => f.data_type === 'currency').map((f) => f.api_name);
     const inmuebleApiNames = fields.filter((f) => isInmuebleField(f) && !EXCLUDED_TYPES.includes(f.data_type)).map((f) => f.api_name);
     const cotizacionApiNames = fields.filter((f) => isCotizacionField(f)).map((f) => f.api_name);
-    const recaudoField = fields.find((f) => (f.field_label || '').toLowerCase().includes('recaudo'));
+    // Varios campos de Zoho contienen "recaudo" en el label (Recaudo a la
+    // fecha, Recaudo Cartera…) — buscar primero el nombre exacto para no
+    // depender del orden en que vengan los campos (el fallback de metadatos
+    // en DB no garantiza el mismo orden que la respuesta en vivo de Zoho).
+    const recaudoField = fields.find((f) => (f.field_label || '').toLowerCase() === 'referencia de recaudo')
+      || fields.find((f) => (f.api_name || '').toLowerCase() === 'referencia_de_recaudo')
+      || fields.find((f) => (f.field_label || '').toLowerCase().includes('recaudo') && f.data_type === 'text');
     // subforms — se guardan en el sync (vienen inline en el deal response)
 
     // 3. Construir lista de campos y traer deals

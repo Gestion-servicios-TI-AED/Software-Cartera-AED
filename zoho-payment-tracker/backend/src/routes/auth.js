@@ -3,6 +3,12 @@ const { requireAuth, createSessionToken, passwordMatches, SESSION_COOKIE, MAX_AG
 
 const router = express.Router();
 
+// La cookie solo debe marcarse Secure cuando el sitio realmente sirve por
+// HTTPS — si no, el navegador la descarta en silencio y el login nunca
+// "pega". Se activa a propósito con COOKIE_SECURE=true el día que haya
+// dominio + certificado, en vez de asumirlo por NODE_ENV.
+const COOKIE_SECURE = process.env.COOKIE_SECURE === 'true';
+
 router.post('/login', (req, res) => {
   const { password } = req.body || {};
   if (!passwordMatches(password)) {
@@ -11,7 +17,7 @@ router.post('/login', (req, res) => {
   res.cookie(SESSION_COOKIE, createSessionToken(), {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: COOKIE_SECURE,
     maxAge: MAX_AGE_MS,
   });
   res.json({ ok: true });
