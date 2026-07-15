@@ -12,6 +12,7 @@ const {
   obtenerEtapaTorre,
   listarNegociosInventario,
   obtenerNegocioPorId,
+  obtenerMovimientosPorId,
 } = require('../services/inventarioNegocioService');
 
 const router = express.Router();
@@ -476,31 +477,18 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// GET /api/negocios/:referencia/movimientos?page=&limit=
-router.get('/:referencia/movimientos', async (req, res) => {
+// GET /api/negocios/:id/movimientos?page=&limit=
+router.get('/:id/movimientos', async (req, res) => {
   try {
-    const referencia = decodeURIComponent(req.params.referencia);
+    const id = decodeURIComponent(req.params.id);
     const { page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
 
-    const negocio = await prisma.negocio.findUnique({ where: { referencia } });
-    if (!negocio) return res.status(404).json({ error: 'Negocio no encontrado' });
-
-    const [total, movimientos] = await Promise.all([
-      prisma.negocioMovimiento.count({ where: { negocioId: negocio.id } }),
-      prisma.negocioMovimiento.findMany({
-        where: { negocioId: negocio.id },
-        skip: (pageNum - 1) * limitNum,
-        take: limitNum,
-        orderBy: [{ fechaContable: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
-      }),
-    ]);
-
-    res.json({
-      data: movimientos,
-      pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
-    });
+    const resultado = await obtenerMovimientosPorId(id, { page: pageNum, limit: limitNum });
+    if (resultado === undefined) return res.status(400).json({ error: 'Id inválido' });
+    if (resultado === null) return res.status(404).json({ error: 'No encontrado' });
+    res.json(resultado);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

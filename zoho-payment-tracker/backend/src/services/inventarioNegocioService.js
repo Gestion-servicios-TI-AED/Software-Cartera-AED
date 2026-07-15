@@ -294,6 +294,40 @@ async function obtenerNegocioPorId(id) {
   return undefined;
 }
 
+// Movimientos de la fila identificada por `id` (mismo esquema de prefijo
+// que obtenerNegocioPorId). Si no hay negocio vinculado, devuelve una
+// página vacía en vez de error.
+async function obtenerMovimientosPorId(id, { page, limit }) {
+  let negocioId = null;
+
+  if (id.startsWith('inv-')) {
+    const inmueble = await prisma.inventarioItem.findUnique({ where: { id: id.slice('inv-'.length) } });
+    if (!inmueble) return null;
+    negocioId = await resolverNegocioIdDesdeInmueble(inmueble);
+  } else if (id.startsWith('neg-')) {
+    const negocio = await prisma.negocio.findUnique({ where: { id: id.slice('neg-'.length) }, select: { id: true } });
+    if (!negocio) return null;
+    negocioId = negocio.id;
+  } else {
+    return undefined;
+  }
+
+  if (!negocioId) {
+    return { data: [], pagination: { total: 0, page, limit, totalPages: 0 } };
+  }
+
+  const [total, movimientos] = await Promise.all([
+    prisma.negocioMovimiento.count({ where: { negocioId } }),
+    prisma.negocioMovimiento.findMany({
+      where: { negocioId },
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: [{ fechaContable: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+    }),
+  ]);
+  return { data: movimientos, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+}
+
 module.exports = {
   prisma,
   ETAPA_POR_TORRE,
@@ -304,4 +338,5 @@ module.exports = {
   findOportunidadByReferencia,
   resolverNegocioIdDesdeInmueble,
   obtenerNegocioPorId,
+  obtenerMovimientosPorId,
 };
