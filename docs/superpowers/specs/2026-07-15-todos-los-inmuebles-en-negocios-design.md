@@ -72,6 +72,7 @@ Mismo `id` prefijado; resuelve el negocio vinculado (o ninguno) igual que el det
 
 ## Fuera de alcance
 
+- **Límite conocido y aceptado**: la detección de "huérfano" (y el `LEFT JOIN LATERAL` de la lista) solo usa los 2 niveles de respaldo (Referencia de Recaudo directa, luego Nomenclatura/Código) — no replica el tercer nivel que usa el detalle *actual* (Inmueble.id de la oportunidad Zoho vinculada). Verificado contra la BD real: de los 40 huérfanos, solo 2 se resolverían por esa vía. Sumar un `JOIN` de 3 tablas (inmueble ↔ negocio ↔ oportunidad) en el `LATERAL`/anti-join por 2 filas de 1976 no vale la complejidad — esos 2 negocios (y sus inmuebles correspondientes) van a aparecer como dos filas separadas en vez de una sola fila fusionada. El endpoint de detalle (`GET /:id`) tampoco reintenta ese tercer nivel al partir de un `neg-` huérfano.
 - No se modifica el pipeline de sync de Zoho ni de Movimientos/Fiducia — este cambio es solo de lectura/presentación en el módulo de Negocios.
 - No se agregan nuevos campos de Zoho Product más allá de los listados en "Info del apartamento"; se puede ampliar en una entrega futura si hace falta.
 - No se cambia el criterio de exportación (Excel/PDF/CSV) del listado en esta entrega — exporta lo que la lista muestre en pantalla, con las mismas columnas de hoy (los campos de inmueble en `null` para huérfanos, y viceversa).
