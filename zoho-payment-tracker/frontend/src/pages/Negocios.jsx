@@ -230,7 +230,7 @@ function MovimientoRow({ mov, fields }) {
   );
 }
 
-function MovimientosSection({ referencia }) {
+function MovimientosSection({ id }) {
   const [movimientos, setMovimientos] = useState(null);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState(null);
@@ -239,7 +239,7 @@ function MovimientosSection({ referencia }) {
   const load = useCallback(
     (p = 1) => {
       setLoading(true);
-      getNegocioMovimientos(referencia, { page: p, limit: 50 })
+      getNegocioMovimientos(id, { page: p, limit: 50 })
         .then((res) => {
           setMovimientos(res.data);
           setPagination(res.pagination);
@@ -247,7 +247,7 @@ function MovimientosSection({ referencia }) {
         })
         .finally(() => setLoading(false));
     },
-    [referencia]
+    [id]
   );
 
   useEffect(() => { load(1); }, [load]);
@@ -569,7 +569,7 @@ function ConciliacionSection({ negocio }) {
         const movs = [];
         let page = 1, totalPages = 1;
         do {
-          const res = await getNegocioMovimientos(negocio.referencia, { page, limit: 200 });
+          const res = await getNegocioMovimientos(negocio.id, { page, limit: 200 });
           movs.push(...(res.data || []));
           totalPages = res.pagination?.totalPages ?? 1;
           page += 1;
@@ -582,7 +582,7 @@ function ConciliacionSection({ negocio }) {
       }
     })();
     return () => { alive = false; };
-  }, [oportunidad?.id, negocio.referencia]);
+  }, [oportunidad?.id, negocio.id]);
 
   if (!oportunidad) {
     return <p className="px-4 py-4 text-[14px] text-slate-500 italic">Sin oportunidad de Zoho vinculada a esta referencia.</p>;
@@ -719,7 +719,7 @@ function ConciliacionSection({ negocio }) {
   );
 }
 
-function NegocioDetalle({ referencia }) {
+function NegocioDetalle({ id }) {
   const [negocio, setNegocio] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -727,11 +727,11 @@ function NegocioDetalle({ referencia }) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    getNegocio(referencia)
+    getNegocio(id)
       .then(setNegocio)
       .catch((err) => setError(err.response?.data?.error || err.message))
       .finally(() => setLoading(false));
-  }, [referencia]);
+  }, [id]);
 
   if (loading) {
     return (
@@ -790,9 +790,13 @@ function NegocioDetalle({ referencia }) {
       <div className="card px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[12px] text-slate-500 mb-0.5 uppercase tracking-wide">Referencia</p>
-            <h2 className="font-heading text-[19px] font-bold text-ink font-mono">{negocio.referencia}</h2>
-            {(negocio.projectCode || nomenclatura || proyectoInfo?.etapa || pisoInfo) && (
+            <p className="text-[12px] text-slate-500 mb-0.5 uppercase tracking-wide">
+              {negocio.referencia ? 'Referencia' : 'Project Code'}
+            </p>
+            <h2 className="font-heading text-[19px] font-bold text-ink font-mono">
+              {negocio.referencia || negocio.projectCode || '—'}
+            </h2>
+            {(negocio.referencia && (negocio.projectCode || nomenclatura || proyectoInfo?.etapa || pisoInfo)) && (
               <p className="text-[15px] font-semibold text-brand-strong mt-0.5">
                 {negocio.projectCode ? (
                   <span>{negocio.projectCode}</span>
@@ -815,6 +819,11 @@ function NegocioDetalle({ referencia }) {
               {negocio.estado && (
                 <span className={`text-[12px] font-bold px-2.5 py-1 rounded-full ${estadoColor(negocio.estado)}`}>
                   {negocio.estado}
+                </span>
+              )}
+              {!negocio.tieneNegocio && (
+                <span className="text-[12px] font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">
+                  Sin negocio
                 </span>
               )}
               <span className="text-[13px] text-slate-500 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
@@ -880,12 +889,12 @@ function NegocioDetalle({ referencia }) {
 
       {/* 4. Conciliación plan vs pagos reales */}
       <Accordion icon={Scale} title="Conciliación" accent="#0891b2" defaultOpen={false}>
-        <ConciliacionSection key={referencia} negocio={negocio} />
+        <ConciliacionSection key={id} negocio={negocio} />
       </Accordion>
 
       {/* 5. Movimientos */}
       <Accordion icon={History} title="Historial de movimientos" badge={negocio.totalMovimientos} accent="#d97706" defaultOpen={false}>
-        <MovimientosSection key={referencia} referencia={referencia} />
+        <MovimientosSection key={id} id={id} />
       </Accordion>
 
       {/* 6. Forma y propuesta de pago (oportunidad Zoho vinculada por referencia) */}
@@ -1077,14 +1086,14 @@ function formatProyectoLabel(f) {
 function NegocioItem({ negocio, selected, onClick }) {
   const compradorPrincipal = cleanNombre(negocio.compradores?.[0]?.nombre);
   const extraCompradores = (negocio.compradores?.length ?? 0) - 1;
-  const isSelected = selected === negocio.referencia;
+  const isSelected = selected === negocio.id;
   const nomenclatura = negocio.datos?.Nomenclatura;
   const saldo = formatSaldoCompact(getSaldoActual(negocio.datos));
   const saldoNum = saldo ? parseFloat(String(getSaldoActual(negocio.datos)).replace(/[^0-9.-]/g, '')) : null;
 
   return (
     <button
-      onClick={() => onClick(negocio.referencia)}
+      onClick={() => onClick(negocio.id)}
       className={`w-full text-left px-3 py-2.5 border-b border-aed-border transition-colors relative ${
         isSelected ? 'bg-brand-soft' : 'hover:bg-brand-tint'
       }`}
@@ -1113,6 +1122,11 @@ function NegocioItem({ negocio, selected, onClick }) {
           {negocio.estado && (
             <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded-full ${estadoColor(negocio.estado)}`}>
               {negocio.estado}
+            </span>
+          )}
+          {!negocio.tieneNegocio && (
+            <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
+              Sin negocio
             </span>
           )}
           {saldo && (
@@ -1415,7 +1429,7 @@ export default function Negocios() {
       {/* ── Right panel ── */}
       <div className="flex-1 min-w-0 overflow-y-auto bg-aed-base">
         {selected ? (
-          <NegocioDetalle key={selected} referencia={selected} />
+          <NegocioDetalle key={selected} id={selected} />
         ) : isEmpty ? (
           /* Empty state with sync button */
           <div className="flex flex-col items-center justify-center h-full text-center px-8">
