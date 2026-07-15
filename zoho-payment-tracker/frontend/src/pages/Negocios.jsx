@@ -1023,7 +1023,7 @@ function exportPDF(negocios, filename) {
     startY: 25,
     head: [['Referencia', 'Estado', 'Nomenclatura', 'Compradores', 'Cédulas', 'Total abonado', 'Mov.']],
     body: negocios.map((n) => [
-      n.referencia,
+      n.referencia ?? '—',
       n.estado ?? '—',
       n.datos?.Nomenclatura ?? '—',
       (n.compradores || [])
