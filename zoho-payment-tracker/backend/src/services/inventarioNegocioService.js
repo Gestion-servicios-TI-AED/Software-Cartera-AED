@@ -117,9 +117,13 @@ huerfanos AS (
     n.datos AS negocio_datos
   FROM "Negocio" n
   WHERE NOT EXISTS (
-    SELECT 1 FROM "InventarioItem" inv2
-    WHERE inv2."referenciaRecaudo" = n.referencia
-       OR (inv2.datos->>'C_digo_inmueble') = (n.datos->>'Nomenclatura')
+    -- Un negocio es huérfano solo si NO fue el ganador del LATERAL de
+    -- ningún inmueble (no basta con que "algún" inmueble calce con él por
+    -- Nomenclatura: si dos negocios comparten Nomenclatura y calzan con el
+    -- mismo inmueble, el LATERAL de arriba solo elige uno con LIMIT 1 — sin
+    -- este chequeo contra inmuebles.negocio_id, el otro desaparecería sin
+    -- aparecer ni colgado de un inmueble ni como huérfano).
+    SELECT 1 FROM inmuebles i WHERE i.negocio_id = n.id
   )
 ),
 combinado AS (
