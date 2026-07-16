@@ -374,13 +374,15 @@ async function syncOpportunitiesFromZoho(force = false) {
 
     const allDeals = await fetchAllDeals(fieldsList, modifiedSince);
 
-    // Procesar únicamente deals cuyo Stage esté en ESTADOS_SIEMPRE_INCLUIDOS
-    // (más arriba) -- Pago Separación ya NO es criterio de inclusión, a
-    // pedido explícito: los estados fuera de esta lista (BACKOUT, DESISTIDO,
-    // NO INTERESADO, etc.) no deben sincronizarse aunque tengan Pago
-    // Separación diligenciado.
-    const deals = allDeals.filter((d) => ESTADOS_SIEMPRE_INCLUIDOS_NORM.has(normalizarEstado(d.Stage)));
-    console.log(`[sync] Fetched ${allDeals.length} deals total, ${deals.length} en estados incluidos`);
+    // Procesar deals que tengan Pago Separación, o que estén en uno de los
+    // estados de vinculación/fiducia que siempre se traen sin importar el
+    // Pago Separación (ver ESTADOS_SIEMPRE_INCLUIDOS más arriba).
+    const deals = allDeals.filter((d) => {
+      const v = d[pagoSepField.api_name];
+      if (v !== null && v !== undefined && v !== '') return true;
+      return ESTADOS_SIEMPRE_INCLUIDOS_NORM.has(normalizarEstado(d.Stage));
+    });
+    console.log(`[sync] Fetched ${allDeals.length} deals total, ${deals.length} incluidos (Pago Separación o estado siempre-incluido)`);
 
     const contactApiNames = fields
       .filter((f) => isContactField(f) && !EXCLUDED_TYPES.includes(f.data_type))

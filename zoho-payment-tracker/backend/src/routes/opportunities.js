@@ -16,14 +16,17 @@ router.get('/', async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const skip = (pageNum - 1) * limitNum;
 
-    // Mostrar únicamente los estados de vinculación/fiducia pedidos
-    // explícitamente (mismo criterio que el sync -- ver
-    // ESTADOS_SIEMPRE_INCLUIDOS en zohoSync.js). Pago Separación ya NO es
-    // criterio de inclusión: estados fuera de esta lista (BACKOUT,
-    // DESISTIDO, NO INTERESADO, etc.) no deben aparecer aunque tengan
-    // Pago Separación diligenciado.
+    // Mostrar registros con fecha de Pago Separación, o que estén en uno de
+    // los estados de vinculación/fiducia que siempre se muestran sin
+    // importar el Pago Separación (mismo criterio que el sync -- ver
+    // ESTADOS_SIEMPRE_INCLUIDOS en zohoSync.js).
     const condiciones = [
-      { stage: { in: ESTADOS_SIEMPRE_INCLUIDOS } },
+      {
+        OR: [
+          { pagoSeparacion: { not: null } },
+          { stage: { in: ESTADOS_SIEMPRE_INCLUIDOS } },
+        ],
+      },
     ];
 
     if (stage) {
@@ -83,13 +86,10 @@ router.get('/', async (req, res) => {
 // GET /api/opportunities/stages — lista de etapas únicas
 router.get('/stages', async (req, res) => {
   try {
-    // Mismo criterio que el listado (GET /) -- si no, el desplegable de
-    // Etapa ofrece estados que ya no aparecen en la lista (ej. DESISTIDO,
-    // BACKOUT), quedan huérfanos de un sync anterior a este filtro.
     const stages = await prisma.opportunity.findMany({
       select: { stage: true },
       distinct: ['stage'],
-      where: { stage: { in: ESTADOS_SIEMPRE_INCLUIDOS } },
+      where: { stage: { not: null } },
       orderBy: { stage: 'asc' },
     });
     res.json(stages.map((s) => s.stage));
