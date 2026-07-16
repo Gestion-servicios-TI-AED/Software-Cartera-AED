@@ -126,6 +126,11 @@ export async function getNegocios(params = {}) {
   return data;
 }
 
+export async function getDashboardRecaudo(params = {}) {
+  const { data } = await api.get('/negocios/dashboard-recaudo', { params });
+  return data;
+}
+
 export async function getNegocio(referencia) {
   const { data } = await api.get(`/negocios/${encodeURIComponent(referencia)}`);
   return data;
