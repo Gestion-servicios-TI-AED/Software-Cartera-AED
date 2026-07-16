@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, X, ChevronDown, ChevronRight, User, Building2, Layers, BarChart3, History, RefreshCw, Download, CircleDot, Wallet, ClipboardList, Scale } from 'lucide-react';
+import { Search, X, ChevronDown, ChevronRight, User, Building2, Layers, BarChart3, History, RefreshCw, Download, CircleDot, Wallet, ClipboardList, Scale, MapPin } from 'lucide-react';
 import { getNegocios, getNegocio, getNegocioMovimientos, triggerNegociosBackfill, getNegociosBackfillStatus, getNegociosStats, getSubforms } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
 import { filtrarDatosResumen, filtrarKeysMovimiento } from '../utils/columnasExcluidas';
@@ -1205,36 +1205,39 @@ export default function Negocios() {
   const [pagination, setPagination] = useState(null);
   const [estados, setEstados] = useState([]);
   const [etapas, setEtapas] = useState([]);
+  const [frentes, setFrentes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
 
   const [search, setSearch] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
   const [etapaFilter, setEtapaFilter] = useState('');
+  const [frenteFilter, setFrenteFilter] = useState('');
   const [saldoPendiente, setSaldoPendiente] = useState(false);
   const [selected, setSelected] = useState(null);
   const [stats, setStats] = useState(null);
 
   const debouncedSearch = useDebounce(search);
   const filtersRef = useRef({});
-  filtersRef.current = { debouncedSearch, estadoFilter, etapaFilter, saldoPendiente };
+  filtersRef.current = { debouncedSearch, estadoFilter, etapaFilter, frenteFilter, saldoPendiente };
 
   const fetchList = useCallback((p = 1) => {
-    const { debouncedSearch: s, estadoFilter: e, etapaFilter: et, saldoPendiente: sp } = filtersRef.current;
+    const { debouncedSearch: s, estadoFilter: e, etapaFilter: et, frenteFilter: fr, saldoPendiente: sp } = filtersRef.current;
     setLoading(true);
-    getNegocios({ search: s || undefined, estado: e || undefined, etapa: et || undefined, saldoPendiente: sp || undefined, page: p, limit: 50 })
+    getNegocios({ search: s || undefined, estado: e || undefined, etapa: et || undefined, frente: fr || undefined, saldoPendiente: sp || undefined, page: p, limit: 50 })
       .then((res) => {
         setNegocios(res.data);
         setPagination(res.pagination);
         if (res.estados) setEstados(res.estados);
         if (res.etapas) setEtapas(res.etapas);
+        if (res.frentes) setFrentes(res.frentes);
         setPage(p);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { fetchList(1); }, [debouncedSearch, estadoFilter, etapaFilter, saldoPendiente, fetchList]);
+  useEffect(() => { fetchList(1); }, [debouncedSearch, estadoFilter, etapaFilter, frenteFilter, saldoPendiente, fetchList]);
 
   const loadStats = useCallback(() => {
     getNegociosStats().then(setStats).catch(() => {});
@@ -1246,10 +1249,10 @@ export default function Negocios() {
 
   const [exporting, setExporting] = useState(false);
   const handleExport = useCallback(async (fmt) => {
-    const { debouncedSearch: s, estadoFilter: e, etapaFilter: et, saldoPendiente: sp } = filtersRef.current;
+    const { debouncedSearch: s, estadoFilter: e, etapaFilter: et, frenteFilter: fr, saldoPendiente: sp } = filtersRef.current;
     setExporting(true);
     try {
-      const res = await getNegocios({ search: s || undefined, estado: e || undefined, etapa: et || undefined, saldoPendiente: sp || undefined, page: 1, limit: 9999 });
+      const res = await getNegocios({ search: s || undefined, estado: e || undefined, etapa: et || undefined, frente: fr || undefined, saldoPendiente: sp || undefined, page: 1, limit: 9999 });
       const date = new Date().toISOString().slice(0, 10);
       const base = `negocios-${date}`;
       if (fmt === 'xlsx') exportExcel(res.data, `${base}.xlsx`);
@@ -1262,8 +1265,8 @@ export default function Negocios() {
     }
   }, []);
 
-  const clearFilters = () => { setSearch(''); setEstadoFilter(''); setEtapaFilter(''); setSaldoPendiente(false); };
-  const hasFilters = search || estadoFilter || etapaFilter || saldoPendiente;
+  const clearFilters = () => { setSearch(''); setEstadoFilter(''); setEtapaFilter(''); setFrenteFilter(''); setSaldoPendiente(false); };
+  const hasFilters = search || estadoFilter || etapaFilter || frenteFilter || saldoPendiente;
   const isEmpty = !loading && pagination?.total === 0 && !hasFilters;
 
   // ── Resizable sidebar ──────────────────────────────────────────────────────
@@ -1377,6 +1380,27 @@ export default function Negocios() {
                   <option value="">Todas las etapas</option>
                   {etapas.map((et) => (
                     <option key={et} value={et}>Etapa {et}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Frente filter */}
+            {frentes.length > 0 && (
+              <div className="field">
+                <label className="field-label">
+                  <MapPin size={13} className="text-[#7c3aed]" />
+                  Frente
+                  <HelpTip text="Filtra por el proyecto/desarrollo del inmueble asociado al negocio. Los negocios sin inmueble asociado no aparecen al filtrar por un Frente específico." />
+                </label>
+                <select
+                  value={frenteFilter}
+                  onChange={(e) => setFrenteFilter(e.target.value)}
+                  className="input text-[14px] h-8 py-0 pr-2 leading-none"
+                >
+                  <option value="">Todos los frentes</option>
+                  {frentes.map((fr) => (
+                    <option key={fr} value={fr}>{fr}</option>
                   ))}
                 </select>
               </div>
