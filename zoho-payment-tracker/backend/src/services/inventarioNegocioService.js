@@ -86,7 +86,7 @@ WITH inmuebles AS (
     SELECT n.* FROM "Negocio" n
     WHERE n.referencia = inv."referenciaRecaudo"
        OR (n.datos->>'Nomenclatura') = (inv.datos->>'C_digo_inmueble')
-    ORDER BY (n.referencia = inv."referenciaRecaudo") DESC
+    ORDER BY (n.referencia = inv."referenciaRecaudo") DESC, n.id ASC
     LIMIT 1
   ) neg ON true
 ),
@@ -167,26 +167,27 @@ async function listarNegociosInventario({ search, estado, etapa, frente, saldoPe
   ]);
   const filtro = construirFiltroCombinado({ search, estado, etapa, frente, saldoPendiente, valoresEtapa, valoresFrente });
 
-  const totalRows = await prisma.$queryRaw`
-    ${BASE_CTE}
-    SELECT COUNT(*)::int AS total FROM combinado c ${filtro}
-  `;
+  const [totalRows, filas] = await Promise.all([
+    prisma.$queryRaw`
+      ${BASE_CTE}
+      SELECT COUNT(*)::int AS total FROM combinado c ${filtro}
+    `,
+    prisma.$queryRaw`
+      ${BASE_CTE}
+      SELECT
+        c.id, c.inventario_datos, c.negocio_id, c.referencia, c.estado, c."saldoActual", c.negocio_datos,
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object('id', comp.id, 'nombre', comp.nombre, 'nroId', comp."nroId", 'porcentaje', comp.porcentaje, 'orden', comp.orden) ORDER BY comp.orden)
+          FROM "NegocioComprador" comp WHERE comp."negocioId" = c.negocio_id
+        ), '[]'::jsonb) AS compradores,
+        (SELECT COUNT(*)::int FROM "NegocioMovimiento" m WHERE m."negocioId" = c.negocio_id) AS "totalMovimientos"
+      FROM combinado c
+      ${filtro}
+      ORDER BY c.inventario_datos->>'Proyecto_Torre' ASC NULLS LAST, c.inventario_datos->>'Project_Code' ASC NULLS LAST
+      LIMIT ${limit} OFFSET ${(page - 1) * limit}
+    `,
+  ]);
   const total = totalRows[0]?.total ?? 0;
-
-  const filas = await prisma.$queryRaw`
-    ${BASE_CTE}
-    SELECT
-      c.id, c.inventario_datos, c.negocio_id, c.referencia, c.estado, c."saldoActual", c.negocio_datos,
-      COALESCE((
-        SELECT jsonb_agg(jsonb_build_object('id', comp.id, 'nombre', comp.nombre, 'nroId', comp."nroId", 'porcentaje', comp.porcentaje, 'orden', comp.orden) ORDER BY comp.orden)
-        FROM "NegocioComprador" comp WHERE comp."negocioId" = c.negocio_id
-      ), '[]'::jsonb) AS compradores,
-      (SELECT COUNT(*)::int FROM "NegocioMovimiento" m WHERE m."negocioId" = c.negocio_id) AS "totalMovimientos"
-    FROM combinado c
-    ${filtro}
-    ORDER BY c.inventario_datos->>'Proyecto_Torre' ASC NULLS LAST, c.inventario_datos->>'Project_Code' ASC NULLS LAST
-    LIMIT ${limit} OFFSET ${(page - 1) * limit}
-  `;
 
   const data = filas.map((f) => {
     const info = parseProyectoTorre(f.inventario_datos?.Proyecto_Torre);
@@ -247,6 +248,7 @@ async function resolverNegocioIdDesdeInmueble(inmueble) {
   if (inmueble.datos?.C_digo_inmueble != null) {
     const negocio = await prisma.negocio.findFirst({
       where: { datos: { path: ['Nomenclatura'], equals: String(inmueble.datos.C_digo_inmueble) } },
+      orderBy: { id: 'asc' },
       select: { id: true },
     });
     if (negocio) return negocio.id;

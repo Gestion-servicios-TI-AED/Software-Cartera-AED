@@ -7,9 +7,6 @@ const {
   extraerDatosMovimiento,
 } = require('../services/movPorPropietarioParser');
 const {
-  parseProyectoTorre,
-  formatearProyectoTorre,
-  obtenerEtapaTorre,
   listarNegociosInventario,
   obtenerNegocioPorId,
   obtenerMovimientosPorId,
