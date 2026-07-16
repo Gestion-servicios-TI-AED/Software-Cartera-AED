@@ -1208,6 +1208,7 @@ export default function Negocios() {
   const [frentes, setFrentes] = useState([]);
   const [frentesPorEtapa, setFrentesPorEtapa] = useState({});
   const [torresPorFrente, setTorresPorFrente] = useState({});
+  const [torresPorEtapaFrente, setTorresPorEtapaFrente] = useState({});
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
 
@@ -1236,6 +1237,7 @@ export default function Negocios() {
         if (res.frentes) setFrentes(res.frentes);
         if (res.frentesPorEtapa) setFrentesPorEtapa(res.frentesPorEtapa);
         if (res.torresPorFrente) setTorresPorFrente(res.torresPorFrente);
+        if (res.torresPorEtapaFrente) setTorresPorEtapaFrente(res.torresPorEtapaFrente);
         setPage(p);
       })
       .catch(console.error)
@@ -1280,6 +1282,12 @@ export default function Negocios() {
     if (value && frenteFilter && !(frentesPorEtapa[value] || []).includes(frenteFilter)) {
       setFrenteFilter('');
       setTorreFilter('');
+    } else if (value && frenteFilter && torreFilter && !(torresPorEtapaFrente[`${value}||${frenteFilter}`] || []).includes(torreFilter)) {
+      // El Frente sigue siendo válido en la nueva Etapa, pero la Torre
+      // elegida pertenecía a la otra etapa de ese mismo Frente (ej. Kabo
+      // Torre 3 es Etapa 2; si el usuario estaba en Etapa 2 y vuelve a
+      // Etapa 1, Torre 3 ya no aplica).
+      setTorreFilter('');
     }
   };
 
@@ -1292,7 +1300,9 @@ export default function Negocios() {
   };
 
   const frenteOptions = etapaFilter ? (frentesPorEtapa[etapaFilter] || []) : frentes;
-  const torreOptions = frenteFilter ? (torresPorFrente[frenteFilter] || []) : [];
+  const torreOptions = frenteFilter
+    ? (etapaFilter ? (torresPorEtapaFrente[`${etapaFilter}||${frenteFilter}`] || []) : (torresPorFrente[frenteFilter] || []))
+    : [];
   const isEmpty = !loading && pagination?.total === 0 && !hasFilters;
 
   // ── Resizable sidebar ──────────────────────────────────────────────────────

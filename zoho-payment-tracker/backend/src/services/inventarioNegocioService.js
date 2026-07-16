@@ -53,6 +53,7 @@ async function valoresProyectoTorre() {
   const porFrenteTorre = new Map();
   const frentesPorEtapaSet = new Map();
   const torresPorFrenteSet = new Map();
+  const torresPorEtapaFrenteSet = new Map();
 
   for (const { v } of rows) {
     const et = obtenerEtapaTorre(v);
@@ -74,6 +75,14 @@ async function valoresProyectoTorre() {
 
     if (!torresPorFrenteSet.has(info.proyecto)) torresPorFrenteSet.set(info.proyecto, new Set());
     torresPorFrenteSet.get(info.proyecto).add(info.torre);
+
+    // Igual que torresPorFrenteSet, pero acotado a la Etapa de esta fila —
+    // necesario porque un mismo Frente reparte sus torres entre dos etapas
+    // (ej. Kabo 1/2 -> Etapa 1, Kabo 3/4 -> Etapa 2), así que el filtro de
+    // Torre debe respetar la Etapa activa cuando también hay una elegida.
+    const claveEtapaFrente = `${et}||${info.proyecto}`;
+    if (!torresPorEtapaFrenteSet.has(claveEtapaFrente)) torresPorEtapaFrenteSet.set(claveEtapaFrente, new Set());
+    torresPorEtapaFrenteSet.get(claveEtapaFrente).add(info.torre);
   }
 
   const frentesPorEtapa = {};
@@ -82,7 +91,10 @@ async function valoresProyectoTorre() {
   const torresPorFrente = {};
   for (const [fr, set] of torresPorFrenteSet) torresPorFrente[fr] = [...set].sort((a, b) => Number(a) - Number(b));
 
-  return { porEtapa, porFrente, porFrenteTorre, frentesPorEtapa, torresPorFrente };
+  const torresPorEtapaFrente = {};
+  for (const [key, set] of torresPorEtapaFrenteSet) torresPorEtapaFrente[key] = [...set].sort((a, b) => Number(a) - Number(b));
+
+  return { porEtapa, porFrente, porFrenteTorre, frentesPorEtapa, torresPorFrente, torresPorEtapaFrente };
 }
 
 // CTE compartida entre la consulta de datos y la de conteo: une todos los
@@ -233,6 +245,7 @@ async function listarNegociosInventario({ search, estado, etapa, frente, torre, 
     frentesDisponibles: [...valores.porFrente.keys()].sort(),
     frentesPorEtapa: valores.frentesPorEtapa,
     torresPorFrente: valores.torresPorFrente,
+    torresPorEtapaFrente: valores.torresPorEtapaFrente,
   };
 }
 

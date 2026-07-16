@@ -273,7 +273,7 @@ router.get('/', async (req, res) => {
     const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
     const noFilters = !search && !estado && !etapa && !frente && !torre;
 
-    const [{ data, total, etapasDisponibles, frentesDisponibles, frentesPorEtapa, torresPorFrente }, estadosRaw] = await Promise.all([
+    const [{ data, total, etapasDisponibles, frentesDisponibles, frentesPorEtapa, torresPorFrente, torresPorEtapaFrente }, estadosRaw] = await Promise.all([
       listarNegociosInventario({ search, estado, etapa, frente, torre, saldoPendiente, page: pageNum, limit: limitNum }),
       noFilters
         ? prisma.negocio.findMany({
@@ -294,7 +294,7 @@ router.get('/', async (req, res) => {
         totalPages: Math.ceil(total / limitNum),
       },
       ...(estadosRaw ? { estados: estadosRaw.map((e) => e.estado).filter(Boolean) } : {}),
-      ...(noFilters ? { etapas: etapasDisponibles, frentes: frentesDisponibles, frentesPorEtapa, torresPorFrente } : {}),
+      ...(noFilters ? { etapas: etapasDisponibles, frentes: frentesDisponibles, frentesPorEtapa, torresPorFrente, torresPorEtapaFrente } : {}),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
