@@ -1,7 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const { PrismaClient, Prisma } = require('@prisma/client');
-const { syncOpportunitiesFromZoho, ESTADOS_SIEMPRE_INCLUIDOS } = require('../services/zohoSync');
+const { syncOpportunitiesFromZoho } = require('../services/zohoSync');
 const { getAccessToken } = require('../services/zohoAuth');
 const zohoConfig = require('../config/zoho');
 
@@ -16,34 +16,22 @@ router.get('/', async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const skip = (pageNum - 1) * limitNum;
 
-    // Mostrar registros con fecha de Pago Separación, o que estén en uno de
-    // los estados de vinculación/fiducia que siempre se muestran sin
-    // importar el Pago Separación (mismo criterio que el sync -- ver
-    // ESTADOS_SIEMPRE_INCLUIDOS en zohoSync.js).
-    const condiciones = [
-      {
-        OR: [
-          { pagoSeparacion: { not: null } },
-          { stage: { in: ESTADOS_SIEMPRE_INCLUIDOS } },
-        ],
-      },
-    ];
+    // Mostrar solo registros con fecha de Pago Separación
+    const where = {
+      pagoSeparacion: { not: null },
+    };
 
     if (stage) {
-      condiciones.push({ stage });
+      where.stage = stage;
     }
 
     if (search) {
-      condiciones.push({
-        OR: [
-          { dealName: { contains: search, mode: 'insensitive' } },
-          { referenciaRecaudo: { contains: search, mode: 'insensitive' } },
-          { contactName: { contains: search, mode: 'insensitive' } },
-        ],
-      });
+      where.OR = [
+        { dealName: { contains: search, mode: 'insensitive' } },
+        { referenciaRecaudo: { contains: search, mode: 'insensitive' } },
+        { contactName: { contains: search, mode: 'insensitive' } },
+      ];
     }
-
-    const where = { AND: condiciones };
 
     const [total, records] = await Promise.all([
       prisma.opportunity.count({ where }),
