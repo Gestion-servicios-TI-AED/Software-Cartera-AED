@@ -84,6 +84,35 @@ async function syncFieldMetadata() {
 // Tipos que NO se pueden traer en el GET masivo
 const EXCLUDED_TYPES = ['subform', 'fileupload', 'ownerlookup', 'formula'];
 
+// Estados (Stage de Zoho) que se sincronizan y muestran SIEMPRE, tengan o no
+// Pago Separación diligenciado -- son las etapas de vinculación/fiducia
+// pedidas explícitamente, independientes de si ya hay pago de separación.
+const ESTADOS_SIEMPRE_INCLUIDOS = [
+  '6 INICIO VINCULACION Y REV CAP CREDITO',
+  '6.1 INFO REGISTRO FIDUCIA INCOMPLETA',
+  '6.2 CANJE',
+  '6.5 AJUSTADO PARA GENERACION PROMESA COMPRAVENTA',
+  '7 BC CONSULTA CIENTES',
+  '7.3 REVISION Y APROB ANEXOS TRAMITES (CONTRATO DE VINCULACION O PROMESA DE COMPRAVENTA)',
+  '7.5 BC ACTUALIZACION DE DATOS',
+  '8.3 REVISIÓN CONTRATOS FIDUCIA TRÁMITES',
+  '9BC DOCUMENTOS EN FIRMA DEL CLIENTE',
+  '9.1 ISSUE FIRMA CLIENTE',
+  '9.1BC GENERACION Y FIRMA OTRO SI',
+  '11BC CARGUE DOCUMENTOS A PORTAL BANCOLOMBIA SALA DE VENTAS',
+  '12 CLIENTE CON TRAJETA Y DOCS',
+  '12BC VINCULACION A FIDUCIA EXITOSA',
+  '12.1BC SUCESION',
+];
+
+// Zoho no es consistente con los espacios dentro de los labels de Stage (ej.
+// "PROMESA  COMPRAVENTA" con doble espacio en algunos registros) -- se
+// normaliza a un solo espacio de ambos lados antes de comparar.
+function normalizarEstado(s) {
+  return String(s || '').trim().replace(/\s+/g, ' ');
+}
+const ESTADOS_SIEMPRE_INCLUIDOS_NORM = new Set(ESTADOS_SIEMPRE_INCLUIDOS.map(normalizarEstado));
+
 function isInmuebleField(f) {
   const name = (f.api_name || '').toLowerCase();
   const label = (f.field_label || '').toLowerCase();
@@ -273,7 +302,10 @@ function mapDeal(deal, {
   return {
     zohoId: deal.id,
     dealName: deal.Deal_Name || 'Sin nombre',
-    stage: deal.Stage || null,
+    // Zoho no es consistente con los espacios dentro de los labels de Stage
+    // (ver ESTADOS_SIEMPRE_INCLUIDOS) -- se normaliza al guardar para que el
+    // filtro por estado del listado de Oportunidades siempre calce.
+    stage: deal.Stage ? normalizarEstado(deal.Stage) : null,
     contactName: typeof deal.Contact_Name === 'object' ? deal.Contact_Name?.name : deal.Contact_Name || null,
     contactEmail: contactInfo.Email || contactInfo.email || null,
     contactPhone: contactInfo.Phone || contactInfo.phone || contactInfo.Mobile || null,
@@ -342,12 +374,15 @@ async function syncOpportunitiesFromZoho(force = false) {
 
     const allDeals = await fetchAllDeals(fieldsList, modifiedSince);
 
-    // Solo procesar deals que tengan Pago Separación — ignorar el resto
+    // Procesar deals que tengan Pago Separación, o que estén en uno de los
+    // estados de vinculación/fiducia que siempre se traen sin importar el
+    // Pago Separación (ver ESTADOS_SIEMPRE_INCLUIDOS más arriba).
     const deals = allDeals.filter((d) => {
       const v = d[pagoSepField.api_name];
-      return v !== null && v !== undefined && v !== '';
+      if (v !== null && v !== undefined && v !== '') return true;
+      return ESTADOS_SIEMPRE_INCLUIDOS_NORM.has(normalizarEstado(d.Stage));
     });
-    console.log(`[sync] Fetched ${allDeals.length} deals total, ${deals.length} con Pago Separación`);
+    console.log(`[sync] Fetched ${allDeals.length} deals total, ${deals.length} incluidos (Pago Separación o estado siempre-incluido)`);
 
     const contactApiNames = fields
       .filter((f) => isContactField(f) && !EXCLUDED_TYPES.includes(f.data_type))
@@ -441,4 +476,4 @@ async function syncOpportunitiesFromZoho(force = false) {
   }
 }
 
-module.exports = { syncOpportunitiesFromZoho, syncFieldMetadata };
+module.exports = { syncOpportunitiesFromZoho, syncFieldMetadata, ESTADOS_SIEMPRE_INCLUIDOS, normalizarEstado };
