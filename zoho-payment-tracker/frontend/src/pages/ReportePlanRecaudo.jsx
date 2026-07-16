@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useReactTable, getCoreRowModel, flexRender, createColumnHelper } from '@tanstack/react-table';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Layers, MapPin, Building, X } from 'lucide-react';
 import { getDashboardRecaudo } from '../utils/api';
 import { formatCOP } from '../utils/format';
 
@@ -65,22 +66,73 @@ export default function ReportePlanRecaudo() {
   const [pagination, setPagination] = useState({ total: 0, page: 1, totalPages: 1 });
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [etapaFilter, setEtapaFilter] = useState('');
+  const [frenteFilter, setFrenteFilter] = useState('');
+  const [torreFilter, setTorreFilter] = useState('');
+  const [etapas, setEtapas] = useState([]);
+  const [frentes, setFrentes] = useState([]);
+  const [frentesPorEtapa, setFrentesPorEtapa] = useState({});
+  const [torresPorFrente, setTorresPorFrente] = useState({});
+  const [torresPorEtapaFrente, setTorresPorEtapaFrente] = useState({});
+  const [totales, setTotales] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await getDashboardRecaudo({ page, limit: 50 });
+      const res = await getDashboardRecaudo({
+        search: search || undefined,
+        etapa: etapaFilter || undefined,
+        frente: frenteFilter || undefined,
+        torre: torreFilter || undefined,
+        page,
+        limit: 50,
+      });
       setFilas(res.data);
       setMeses(res.meses);
       setPagination(res.pagination);
+      setEtapas(res.etapasDisponibles);
+      setFrentes(res.frentesDisponibles);
+      setFrentesPorEtapa(res.frentesPorEtapa);
+      setTorresPorFrente(res.torresPorFrente);
+      setTorresPorEtapaFrente(res.torresPorEtapaFrente);
+      setTotales(res.totales);
     } catch (err) {
       console.error('Error cargando dashboard:', err);
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [search, etapaFilter, frenteFilter, torreFilter, page]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Volver a página 1 cuando cambian los filtros
+  useEffect(() => { setPage(1); }, [search, etapaFilter, frenteFilter, torreFilter]);
+
+  // Cambiar Etapa limpia el Frente elegido solo si ya no pertenece a la
+  // nueva etapa (y Torre se limpia con él); cambiar Frente siempre limpia
+  // Torre -- mismo criterio de cascada ya usado en Negocios.jsx.
+  const handleEtapaChange = (value) => {
+    setEtapaFilter(value);
+    if (value && frenteFilter && !(frentesPorEtapa[value] || []).includes(frenteFilter)) {
+      setFrenteFilter('');
+      setTorreFilter('');
+    } else if (value && frenteFilter && torreFilter && !(torresPorEtapaFrente[`${value}||${frenteFilter}`] || []).includes(torreFilter)) {
+      setTorreFilter('');
+    }
+  };
+
+  const handleFrenteChange = (value) => {
+    setFrenteFilter(value);
+    setTorreFilter('');
+  };
+
+  const frenteOptions = etapaFilter ? (frentesPorEtapa[etapaFilter] || []) : frentes;
+  const torreOptions = frenteFilter
+    ? (etapaFilter ? (torresPorEtapaFrente[`${etapaFilter}||${frenteFilter}`] || []) : (torresPorFrente[frenteFilter] || []))
+    : [];
+  const hasFilters = search || etapaFilter || frenteFilter || torreFilter;
+  const clearFilters = () => { setSearch(''); setEtapaFilter(''); setFrenteFilter(''); setTorreFilter(''); };
 
   const columns = useMemo(() => [...COLUMNAS_FIJAS, ...construirColumnasMeses(meses)], [meses]);
 
@@ -95,6 +147,51 @@ export default function ReportePlanRecaudo() {
   return (
     <div className="p-5 flex flex-col gap-3">
       <h1 className="text-[19px] font-bold text-slate-800">Dashboard: Plan de pagos vs. Recaudo</h1>
+
+      <div className="flex flex-wrap items-end gap-2.5">
+        <div className="field">
+          <label className="field-label"><Search size={13} className="text-brand" />Buscar</label>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Nomenclatura o Proyecto/Torre…"
+            className="input text-[14px] h-8 py-0 w-56"
+          />
+        </div>
+        {etapas.length > 0 && (
+          <div className="field">
+            <label className="field-label"><Layers size={13} className="text-[#7c3aed]" />Etapa</label>
+            <select value={etapaFilter} onChange={(e) => handleEtapaChange(e.target.value)} className="input text-[14px] h-8 py-0 pr-2 leading-none">
+              <option value="">Todas las etapas</option>
+              {etapas.map((et) => <option key={et} value={et}>Etapa {et}</option>)}
+            </select>
+          </div>
+        )}
+        {frentes.length > 0 && (
+          <div className="field">
+            <label className="field-label"><MapPin size={13} className="text-[#7c3aed]" />Frente</label>
+            <select value={frenteFilter} onChange={(e) => handleFrenteChange(e.target.value)} className="input text-[14px] h-8 py-0 pr-2 leading-none">
+              <option value="">Todos los frentes</option>
+              {frenteOptions.map((fr) => <option key={fr} value={fr}>{fr}</option>)}
+            </select>
+          </div>
+        )}
+        {frenteFilter && torreOptions.length > 0 && (
+          <div className="field">
+            <label className="field-label"><Building size={13} className="text-[#7c3aed]" />Torre</label>
+            <select value={torreFilter} onChange={(e) => setTorreFilter(e.target.value)} className="input text-[14px] h-8 py-0 pr-2 leading-none">
+              <option value="">Todas las torres</option>
+              {torreOptions.map((tr) => <option key={tr} value={tr}>Torre {tr}</option>)}
+            </select>
+          </div>
+        )}
+        {hasFilters && (
+          <button onClick={clearFilters} className="text-[13px] text-brand hover:text-brand-strong font-medium flex items-center gap-1 h-8">
+            <X size={11} /> Limpiar filtros
+          </button>
+        )}
+      </div>
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
@@ -131,6 +228,23 @@ export default function ReportePlanRecaudo() {
                 ))
               )}
             </tbody>
+            {meses.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-aed-border bg-aed-base font-semibold">
+                  <td colSpan={COLUMNAS_FIJAS.length} className="px-3 py-2 text-[13px] text-slate-600">Total del portafolio filtrado</td>
+                  {meses.map((mes) => (
+                    <Fragment key={mes}>
+                      <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px]">
+                        {formatCOP(totales[mes]?.esperado ?? 0)}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-emerald-700">
+                        {formatCOP(totales[mes]?.recaudado ?? 0)}
+                      </td>
+                    </Fragment>
+                  ))}
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
 
