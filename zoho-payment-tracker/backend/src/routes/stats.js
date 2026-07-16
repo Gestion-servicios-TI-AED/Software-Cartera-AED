@@ -1,6 +1,7 @@
 // zoho-payment-tracker/backend/src/routes/stats.js
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const { ESTADOS_SIEMPRE_INCLUIDOS } = require('../services/zohoSync');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -86,10 +87,14 @@ router.get('/recaudo-mensual', async (_req, res) => {
 // GET /api/stats/pipeline — oportunidades por stage
 router.get('/pipeline', async (_req, res) => {
   try {
+    // Mismo criterio que el listado de Oportunidades (GET /api/opportunities)
+    // -- si no, el pipeline muestra estados que ya no aparecen en el módulo
+    // (DESISTIDO, BACKOUT, etc.), quedan huérfanos de un sync anterior.
     const rows = await prisma.$queryRaw`
-      SELECT COALESCE(stage, 'Sin etapa') AS stage,
+      SELECT stage,
              COUNT(*)::int AS count
       FROM "Opportunity"
+      WHERE stage = ANY(${ESTADOS_SIEMPRE_INCLUIDOS}::text[])
       GROUP BY stage
       ORDER BY count DESC
     `;
