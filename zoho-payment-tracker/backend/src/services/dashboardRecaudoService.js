@@ -144,30 +144,51 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
     const oportunidad = negocio ? oportunidadPorReferencia.get(negocio.referencia) ?? null : null;
 
     const porMes = {};
+    let valorInmueble = null;
+    let fechaSaldoContraentrega = null;
+    let valorSaldoContraentrega = null;
+    let totalAbonado = null;
     if (oportunidad) {
       const planRows = oportunidad.formaPago?.length ? oportunidad.formaPago : (oportunidad.propuestaPago || []);
       const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos);
       const pagos = normalizarPagos(movimientosPorNegocioId.get(negocio.id) || []);
-      const { cuotas } = conciliar(cuotasPlan, pagos);
-      for (const c of cuotas) {
-        if (!c.fechaEstimada) continue;
-        const mes = mesKey(c.fechaEstimada);
+      const { cuotas, resumen } = conciliar(cuotasPlan, pagos);
+      // Valor del inmueble = total del plan de pagos (suma de todas las
+      // cuotas), la misma variable que usa la conciliación en Negocios.jsx.
+      valorInmueble = resumen.totalPlan;
+      // Saldo contra entrega = última cuota del plan (mismo criterio que
+      // ConciliacionSection en Negocios.jsx / resumen.saldoContraentrega).
+      fechaSaldoContraentrega = resumen.saldoContraentrega?.fechaEstimada ?? null;
+      valorSaldoContraentrega = resumen.saldoContraentrega?.valorPlan ?? null;
+      totalAbonado = resumen.totalPagado;
+
+      const sumar = (mes, campo, valor) => {
         mesesSet.add(mes);
         if (!porMes[mes]) porMes[mes] = { esperado: 0, recaudado: 0 };
-        porMes[mes].esperado += c.valorPlan;
-        porMes[mes].recaudado += c.cubierto;
+        porMes[mes][campo] += valor;
 
         if (!totalesPorMes.has(mes)) totalesPorMes.set(mes, { esperado: 0, recaudado: 0 });
-        const t = totalesPorMes.get(mes);
-        t.esperado += c.valorPlan;
-        t.recaudado += c.cubierto;
+        totalesPorMes.get(mes)[campo] += valor;
 
         if (etapa != null) {
           if (!totalesPorEtapa.has(etapa)) totalesPorEtapa.set(etapa, { esperado: 0, recaudado: 0 });
-          const te = totalesPorEtapa.get(etapa);
-          te.esperado += c.valorPlan;
-          te.recaudado += c.cubierto;
+          totalesPorEtapa.get(etapa)[campo] += valor;
         }
+      };
+
+      // Esperado: por mes de cada cuota del plan (sin cambios).
+      for (const c of cuotas) {
+        if (!c.fechaEstimada) continue;
+        sumar(mesKey(c.fechaEstimada), 'esperado', c.valorPlan);
+      }
+
+      // Recaudado: por mes real de cada movimiento -- a diferencia de la
+      // cascada de conciliar() (donde el sobrante de un pago se corre a la
+      // siguiente cuota), aquí lo que entró en un mes se cuenta completo en
+      // ese mes, sin repartirlo hacia el mes de la cuota que termine cubriendo.
+      for (const p of pagos) {
+        if (!p.fecha) continue;
+        sumar(mesKey(p.fecha), 'recaudado', p.valor);
       }
     }
 
@@ -177,6 +198,10 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
       frente: info ? info.proyecto : null,
       torre: info ? info.torre : null,
       nomenclatura: inv.datos?.Project_Code ?? null,
+      valorInmueble,
+      fechaSaldoContraentrega,
+      valorSaldoContraentrega,
+      totalAbonado,
       porMes,
     };
   });
