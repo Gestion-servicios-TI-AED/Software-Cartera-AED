@@ -2,6 +2,7 @@ const axios = require('axios');
 const { getAccessToken } = require('./zohoAuth');
 const config = require('../config/zoho');
 const { PrismaClient } = require('@prisma/client');
+const { runSubformsBackfill } = require('./subformsBackfillService');
 
 const prisma = new PrismaClient();
 
@@ -365,9 +366,19 @@ async function syncOpportunitiesFromZoho(force = false) {
       await Promise.all(
         batch.map((deal) => {
           const data = mapDeal(deal, fieldMap);
+          // El GET masivo de Deals no trae subforms (Forma_de_Pago/Propuesta_de_Pago
+          // vienen null aquí siempre -- ver buildFieldsList), así que en un update
+          // NO se deben incluir: sobrescribirían con null el plan de pagos que el
+          // backfill de /:id/subforms ya haya cacheado. En create sí se guardan
+          // (aunque sean null) para dejar el registro en el estado esperado por
+          // ese backfill (Prisma.JsonNull pendiente de completar).
+          const { formaPago, propuestaPago, ...dataSinSubforms } = data;
+          const updateData = { ...dataSinSubforms };
+          if (formaPago != null) updateData.formaPago = formaPago;
+          if (propuestaPago != null) updateData.propuestaPago = propuestaPago;
           return prisma.opportunity.upsert({
             where: { zohoId: deal.id },
-            update: { ...data },
+            update: updateData,
             create: { ...data },
           });
         })
@@ -430,6 +441,16 @@ async function syncOpportunitiesFromZoho(force = false) {
     });
 
     console.log(`[sync] Done. ${saved} records synced.`);
+
+    // Disparar en segundo plano el backfill de subforms (plan de pagos) --
+    // el sync masivo nunca los trae, así que cualquier Opportunity nueva o
+    // recién enlazada a un plan de pagos se queda sin formaPago/propuestaPago
+    // hasta que esto corra. No se espera (no debe bloquear la respuesta del
+    // sync); runSubformsBackfill() ya evita solaparse si hay uno corriendo.
+    runSubformsBackfill().catch((err) =>
+      console.error('[sync] Error en backfill de subforms automático:', err.message)
+    );
+
     return { success: true, recordsSync: saved };
   } catch (err) {
     console.error('[sync] Error:', err.message);

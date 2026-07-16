@@ -66,13 +66,19 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
-// Sincronización Zoho CRM — cada hora
-cron.schedule('0 * * * *', () => {
-  console.log('[cron] Ejecutando sincronización horaria Zoho...');
-  syncOpportunitiesFromZoho().catch((err) =>
-    console.error('[cron] Error Zoho sync:', err.message)
-  );
-});
+// Sincronización Zoho CRM — cada hora. DISABLE_CRON=true la desactiva --
+// necesario cuando este proceso apunta a una base de datos que ya tiene
+// otro servidor corriendo el mismo cron (evita sync duplicado/concurrente).
+if (process.env.DISABLE_CRON === 'true') {
+  console.log('[cron] Desactivado (DISABLE_CRON=true)');
+} else {
+  cron.schedule('0 * * * *', () => {
+    console.log('[cron] Ejecutando sincronización horaria Zoho...');
+    syncOpportunitiesFromZoho().catch((err) =>
+      console.error('[cron] Error Zoho sync:', err.message)
+    );
+  });
+}
 
 async function startServer() {
   try {
