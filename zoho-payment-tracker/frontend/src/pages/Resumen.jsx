@@ -4,15 +4,16 @@ import {
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import HelpTip from '../components/HelpTip';
-import RecaudoChart from '../components/stats/RecaudoChart';
+import PlanVsRecaudoLineChart from '../components/stats/PlanVsRecaudoLineChart';
+import EtapaRecaudoBars from '../components/stats/EtapaRecaudoBars';
 import PipelineBars from '../components/stats/PipelineBars';
-import { AvancePorProyecto, Morosidad, EmbudoEstados } from '../components/stats/CarteraWidgets';
+import { AvancePorProyecto, TopMorosos, EmbudoEstados } from '../components/stats/CarteraWidgets';
 import {
   getStatsResumen,
-  getStatsRecaudoMensual,
   getStatsPipeline,
   getStatsSync,
   getStatsCartera,
+  getDashboardRecaudo,
 } from '../utils/api';
 import { formatCOP, formatDateTime } from '../utils/format';
 
@@ -24,19 +25,22 @@ function variacionText(val) {
 
 export default function Resumen() {
   const [resumen, setResumen] = useState(null);
-  const [recaudoMensual, setRecaudoMensual] = useState([]);
   const [pipeline, setPipeline] = useState([]);
   const [syncLogs, setSyncLogs] = useState([]);
   const [cartera, setCartera] = useState(null);
+  const [planRecaudo, setPlanRecaudo] = useState(null);
   const [moraDias, setMoraDias] = useState(30);
 
   useEffect(() => {
     Promise.allSettled([
       getStatsResumen().then(setResumen),
-      getStatsRecaudoMensual().then(setRecaudoMensual),
       getStatsPipeline().then(setPipeline),
       getStatsSync(5).then(setSyncLogs),
       getStatsCartera().then(setCartera),
+      // limit=1: solo interesan meses/totales/totalesPorEtapa (agregados sobre
+      // todo el portafolio sin filtros), no las filas -- el backend ya calcula
+      // los totales sobre el conjunto completo antes de paginar.
+      getDashboardRecaudo({ page: 1, limit: 1 }).then(setPlanRecaudo),
     ]);
   }, []);
 
@@ -92,15 +96,34 @@ export default function Resumen() {
             value={resumen ? formatCOP(resumen.recaudoMes) : '—'}
             sub={variacionText(resumen?.variacionMes) ?? undefined}
           />
-          <KpiCard
-            icon={Clock}
-            iconBg="#fffbeb"
-            iconColor="#d97706"
-            label={`Morosos (+${moraDias} días)`}
-            value={morososActual ?? '—'}
-            sub={c ? 'sin abonar' : undefined}
-            hint={`Negocios con saldo pendiente que no registran abonos en los últimos ${moraDias} días.`}
-          />
+
+          {/* Morosos con umbral seleccionable */}
+          <div className="card p-4 flex flex-col gap-1">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-1" style={{ background: '#fffbeb' }}>
+              <Clock size={16} color="#d97706" strokeWidth={2} />
+            </div>
+            <span className="inline-flex items-center gap-1 text-[14px] text-slate-500 font-medium">
+              {`Morosos (+${moraDias} días)`}
+              <HelpTip text={`Negocios con saldo pendiente que no registran abonos en los últimos ${moraDias} días.`} />
+            </span>
+            <span className="font-heading text-[25px] font-bold text-ink leading-tight tracking-tight">{morososActual ?? '—'}</span>
+            <div className="flex gap-1 mt-1">
+              {[30, 60, 90].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setMoraDias(d)}
+                  className={`text-[12px] font-medium px-1.5 py-0.5 rounded-md border transition-colors ${
+                    moraDias === d
+                      ? 'bg-brand border-brand text-white'
+                      : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
+                  }`}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+          </div>
+
           <KpiCard
             icon={Briefcase}
             iconBg="#faf5ff"
@@ -112,49 +135,60 @@ export default function Resumen() {
           />
         </div>
 
-        {/* Accionable: avance por proyecto + morosidad */}
+        {/* Prioridad de gestión: top morosos + avance por proyecto */}
         <div className="grid grid-cols-2 gap-4">
+          <div className="card p-4">
+            <h2 className="text-[15px] font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+              <AlertTriangle size={14} className="text-red-500" /> Top 10 morosos — prioridad de gestión
+              <HelpTip text="Los 10 negocios más urgentes a gestionar: primero los que nunca abonaron o llevan más días sin hacerlo, y en empate, el mayor monto pendiente." />
+            </h2>
+            <TopMorosos negocios={cartera?.enCobro ?? []} />
+          </div>
           <div className="card p-4">
             <h2 className="text-[15px] font-semibold text-slate-700 mb-3">Avance de recaudo por proyecto</h2>
             <AvancePorProyecto data={cartera?.porProyecto ?? []} />
           </div>
-          <div className="card p-4">
-            <h2 className="text-[15px] font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
-              <AlertTriangle size={14} className="text-amber-500" /> Morosidad — requieren gestión
-            </h2>
-            <Morosidad negocios={cartera?.enCobro ?? []} dias={moraDias} onDiasChange={setMoraDias} />
-          </div>
         </div>
 
-        {/* Tendencia recaudo */}
+        {/* Tendencia: plan de pagos vs. recaudo real, mes a mes */}
         <div className="card p-4">
-          <div className="flex items-baseline justify-between mb-3">
-            <h2 className="text-[15px] font-semibold text-slate-700">Recaudo mensual — últimos 12 meses</h2>
+          <div className="flex items-baseline justify-between mb-1 flex-wrap gap-2">
+            <h2 className="text-[15px] font-semibold text-slate-700 flex items-center gap-1.5">
+              Plan de pagos vs. Recaudo — tendencia mensual
+              <HelpTip text="Compara, mes a mes y para todo el portafolio, cuánto se esperaba recaudar según el plan de pagos de cada negocio contra lo efectivamente recaudado. Incluye meses futuros del plan, por eso lo recaudado cae por debajo de lo esperado en los meses que aún no vencen." />
+            </h2>
             {resumen && (
               <span className="text-[13px] text-slate-500 inline-flex items-center gap-1 flex-wrap">
                 Recaudado en el año
-                <HelpTip text="Total de abonos recibidos desde el 1 de enero hasta hoy (acumulado del año en curso)." />
                 <b className="text-slate-600">{formatCOP(resumen.recaudoAnio)}</b>
                 <span className="mx-1">·</span>
                 Separaciones este mes
-                <HelpTip text="Cantidad de negocios cuyo pago de separación (la reserva inicial) ocurrió en el mes actual." />
                 <b className="text-slate-600">{resumen.separacionesMes}</b>
               </span>
             )}
           </div>
-          <RecaudoChart data={recaudoMensual} />
+          <PlanVsRecaudoLineChart meses={planRecaudo?.meses ?? []} totales={planRecaudo?.totales ?? {}} />
         </div>
 
-        {/* Distribución */}
+        {/* Distribución por etapa: constructiva y CRM */}
         <div className="grid grid-cols-2 gap-4">
           <div className="card p-4">
-            <h2 className="text-[15px] font-semibold text-slate-700 mb-3">Negocios por estado</h2>
-            <EmbudoEstados data={cartera?.estados ?? []} />
+            <h2 className="text-[15px] font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+              Recaudo por Etapa del proyecto
+              <HelpTip text="Esperado vs. recaudado del plan de pagos, agrupado por Etapa constructiva (1, 2, 3…) — no confundir con la Etapa/Stage de Zoho del panel de la derecha." />
+            </h2>
+            <EtapaRecaudoBars totalesPorEtapa={planRecaudo?.totalesPorEtapa ?? {}} />
           </div>
           <div className="card p-4">
             <h2 className="text-[15px] font-semibold text-slate-700 mb-3">Pipeline por etapa (Zoho)</h2>
             <PipelineBars data={pipeline} />
           </div>
+        </div>
+
+        {/* Negocios por estado */}
+        <div className="card p-4">
+          <h2 className="text-[15px] font-semibold text-slate-700 mb-3">Negocios por estado</h2>
+          <EmbudoEstados data={cartera?.estados ?? []} />
         </div>
 
         {/* Footer sync */}

@@ -136,8 +136,10 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
 
   const mesesSet = new Set();
   const totalesPorMes = new Map();
+  const totalesPorEtapa = new Map();
   const filasCompletas = inmueblesEnAlcance.map((inv) => {
     const info = parseProyectoTorre(inv.datos?.Proyecto_Torre);
+    const etapa = info ? obtenerEtapaTorre(inv.datos.Proyecto_Torre) : null;
     const negocio = negocioPorInmuebleId.get(inv.id) ?? null;
     const oportunidad = negocio ? oportunidadPorReferencia.get(negocio.referencia) ?? null : null;
 
@@ -159,12 +161,19 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
         const t = totalesPorMes.get(mes);
         t.esperado += c.valorPlan;
         t.recaudado += c.cubierto;
+
+        if (etapa != null) {
+          if (!totalesPorEtapa.has(etapa)) totalesPorEtapa.set(etapa, { esperado: 0, recaudado: 0 });
+          const te = totalesPorEtapa.get(etapa);
+          te.esperado += c.valorPlan;
+          te.recaudado += c.cubierto;
+        }
       }
     }
 
     return {
       id: inv.id,
-      etapa: info ? obtenerEtapaTorre(inv.datos.Proyecto_Torre) : null,
+      etapa,
       frente: info ? info.proyecto : null,
       torre: info ? info.torre : null,
       nomenclatura: inv.datos?.Project_Code ?? null,
@@ -174,6 +183,8 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
 
   const meses = [...mesesSet].sort();
   const totales = Object.fromEntries(meses.map((m) => [m, totalesPorMes.get(m)]));
+  const etapasOrdenadas = [...totalesPorEtapa.keys()].sort((a, b) => Number(a) - Number(b));
+  const totalesEtapa = Object.fromEntries(etapasOrdenadas.map((e) => [e, totalesPorEtapa.get(e)]));
 
   const total = filasCompletas.length;
   const pageNum = Math.max(1, page);
@@ -184,6 +195,7 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
     data,
     meses,
     totales,
+    totalesPorEtapa: totalesEtapa,
     pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
     etapasDisponibles: [...valores.porEtapa.keys()].sort((a, b) => Number(a) - Number(b)),
     frentesDisponibles: [...valores.porFrente.keys()].sort(),

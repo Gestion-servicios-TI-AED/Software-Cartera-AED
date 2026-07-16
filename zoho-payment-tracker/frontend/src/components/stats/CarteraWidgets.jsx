@@ -1,4 +1,4 @@
-import { formatCOP, formatDate } from '../../utils/format';
+import { formatCOP } from '../../utils/format';
 import { descripcionProyecto } from '../../utils/proyectos';
 
 function shortFideicomiso(raw) {
@@ -62,79 +62,53 @@ export function AvancePorProyecto({ data }) {
   );
 }
 
-// ── Morosidad: negocios con saldo por cobrar y sin abono reciente ────────────
-export function Morosidad({ negocios, dias, onDiasChange }) {
-  const filtrados = (negocios || [])
-    .filter((n) => n.porCobrar > 0 && (n.diasSinAbonar === null || n.diasSinAbonar >= dias))
+// Color de fondo/texto del chip de ranking según posición.
+function rankColor(i) {
+  if (i === 0) return 'bg-red-600 text-white';
+  if (i === 1) return 'bg-red-500 text-white';
+  if (i === 2) return 'bg-amber-500 text-white';
+  return 'bg-slate-100 text-slate-600';
+}
+
+// ── Top 10 morosos: los negocios más urgentes a gestionar, ordenados por
+// más días sin abonar (nunca-abonó primero) y, en empate, por mayor monto
+// pendiente. Vista fija de 10 -- no es una lista filtrable, es el ranking
+// ejecutivo de a quién llamar primero.
+export function TopMorosos({ negocios }) {
+  const top = (negocios || [])
+    .filter((n) => n.porCobrar > 0)
     .sort((a, b) => {
-      // Nunca abonó primero, luego por más días, y a igualdad por mayor monto.
       const da = a.diasSinAbonar === null ? Infinity : a.diasSinAbonar;
       const db = b.diasSinAbonar === null ? Infinity : b.diasSinAbonar;
       return db - da || b.porCobrar - a.porCobrar;
-    });
+    })
+    .slice(0, 10);
+
+  if (top.length === 0) {
+    return <p className="text-[16px] text-slate-500">Sin morosos 🎉</p>;
+  }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <span className="text-[13px] text-slate-500">
-          {filtrados.length} negocio{filtrados.length !== 1 ? 's' : ''} sin abonar hace +{dias} días
-        </span>
-        <div className="flex gap-1">
-          {[30, 60, 90].map((d) => (
-            <button
-              key={d}
-              onClick={() => onDiasChange(d)}
-              className={`text-[13px] font-medium px-2 py-0.5 rounded-md border transition-colors ${
-                dias === d
-                  ? 'bg-brand border-brand text-white'
-                  : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
-              }`}
-            >
-              {d}d
-            </button>
-          ))}
+    <div className="flex flex-col gap-1">
+      {top.map((n, i) => (
+        <div key={n.referencia} className="flex items-center gap-3 py-1.5 border-b border-slate-50 last:border-0">
+          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold flex-shrink-0 ${rankColor(i)}`}>
+            {i + 1}
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[14px] text-slate-700 truncate" title={n.nombre}>{n.nombre}</p>
+            <p className="text-[12px] text-slate-500 truncate">
+              {shortFideicomiso(n.fideicomiso)}{n.nomenclatura ? ` · ${n.nomenclatura}` : ''}
+            </p>
+          </div>
+          <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap ${moraColor(n.diasSinAbonar)}`}>
+            {n.diasSinAbonar === null ? 'Nunca abonó' : `${n.diasSinAbonar}d`}
+          </span>
+          <span className="text-[14px] font-semibold text-slate-800 tabular-nums whitespace-nowrap flex-shrink-0 w-28 text-right">
+            {formatCOP(n.porCobrar)}
+          </span>
         </div>
-      </div>
-
-      {filtrados.length === 0 ? (
-        <p className="text-[16px] text-slate-500">Sin morosos en este rango 🎉</p>
-      ) : (
-        <div className="max-h-[340px] overflow-y-auto -mx-1 px-1">
-          <table className="w-full text-[14px]">
-            <thead className="sticky top-0 bg-white">
-              <tr className="text-slate-500 border-b border-slate-100">
-                <th className="text-left py-1.5 font-medium">Comprador</th>
-                <th className="text-left py-1.5 font-medium">Último abono</th>
-                <th className="text-right py-1.5 font-medium">Días</th>
-                <th className="text-right py-1.5 font-medium">Por cobrar</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrados.map((n) => (
-                <tr key={n.referencia} className="border-b border-slate-50 hover:bg-slate-50">
-                  <td className="py-1.5 max-w-[180px]">
-                    <p className="text-slate-700 truncate" title={n.nombre}>{n.nombre}</p>
-                    <p className="text-[12px] text-slate-500 truncate">
-                      {shortFideicomiso(n.fideicomiso)}{n.nomenclatura ? ` · ${n.nomenclatura}` : ''}
-                    </p>
-                  </td>
-                  <td className="py-1.5 text-slate-500 whitespace-nowrap">
-                    {n.ultimoAbono ? formatDate(n.ultimoAbono) : <span className="text-red-400 italic">Nunca</span>}
-                  </td>
-                  <td className="py-1.5 text-right">
-                    <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded-full ${moraColor(n.diasSinAbonar)}`}>
-                      {n.diasSinAbonar === null ? '—' : n.diasSinAbonar}
-                    </span>
-                  </td>
-                  <td className="py-1.5 text-right font-semibold text-slate-800 tabular-nums whitespace-nowrap">
-                    {formatCOP(n.porCobrar)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      ))}
     </div>
   );
 }

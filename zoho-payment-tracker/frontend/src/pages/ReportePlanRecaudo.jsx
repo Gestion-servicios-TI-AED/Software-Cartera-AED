@@ -24,6 +24,23 @@ function formatMesLabel(mes) {
   return etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1);
 }
 
+function claveFila(row) {
+  return row.nomenclatura || `${row.etapa}-${row.frente}-${row.torre}`;
+}
+
+// Ancho de columna en Excel a partir del contenido más largo (encabezado o
+// valores), para que no haya que expandir manualmente al abrir el archivo.
+function calcularAnchoColumnas(filas, headers) {
+  return headers.map((h) => {
+    const maxLen = filas.reduce((max, row) => {
+      const v = row[h];
+      const len = v == null || v === '' ? 0 : String(v).length;
+      return Math.max(max, len);
+    }, h.length);
+    return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
+  });
+}
+
 const COLUMNAS_FIJAS = [
   columnHelper.accessor('etapa', {
     header: 'Etapa',
@@ -87,8 +104,18 @@ export default function ReportePlanRecaudo() {
   const [torresPorFrente, setTorresPorFrente] = useState({});
   const [torresPorEtapaFrente, setTorresPorEtapaFrente] = useState({});
   const [totales, setTotales] = useState({});
+  const [filasResaltadas, setFilasResaltadas] = useState(() => new Set());
 
   const debouncedSearch = useDebounce(search);
+
+  const toggleResaltado = (clave) => {
+    setFilasResaltadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(clave)) next.delete(clave);
+      else next.add(clave);
+      return next;
+    });
+  };
 
   const load = useCallback(async (p) => {
     setLoading(true);
@@ -152,6 +179,18 @@ export default function ReportePlanRecaudo() {
 
   const columns = useMemo(() => [...COLUMNAS_FIJAS, ...construirColumnasMeses(meses)], [meses]);
 
+  // Mapea el id de cada columna de mes (grupo y sus dos hijas) al indice del
+  // mes dentro de `meses`, para poder alternar el contraste de fondo mes a mes.
+  const mesIndexPorColumna = useMemo(() => {
+    const map = {};
+    meses.forEach((mes, i) => {
+      map[`mes-${mes}`] = i;
+      map[`${mes}-esperado`] = i;
+      map[`${mes}-recaudado`] = i;
+    });
+    return map;
+  }, [meses]);
+
   const [exporting, setExporting] = useState(false);
   const handleExport = useCallback(async () => {
     setExporting(true);
@@ -165,6 +204,10 @@ export default function ReportePlanRecaudo() {
         page: 1,
         limit: 9999,
       });
+      const headers = ['Etapa', 'Frente', 'Torre', 'Nomenclatura'];
+      for (const mes of res.meses) {
+        headers.push(`${mes} Esperado`, `${mes} Recaudado`);
+      }
       const filas = res.data.map((n) => {
         const row = { Etapa: n.etapa ?? '', Frente: n.frente ?? '', Torre: n.torre ?? '', Nomenclatura: n.nomenclatura ?? '' };
         for (const mes of res.meses) {
@@ -173,7 +216,19 @@ export default function ReportePlanRecaudo() {
         }
         return row;
       });
-      const ws = XLSX.utils.json_to_sheet(filas);
+      const ws = XLSX.utils.json_to_sheet(filas, { header: headers });
+      ws['!cols'] = calcularAnchoColumnas(filas, headers);
+
+      // Formato con separador de miles en las columnas de Esperado/Recaudado
+      // (columnas 4 en adelante, 0-indexadas) para que se lean como plata.
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let r = range.s.r + 1; r <= range.e.r; r++) {
+        for (let c = 4; c <= range.e.c; c++) {
+          const cell = ws[XLSX.utils.encode_cell({ r, c })];
+          if (cell && typeof cell.v === 'number') cell.z = '#,##0';
+        }
+      }
+
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Dashboard');
       XLSX.writeFile(wb, `dashboard-plan-vs-recaudo-${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -196,6 +251,14 @@ export default function ReportePlanRecaudo() {
     <div className="p-5 flex flex-col gap-3">
       <div className="flex items-center gap-2">
         <h1 className="text-[19px] font-bold text-slate-800 flex-1">Dashboard: Plan de pagos vs. Recaudo</h1>
+        {filasResaltadas.size > 0 && (
+          <button
+            onClick={() => setFilasResaltadas(new Set())}
+            className="text-[13px] text-brand hover:text-brand-strong font-medium flex items-center gap-1 h-8 px-1"
+          >
+            <X size={11} /> Quitar resaltado ({filasResaltadas.size})
+          </button>
+        )}
         <button
           onClick={handleExport}
           disabled={exporting}
@@ -268,11 +331,22 @@ export default function ReportePlanRecaudo() {
             <thead>
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id} className="border-b border-aed-border bg-aed-base">
-                  {headerGroup.headers.map((header) => (
-                    <th key={header.id} colSpan={header.colSpan} className="section-label px-3 py-2 text-left whitespace-nowrap">
-                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                    </th>
-                  ))}
+                  {headerGroup.headers.map((header) => {
+                    const mesIdx = mesIndexPorColumna[header.column.id];
+                    const esImpar = mesIdx !== undefined && mesIdx % 2 === 1;
+                    const esInicioMes = header.column.id.startsWith('mes-') || header.column.id.endsWith('-esperado');
+                    return (
+                      <th
+                        key={header.id}
+                        colSpan={header.colSpan}
+                        className={`section-label px-3 py-2 text-left whitespace-nowrap ${esImpar ? 'bg-slate-100' : ''} ${
+                          esInicioMes && mesIdx > 0 ? 'border-l border-aed-border' : ''
+                        }`}
+                      >
+                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    );
+                  })}
                 </tr>
               ))}
             </thead>
@@ -286,15 +360,35 @@ export default function ReportePlanRecaudo() {
                   <td colSpan={columns.length} className="px-4 py-12 text-center text-slate-400">Sin resultados.</td>
                 </tr>
               ) : (
-                table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className="border-b border-aed-border">
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-3 py-2 whitespace-nowrap">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                ))
+                table.getRowModel().rows.map((row) => {
+                  const clave = claveFila(row.original);
+                  const resaltada = filasResaltadas.has(clave);
+                  return (
+                    <tr
+                      key={row.id}
+                      onClick={() => toggleResaltado(clave)}
+                      className={`border-b border-aed-border cursor-pointer transition-colors ${
+                        resaltada ? 'bg-amber-100 hover:bg-amber-200' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      {row.getVisibleCells().map((cell) => {
+                        const mesIdx = mesIndexPorColumna[cell.column.id];
+                        const esImpar = mesIdx !== undefined && mesIdx % 2 === 1;
+                        const esInicioMes = cell.column.id.endsWith('-esperado');
+                        return (
+                          <td
+                            key={cell.id}
+                            className={`px-3 py-2 whitespace-nowrap ${!resaltada && esImpar ? 'bg-slate-50' : ''} ${
+                              esInicioMes && mesIdx > 0 ? 'border-l border-aed-border' : ''
+                            }`}
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })
               )}
             </tbody>
             {meses.length > 0 && (
