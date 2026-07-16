@@ -1218,17 +1218,18 @@ export default function Negocios() {
   const [frenteFilter, setFrenteFilter] = useState('');
   const [torreFilter, setTorreFilter] = useState('');
   const [saldoPendiente, setSaldoPendiente] = useState(false);
+  const [conMovimientos, setConMovimientos] = useState(false);
   const [selected, setSelected] = useState(null);
   const [stats, setStats] = useState(null);
 
   const debouncedSearch = useDebounce(search);
   const filtersRef = useRef({});
-  filtersRef.current = { debouncedSearch, estadoFilter, etapaFilter, frenteFilter, torreFilter, saldoPendiente };
+  filtersRef.current = { debouncedSearch, estadoFilter, etapaFilter, frenteFilter, torreFilter, saldoPendiente, conMovimientos };
 
   const fetchList = useCallback((p = 1) => {
-    const { debouncedSearch: s, estadoFilter: e, etapaFilter: et, frenteFilter: fr, torreFilter: tr, saldoPendiente: sp } = filtersRef.current;
+    const { debouncedSearch: s, estadoFilter: e, etapaFilter: et, frenteFilter: fr, torreFilter: tr, saldoPendiente: sp, conMovimientos: cm } = filtersRef.current;
     setLoading(true);
-    getNegocios({ search: s || undefined, estado: e || undefined, etapa: et || undefined, frente: fr || undefined, torre: tr || undefined, saldoPendiente: sp || undefined, page: p, limit: 50 })
+    getNegocios({ search: s || undefined, estado: e || undefined, etapa: et || undefined, frente: fr || undefined, torre: tr || undefined, saldoPendiente: sp || undefined, conMovimientos: cm || undefined, page: p, limit: 50 })
       .then((res) => {
         setNegocios(res.data);
         setPagination(res.pagination);
@@ -1244,7 +1245,7 @@ export default function Negocios() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { fetchList(1); }, [debouncedSearch, estadoFilter, etapaFilter, frenteFilter, torreFilter, saldoPendiente, fetchList]);
+  useEffect(() => { fetchList(1); }, [debouncedSearch, estadoFilter, etapaFilter, frenteFilter, torreFilter, saldoPendiente, conMovimientos, fetchList]);
 
   const loadStats = useCallback(() => {
     getNegociosStats().then(setStats).catch(() => {});
@@ -1256,10 +1257,10 @@ export default function Negocios() {
 
   const [exporting, setExporting] = useState(false);
   const handleExport = useCallback(async (fmt) => {
-    const { debouncedSearch: s, estadoFilter: e, etapaFilter: et, frenteFilter: fr, torreFilter: tr, saldoPendiente: sp } = filtersRef.current;
+    const { debouncedSearch: s, estadoFilter: e, etapaFilter: et, frenteFilter: fr, torreFilter: tr, saldoPendiente: sp, conMovimientos: cm } = filtersRef.current;
     setExporting(true);
     try {
-      const res = await getNegocios({ search: s || undefined, estado: e || undefined, etapa: et || undefined, frente: fr || undefined, torre: tr || undefined, saldoPendiente: sp || undefined, page: 1, limit: 9999 });
+      const res = await getNegocios({ search: s || undefined, estado: e || undefined, etapa: et || undefined, frente: fr || undefined, torre: tr || undefined, saldoPendiente: sp || undefined, conMovimientos: cm || undefined, page: 1, limit: 9999 });
       const date = new Date().toISOString().slice(0, 10);
       const base = `negocios-${date}`;
       if (fmt === 'xlsx') exportExcel(res.data, `${base}.xlsx`);
@@ -1272,8 +1273,8 @@ export default function Negocios() {
     }
   }, []);
 
-  const clearFilters = () => { setSearch(''); setEstadoFilter(''); setEtapaFilter(''); setFrenteFilter(''); setTorreFilter(''); setSaldoPendiente(false); };
-  const hasFilters = search || estadoFilter || etapaFilter || frenteFilter || torreFilter || saldoPendiente;
+  const clearFilters = () => { setSearch(''); setEstadoFilter(''); setEtapaFilter(''); setFrenteFilter(''); setTorreFilter(''); setSaldoPendiente(false); setConMovimientos(false); };
+  const hasFilters = search || estadoFilter || etapaFilter || frenteFilter || torreFilter || saldoPendiente || conMovimientos;
 
   // Cambiar Etapa limpia el Frente elegido solo si ya no pertenece a la
   // nueva etapa (y Torre se limpia con él, porque dependía de ese frente).
@@ -1453,6 +1454,20 @@ export default function Negocios() {
               <Wallet size={13} className={saldoPendiente ? 'text-success' : 'text-slate-500'} />
               Solo con abonos
               <HelpTip text="Muestra únicamente los negocios que ya registran al menos un abono." />
+            </button>
+
+            {/* Con movimientos toggle */}
+            <button
+              onClick={() => setConMovimientos((v) => !v)}
+              className={`w-full h-8 flex items-center gap-2 px-2.5 rounded-md border text-[14px] font-medium transition-colors ${
+                conMovimientos
+                  ? 'bg-success-bg border-success-border text-success'
+                  : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
+              }`}
+            >
+              <History size={13} className={conMovimientos ? 'text-success' : 'text-slate-500'} />
+              Solo con movimientos
+              <HelpTip text="Muestra únicamente los inmuebles/negocios que tienen al menos un movimiento registrado." />
             </button>
 
             {hasFilters && (

@@ -269,13 +269,13 @@ router.get('/backfill/status', (req, res) => {
 // GET /api/negocios?search=&estado=&etapa=&frente=&torre=&saldoPendiente=&page=&limit=
 router.get('/', async (req, res) => {
   try {
-    const { search, estado, etapa, frente, torre, saldoPendiente, page = '1', limit = '50' } = req.query;
+    const { search, estado, etapa, frente, torre, saldoPendiente, conMovimientos, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
     const noFilters = !search && !estado && !etapa && !frente && !torre;
 
     const [{ data, total, etapasDisponibles, frentesDisponibles, frentesPorEtapa, torresPorFrente, torresPorEtapaFrente }, estadosRaw] = await Promise.all([
-      listarNegociosInventario({ search, estado, etapa, frente, torre, saldoPendiente, page: pageNum, limit: limitNum }),
+      listarNegociosInventario({ search, estado, etapa, frente, torre, saldoPendiente, conMovimientos, page: pageNum, limit: limitNum }),
       noFilters
         ? prisma.negocio.findMany({
             select: { estado: true },
@@ -462,13 +462,13 @@ router.get('/stats', async (_req, res) => {
   }
 });
 
-// GET /api/negocios/dashboard-recaudo?search=&etapa=&frente=&torre=&page=&limit=
+// GET /api/negocios/dashboard-recaudo?search=&etapa=&frente=&torre=&conMovimientos=&page=&limit=
 router.get('/dashboard-recaudo', async (req, res) => {
   try {
-    const { search, etapa, frente, torre, page = '1', limit = '50' } = req.query;
+    const { search, etapa, frente, torre, conMovimientos, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
-    const resultado = await obtenerDashboardRecaudo({ search, etapa, frente, torre, page: pageNum, limit: limitNum });
+    const resultado = await obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimientos, page: pageNum, limit: limitNum });
     res.json(resultado);
   } catch (err) {
     res.status(500).json({ error: err.message });

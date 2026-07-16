@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useReactTable, getCoreRowModel, flexRender, createColumnHelper } from '@tanstack/react-table';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Search, Layers, MapPin, Building, X, Download } from 'lucide-react';
+import { Search, Layers, MapPin, Building, X, Download, History } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { getDashboardRecaudo } from '../utils/api';
 import { formatCOP } from '../utils/format';
@@ -80,6 +80,7 @@ export default function ReportePlanRecaudo() {
   const [etapaFilter, setEtapaFilter] = useState('');
   const [frenteFilter, setFrenteFilter] = useState('');
   const [torreFilter, setTorreFilter] = useState('');
+  const [conMovimientos, setConMovimientos] = useState(false);
   const [etapas, setEtapas] = useState([]);
   const [frentes, setFrentes] = useState([]);
   const [frentesPorEtapa, setFrentesPorEtapa] = useState({});
@@ -97,6 +98,7 @@ export default function ReportePlanRecaudo() {
         etapa: etapaFilter || undefined,
         frente: frenteFilter || undefined,
         torre: torreFilter || undefined,
+        conMovimientos: conMovimientos || undefined,
         page: p,
         limit: 50,
       });
@@ -115,7 +117,7 @@ export default function ReportePlanRecaudo() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter]);
+  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter, conMovimientos]);
 
   // Cargar página 1 cuando cambian los filtros (busqueda ya con debounce).
   // load ya no depende de `page` en su lista de dependencias -- por eso
@@ -145,8 +147,8 @@ export default function ReportePlanRecaudo() {
   const torreOptions = frenteFilter
     ? (etapaFilter ? (torresPorEtapaFrente[`${etapaFilter}||${frenteFilter}`] || []) : (torresPorFrente[frenteFilter] || []))
     : [];
-  const hasFilters = search || etapaFilter || frenteFilter || torreFilter;
-  const clearFilters = () => { setSearch(''); setEtapaFilter(''); setFrenteFilter(''); setTorreFilter(''); };
+  const hasFilters = search || etapaFilter || frenteFilter || torreFilter || conMovimientos;
+  const clearFilters = () => { setSearch(''); setEtapaFilter(''); setFrenteFilter(''); setTorreFilter(''); setConMovimientos(false); };
 
   const columns = useMemo(() => [...COLUMNAS_FIJAS, ...construirColumnasMeses(meses)], [meses]);
 
@@ -159,6 +161,7 @@ export default function ReportePlanRecaudo() {
         etapa: etapaFilter || undefined,
         frente: frenteFilter || undefined,
         torre: torreFilter || undefined,
+        conMovimientos: conMovimientos || undefined,
         page: 1,
         limit: 9999,
       });
@@ -179,7 +182,7 @@ export default function ReportePlanRecaudo() {
     } finally {
       setExporting(false);
     }
-  }, [search, etapaFilter, frenteFilter, torreFilter]);
+  }, [search, etapaFilter, frenteFilter, torreFilter, conMovimientos]);
 
   const table = useReactTable({
     data: filas,
@@ -240,6 +243,18 @@ export default function ReportePlanRecaudo() {
             </select>
           </div>
         )}
+        <button
+          onClick={() => setConMovimientos((v) => !v)}
+          className={`h-8 flex items-center gap-2 px-2.5 rounded-md border text-[14px] font-medium transition-colors ${
+            conMovimientos
+              ? 'bg-success-bg border-success-border text-success'
+              : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
+          }`}
+        >
+          <History size={13} className={conMovimientos ? 'text-success' : 'text-slate-500'} />
+          Solo con movimientos
+        </button>
+
         {hasFilters && (
           <button onClick={clearFilters} className="text-[13px] text-brand hover:text-brand-strong font-medium flex items-center gap-1 h-8">
             <X size={11} /> Limpiar filtros

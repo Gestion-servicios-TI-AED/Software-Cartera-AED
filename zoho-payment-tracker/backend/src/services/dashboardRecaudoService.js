@@ -102,7 +102,7 @@ function mesKey(fecha) {
 // totales necesitan el conjunto filtrado completo, sin importar la
 // paginación). Corre construirPlan+normalizarPagos+conciliar por cada
 // inmueble con oportunidad vinculada.
-async function obtenerDashboardRecaudo({ search, etapa, frente, torre, page, limit }) {
+async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimientos, page, limit }) {
   const valores = await valoresProyectoTorre();
   const filtro = construirFiltroInventario({ search, etapa, frente, torre, valores });
 
@@ -125,9 +125,18 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, page, lim
     movimientosPorNegocioId.get(m.negocioId).push(m);
   }
 
+  // "Solo con movimientos" se resuelve aquí (no en el WHERE de arriba) porque
+  // el vínculo Inmueble->Negocio se resuelve en bloque en JS, no por join SQL.
+  const inmueblesEnAlcance = conMovimientos === 'true'
+    ? inmuebles.filter((inv) => {
+        const negocio = negocioPorInmuebleId.get(inv.id);
+        return negocio && (movimientosPorNegocioId.get(negocio.id)?.length ?? 0) > 0;
+      })
+    : inmuebles;
+
   const mesesSet = new Set();
   const totalesPorMes = new Map();
-  const filasCompletas = inmuebles.map((inv) => {
+  const filasCompletas = inmueblesEnAlcance.map((inv) => {
     const info = parseProyectoTorre(inv.datos?.Proyecto_Torre);
     const negocio = negocioPorInmuebleId.get(inv.id) ?? null;
     const oportunidad = negocio ? oportunidadPorReferencia.get(negocio.referencia) ?? null : null;

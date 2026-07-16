@@ -151,13 +151,16 @@ combinado AS (
 // devuelve valoresProyectoTorre(). Torre solo tiene efecto si viene junto
 // con Frente (Torre sin Frente no identifica nada — Torre 1 existe en
 // varios frentes); si `torre` llega sin `frente`, se ignora.
-function construirFiltroCombinado({ search, estado, etapa, frente, torre, saldoPendiente, valores }) {
+function construirFiltroCombinado({ search, estado, etapa, frente, torre, saldoPendiente, conMovimientos, valores }) {
   const condiciones = [];
   if (estado) {
     condiciones.push(Prisma.sql`c.estado ILIKE ${'%' + estado + '%'}`);
   }
   if (saldoPendiente === 'true') {
     condiciones.push(Prisma.sql`c."saldoActual" > 0`);
+  }
+  if (conMovimientos === 'true') {
+    condiciones.push(Prisma.sql`EXISTS (SELECT 1 FROM "NegocioMovimiento" m WHERE m."negocioId" = c.negocio_id)`);
   }
   if (search) {
     const like = `%${search}%`;
@@ -195,9 +198,9 @@ function construirFiltroCombinado({ search, estado, etapa, frente, torre, saldoP
 // paginación, orden por Proyecto/Torre y los mismos filtros que ya existían
 // (Estado, Solo con abonos, búsqueda) más Etapa y búsqueda por datos del
 // inmueble (Project Code, Proyecto/Torre).
-async function listarNegociosInventario({ search, estado, etapa, frente, torre, saldoPendiente, page, limit }) {
+async function listarNegociosInventario({ search, estado, etapa, frente, torre, saldoPendiente, conMovimientos, page, limit }) {
   const valores = await valoresProyectoTorre();
-  const filtro = construirFiltroCombinado({ search, estado, etapa, frente, torre, saldoPendiente, valores });
+  const filtro = construirFiltroCombinado({ search, estado, etapa, frente, torre, saldoPendiente, conMovimientos, valores });
 
   const [totalRows, filas] = await Promise.all([
     prisma.$queryRaw`
