@@ -186,6 +186,30 @@ async function runSubformsBackfill() {
   let actualizadas = 0;
   let errores = 0;
 
+  // Progreso + tiempo restante estimado, a partir del promedio real de
+  // ms/oportunidad hasta ahora (no un estimado fijo) -- se recalcula en
+  // cada oportunidad procesada, así que se ajusta solo si Zoho responde
+  // más lento o más rápido de lo esperado.
+  function reportarProgreso(total) {
+    const elapsedMs = Date.now() - startedAt;
+    const porcentaje = total > 0 ? Math.round((procesadas / total) * 100) : 100;
+    const promedioMsPorItem = procesadas > 0 ? elapsedMs / procesadas : null;
+    const restantes = total - procesadas;
+    const segundosRestantesEstimados = promedioMsPorItem != null
+      ? Math.round((promedioMsPorItem * restantes) / 1000)
+      : null;
+    subformsBackfillResult = {
+      running: true,
+      total,
+      procesadas,
+      porcentaje,
+      actualizadas,
+      errores,
+      segundosTranscurridos: Math.round(elapsedMs / 1000),
+      segundosRestantesEstimados,
+    };
+  }
+
   try {
     const pendientes = await prisma.opportunity.findMany({
       where: {
@@ -195,6 +219,8 @@ async function runSubformsBackfill() {
       },
       select: { id: true, zohoId: true },
     });
+
+    reportarProgreso(pendientes.length);
 
     for (const opp of pendientes) {
       try {
@@ -224,8 +250,8 @@ async function runSubformsBackfill() {
       }
 
       procesadas++;
+      reportarProgreso(pendientes.length);
       if (procesadas % 50 === 0 || procesadas === pendientes.length) {
-        subformsBackfillResult = { running: true, progreso: `${procesadas}/${pendientes.length}`, actualizadas, errores };
         console.log(`[subformsBackfill] Progreso: ${procesadas}/${pendientes.length} (${actualizadas} ok, ${errores} errores)`);
       }
     }

@@ -181,6 +181,16 @@ export async function getNegociosBackfillStatus() {
   return data;
 }
 
+export async function triggerSubformsBackfill() {
+  const { data } = await api.post('/opportunities/backfill-subforms');
+  return data;
+}
+
+export async function getSubformsBackfillStatus() {
+  const { data } = await api.get('/opportunities/backfill-subforms/status');
+  return data;
+}
+
 // ── Stats ──────────────────────────────────────────────────
 export async function getStatsResumen() {
   const { data } = await api.get('/stats/resumen');
