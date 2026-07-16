@@ -398,6 +398,7 @@ module.exports = {
   parseProyectoTorre,
   formatearProyectoTorre,
   obtenerEtapaTorre,
+  valoresProyectoTorre,
   listarNegociosInventario,
   findOportunidadByReferencia,
   resolverNegocioIdDesdeInmueble,
