@@ -7,7 +7,7 @@ import HelpTip from '../components/HelpTip';
 import PlanVsRecaudoLineChart from '../components/stats/PlanVsRecaudoLineChart';
 import EtapaRecaudoBars from '../components/stats/EtapaRecaudoBars';
 import PipelineBars from '../components/stats/PipelineBars';
-import { AvancePorProyecto, TopMorosos, EmbudoEstados } from '../components/stats/CarteraWidgets';
+import { TopMorosos, EmbudoEstados } from '../components/stats/CarteraWidgets';
 import {
   getStatsResumen,
   getStatsPipeline,
@@ -135,19 +135,13 @@ export default function Resumen() {
           />
         </div>
 
-        {/* Prioridad de gestión: top morosos + avance por proyecto */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="card p-4">
-            <h2 className="text-[15px] font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
-              <AlertTriangle size={14} className="text-red-500" /> Top 10 morosos — prioridad de gestión
-              <HelpTip text="Los 10 negocios más urgentes a gestionar: primero los que nunca abonaron o llevan más días sin hacerlo, y en empate, el mayor monto pendiente." />
-            </h2>
-            <TopMorosos negocios={cartera?.enCobro ?? []} />
-          </div>
-          <div className="card p-4">
-            <h2 className="text-[15px] font-semibold text-slate-700 mb-3">Avance de recaudo por proyecto</h2>
-            <AvancePorProyecto data={cartera?.porProyecto ?? []} />
-          </div>
+        {/* Prioridad de gestión: top morosos */}
+        <div className="card p-4">
+          <h2 className="text-[15px] font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+            <AlertTriangle size={14} className="text-red-500" /> Top 10 morosos — prioridad de gestión
+            <HelpTip text="Los 10 negocios más urgentes a gestionar: primero los que nunca abonaron o llevan más días sin hacerlo, y en empate, el mayor monto pendiente." />
+          </h2>
+          <TopMorosos negocios={cartera?.enCobro ?? []} />
         </div>
 
         {/* Tendencia: plan de pagos vs. recaudo real, mes a mes */}

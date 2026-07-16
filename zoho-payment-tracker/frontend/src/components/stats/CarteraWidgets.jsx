@@ -1,17 +1,8 @@
 import { formatCOP } from '../../utils/format';
-import { descripcionProyecto } from '../../utils/proyectos';
 
 function shortFideicomiso(raw) {
   if (!raw) return '—';
   return String(raw).replace(/^\d+[\s-]+/, '').replace(/^P\.?A\.?\s*/i, '').trim();
-}
-
-// Color del avance según % pagado de la cuota inicial.
-function avanceColor(pct) {
-  if (pct >= 90) return { bar: 'bg-emerald-500', text: 'text-emerald-600' };
-  if (pct >= 60) return { bar: 'bg-brand', text: 'text-brand' };
-  if (pct >= 30) return { bar: 'bg-amber-500', text: 'text-amber-600' };
-  return { bar: 'bg-red-500', text: 'text-red-600' };
 }
 
 // Color de la mora según días sin abonar.
@@ -19,47 +10,6 @@ function moraColor(dias) {
   if (dias === null || dias >= 90) return 'text-red-600 bg-red-50';
   if (dias >= 60) return 'text-amber-700 bg-amber-50';
   return 'text-orange-600 bg-orange-50';
-}
-
-function BarraAvance({ pct }) {
-  const c = avanceColor(pct);
-  return (
-    <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
-      <div className={`h-full rounded-full ${c.bar} transition-all`} style={{ width: `${Math.min(100, pct)}%` }} />
-    </div>
-  );
-}
-
-// ── Avance de recaudo por proyecto ──────────────────────────────────────────
-export function AvancePorProyecto({ data }) {
-  if (!data || data.length === 0) return <p className="text-[16px] text-slate-500">Sin datos</p>;
-  return (
-    <div className="flex flex-col gap-3">
-      {data.map((p) => {
-        const c = avanceColor(p.pct);
-        return (
-          <div key={p.fideicomiso}>
-            <div className="flex items-baseline justify-between gap-3 mb-1">
-              <span className="text-[14px] text-slate-700 font-medium truncate" title={p.fideicomiso}>
-                {(() => {
-                  const match = String(p.fideicomiso).match(/^(\d{4,6})/);
-                  const desc = match ? descripcionProyecto(match[1]) : null;
-                  return desc || shortFideicomiso(p.fideicomiso);
-                })()}
-                <span className="text-slate-500 font-normal ml-1.5">· {p.count}</span>
-              </span>
-              <span className={`text-[14px] font-semibold tabular-nums ${c.text}`}>{p.pct}%</span>
-            </div>
-            <BarraAvance pct={p.pct} />
-            <div className="flex items-baseline justify-between mt-1 text-[12px] text-slate-500 tabular-nums">
-              <span>Abonado {formatCOP(p.abonado)}</span>
-              <span>Por cobrar <b className="text-slate-600 font-semibold">{formatCOP(p.porCobrar)}</b></span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 // Color de fondo/texto del chip de ranking según posición.
