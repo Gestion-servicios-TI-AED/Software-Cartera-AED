@@ -155,7 +155,10 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
       const { cuotas, resumen } = conciliar(cuotasPlan, pagos);
       // Valor del inmueble = total del plan de pagos (suma de todas las
       // cuotas), la misma variable que usa la conciliación en Negocios.jsx.
-      valorInmueble = resumen.totalPlan;
+      // Si no hay cuotas (p.ej. la Opportunity no tiene Fecha Inicio Plan de
+      // Pagos en Zoho), totalPlan da 0 por el reduce -- dejarlo en null en
+      // vez de 0 para que se muestre "sin datos", no "vale $0".
+      valorInmueble = cuotas.length > 0 ? resumen.totalPlan : null;
       // Saldo contra entrega = última cuota del plan (mismo criterio que
       // ConciliacionSection en Negocios.jsx / resumen.saldoContraentrega).
       fechaSaldoContraentrega = resumen.saldoContraentrega?.fechaEstimada ?? null;
