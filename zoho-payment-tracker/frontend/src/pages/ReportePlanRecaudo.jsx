@@ -6,6 +6,15 @@ import * as XLSX from 'xlsx';
 import { getDashboardRecaudo } from '../utils/api';
 import { formatCOP } from '../utils/format';
 
+function useDebounce(value, delay = 350) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
 const columnHelper = createColumnHelper();
 
 function formatMesLabel(mes) {
@@ -78,15 +87,17 @@ export default function ReportePlanRecaudo() {
   const [torresPorEtapaFrente, setTorresPorEtapaFrente] = useState({});
   const [totales, setTotales] = useState({});
 
-  const load = useCallback(async () => {
+  const debouncedSearch = useDebounce(search);
+
+  const load = useCallback(async (p) => {
     setLoading(true);
     try {
       const res = await getDashboardRecaudo({
-        search: search || undefined,
+        search: debouncedSearch || undefined,
         etapa: etapaFilter || undefined,
         frente: frenteFilter || undefined,
         torre: torreFilter || undefined,
-        page,
+        page: p,
         limit: 50,
       });
       setFilas(res.data);
@@ -98,17 +109,19 @@ export default function ReportePlanRecaudo() {
       setTorresPorFrente(res.torresPorFrente);
       setTorresPorEtapaFrente(res.torresPorEtapaFrente);
       setTotales(res.totales);
+      setPage(p);
     } catch (err) {
       console.error('Error cargando dashboard:', err);
     } finally {
       setLoading(false);
     }
-  }, [search, etapaFilter, frenteFilter, torreFilter, page]);
+  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter]);
 
-  useEffect(() => { load(); }, [load]);
-
-  // Volver a página 1 cuando cambian los filtros
-  useEffect(() => { setPage(1); }, [search, etapaFilter, frenteFilter, torreFilter]);
+  // Cargar página 1 cuando cambian los filtros (busqueda ya con debounce).
+  // load ya no depende de `page` en su lista de dependencias -- por eso
+  // cambiar un filtro mientras el usuario esta en la pagina 3, por ejemplo,
+  // dispara un solo fetch (a pagina 1), no dos.
+  useEffect(() => { load(1); }, [load]);
 
   // Cambiar Etapa limpia el Frente elegido solo si ya no pertenece a la
   // nueva etapa (y Torre se limpia con él); cambiar Frente siempre limpia
@@ -295,10 +308,10 @@ export default function ReportePlanRecaudo() {
               {pagination.total} inmuebles · Página {pagination.page} de {pagination.totalPages}
             </p>
             <div className="flex gap-2">
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="btn-secondary px-3 py-1.5 text-[14px] flex items-center gap-1">
+              <button onClick={() => load(Math.max(1, page - 1))} disabled={page === 1} className="btn-secondary px-3 py-1.5 text-[14px] flex items-center gap-1">
                 <ChevronLeft size={13} /> Anterior
               </button>
-              <button onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))} disabled={page === pagination.totalPages} className="btn-secondary px-3 py-1.5 text-[14px] flex items-center gap-1">
+              <button onClick={() => load(Math.min(pagination.totalPages, page + 1))} disabled={page === pagination.totalPages} className="btn-secondary px-3 py-1.5 text-[14px] flex items-center gap-1">
                 Siguiente <ChevronRight size={13} />
               </button>
             </div>

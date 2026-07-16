@@ -467,7 +467,7 @@ router.get('/dashboard-recaudo', async (req, res) => {
   try {
     const { search, etapa, frente, torre, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
+    const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
     const resultado = await obtenerDashboardRecaudo({ search, etapa, frente, torre, page: pageNum, limit: limitNum });
     res.json(resultado);
   } catch (err) {
