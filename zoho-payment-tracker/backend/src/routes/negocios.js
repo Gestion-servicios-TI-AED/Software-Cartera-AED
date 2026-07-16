@@ -11,6 +11,7 @@ const {
   obtenerNegocioPorId,
   obtenerMovimientosPorId,
 } = require('../services/inventarioNegocioService');
+const { obtenerDashboardRecaudo } = require('../services/dashboardRecaudoService');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -456,6 +457,19 @@ router.get('/stats', async (_req, res) => {
       porEstado: porEstado.map((r) => ({ estado: r.estado, count: Number(r.count), saldo: Number(r.saldo) })),
       porFideicomiso: porFideicomiso.map((r) => ({ fideicomiso: r.fideicomiso, count: Number(r.count), saldo: Number(r.saldo) })),
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/negocios/dashboard-recaudo?search=&etapa=&frente=&torre=&page=&limit=
+router.get('/dashboard-recaudo', async (req, res) => {
+  try {
+    const { search, etapa, frente, torre, page = '1', limit = '50' } = req.query;
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
+    const resultado = await obtenerDashboardRecaudo({ search, etapa, frente, torre, page: pageNum, limit: limitNum });
+    res.json(resultado);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

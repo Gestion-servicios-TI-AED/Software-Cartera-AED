@@ -1,5 +1,6 @@
 const { Prisma } = require('@prisma/client');
 const { prisma, parseProyectoTorre, obtenerEtapaTorre, valoresProyectoTorre } = require('./inventarioNegocioService');
+const { construirPlan, normalizarPagos, conciliar } = require('./conciliacionService');
 
 // Arma el WHERE (solo sobre InventarioItem, sin huérfanos) para el reporte
 // Dashboard: mismos filtros Etapa/Frente/Torre/búsqueda que el módulo de
@@ -92,4 +93,95 @@ async function resolverNegociosYOportunidades(inmuebles) {
   return { negocioPorInmuebleId, oportunidadPorReferencia };
 }
 
-module.exports = { construirFiltroInventario, resolverNegociosYOportunidades };
+function mesKey(fecha) {
+  return `${fecha.getUTCFullYear()}-${String(fecha.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+// Reporte Dashboard: plan de pagos vs. recaudado, por mes, para todo el
+// inventario que cumple los filtros (no solo la página actual -- los
+// totales necesitan el conjunto filtrado completo, sin importar la
+// paginación). Corre construirPlan+normalizarPagos+conciliar por cada
+// inmueble con oportunidad vinculada.
+async function obtenerDashboardRecaudo({ search, etapa, frente, torre, page, limit }) {
+  const valores = await valoresProyectoTorre();
+  const filtro = construirFiltroInventario({ search, etapa, frente, torre, valores });
+
+  const inmuebles = await prisma.$queryRaw`
+    SELECT id, datos, "referenciaRecaudo"
+    FROM "InventarioItem" inv
+    ${filtro}
+    ORDER BY datos->>'Proyecto_Torre' ASC NULLS LAST, datos->>'Project_Code' ASC NULLS LAST
+  `;
+
+  const { negocioPorInmuebleId, oportunidadPorReferencia } = await resolverNegociosYOportunidades(inmuebles);
+
+  const negocioIds = [...new Set([...negocioPorInmuebleId.values()].map((n) => n.id))];
+  const movimientos = negocioIds.length
+    ? await prisma.negocioMovimiento.findMany({ where: { negocioId: { in: negocioIds } } })
+    : [];
+  const movimientosPorNegocioId = new Map();
+  for (const m of movimientos) {
+    if (!movimientosPorNegocioId.has(m.negocioId)) movimientosPorNegocioId.set(m.negocioId, []);
+    movimientosPorNegocioId.get(m.negocioId).push(m);
+  }
+
+  const mesesSet = new Set();
+  const totalesPorMes = new Map();
+  const filasCompletas = inmuebles.map((inv) => {
+    const info = parseProyectoTorre(inv.datos?.Proyecto_Torre);
+    const negocio = negocioPorInmuebleId.get(inv.id) ?? null;
+    const oportunidad = negocio ? oportunidadPorReferencia.get(negocio.referencia) ?? null : null;
+
+    const porMes = {};
+    if (oportunidad) {
+      const planRows = oportunidad.formaPago?.length ? oportunidad.formaPago : (oportunidad.propuestaPago || []);
+      const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos);
+      const pagos = normalizarPagos(movimientosPorNegocioId.get(negocio.id) || []);
+      const { cuotas } = conciliar(cuotasPlan, pagos);
+      for (const c of cuotas) {
+        if (!c.fechaEstimada) continue;
+        const mes = mesKey(c.fechaEstimada);
+        mesesSet.add(mes);
+        if (!porMes[mes]) porMes[mes] = { esperado: 0, recaudado: 0 };
+        porMes[mes].esperado += c.valorPlan;
+        porMes[mes].recaudado += c.cubierto;
+
+        if (!totalesPorMes.has(mes)) totalesPorMes.set(mes, { esperado: 0, recaudado: 0 });
+        const t = totalesPorMes.get(mes);
+        t.esperado += c.valorPlan;
+        t.recaudado += c.cubierto;
+      }
+    }
+
+    return {
+      id: inv.id,
+      etapa: info ? obtenerEtapaTorre(inv.datos.Proyecto_Torre) : null,
+      frente: info ? info.proyecto : null,
+      torre: info ? info.torre : null,
+      nomenclatura: inv.datos?.Project_Code ?? null,
+      porMes,
+    };
+  });
+
+  const meses = [...mesesSet].sort();
+  const totales = Object.fromEntries(meses.map((m) => [m, totalesPorMes.get(m)]));
+
+  const total = filasCompletas.length;
+  const pageNum = Math.max(1, page);
+  const limitNum = Math.max(1, limit);
+  const data = filasCompletas.slice((pageNum - 1) * limitNum, pageNum * limitNum);
+
+  return {
+    data,
+    meses,
+    totales,
+    pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
+    etapasDisponibles: [...valores.porEtapa.keys()].sort((a, b) => Number(a) - Number(b)),
+    frentesDisponibles: [...valores.porFrente.keys()].sort(),
+    frentesPorEtapa: valores.frentesPorEtapa,
+    torresPorFrente: valores.torresPorFrente,
+    torresPorEtapaFrente: valores.torresPorEtapaFrente,
+  };
+}
+
+module.exports = { construirFiltroInventario, resolverNegociosYOportunidades, obtenerDashboardRecaudo };
