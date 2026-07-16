@@ -265,16 +265,16 @@ router.get('/backfill/status', (req, res) => {
 
 // ── CRUD ───────────────────────────────────────────────────────────────────
 
-// GET /api/negocios?search=&estado=&etapa=&frente=&saldoPendiente=&page=&limit=
+// GET /api/negocios?search=&estado=&etapa=&frente=&torre=&saldoPendiente=&page=&limit=
 router.get('/', async (req, res) => {
   try {
-    const { search, estado, etapa, frente, saldoPendiente, page = '1', limit = '50' } = req.query;
+    const { search, estado, etapa, frente, torre, saldoPendiente, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
-    const noFilters = !search && !estado && !etapa && !frente;
+    const noFilters = !search && !estado && !etapa && !frente && !torre;
 
-    const [{ data, total, etapasDisponibles, frentesDisponibles }, estadosRaw] = await Promise.all([
-      listarNegociosInventario({ search, estado, etapa, frente, saldoPendiente, page: pageNum, limit: limitNum }),
+    const [{ data, total, etapasDisponibles, frentesDisponibles, frentesPorEtapa, torresPorFrente }, estadosRaw] = await Promise.all([
+      listarNegociosInventario({ search, estado, etapa, frente, torre, saldoPendiente, page: pageNum, limit: limitNum }),
       noFilters
         ? prisma.negocio.findMany({
             select: { estado: true },
@@ -294,7 +294,7 @@ router.get('/', async (req, res) => {
         totalPages: Math.ceil(total / limitNum),
       },
       ...(estadosRaw ? { estados: estadosRaw.map((e) => e.estado).filter(Boolean) } : {}),
-      ...(noFilters ? { etapas: etapasDisponibles, frentes: frentesDisponibles } : {}),
+      ...(noFilters ? { etapas: etapasDisponibles, frentes: frentesDisponibles, frentesPorEtapa, torresPorFrente } : {}),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

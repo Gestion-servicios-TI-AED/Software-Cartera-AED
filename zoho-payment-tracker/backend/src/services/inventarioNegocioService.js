@@ -31,40 +31,58 @@ function obtenerEtapaTorre(proyectoTorreRaw) {
   return (info && ETAPA_POR_TORRE[`${info.proyecto.toUpperCase()} ${info.torre}`]) ?? '0';
 }
 
-// Valores crudos de Proyecto_Torre en BD, agrupados por la etapa que les
-// corresponde según ETAPA_POR_TORRE. Se usa para resolver el filtro de
-// Etapa en SQL (`= ANY(...)`) sin duplicar la regla ahí.
-async function valoresProyectoTorrePorEtapa() {
+// Valores crudos de Proyecto_Torre en BD, agrupados de tres formas a partir
+// de una sola consulta (reemplaza a valoresProyectoTorrePorEtapa() y
+// valoresProyectoTorrePorFrente(), que hacían la misma consulta por
+// separado):
+//  - porEtapa / porFrente: listas de valores crudos para los filtros de
+//    Etapa y Frente en SQL (`= ANY(...)`), igual que antes.
+//  - porFrenteTorre: listas de valores crudos por par Frente+Torre, para
+//    el filtro de Torre (clave "Frente||Torre", ej. "Kabo||3").
+//  - frentesPorEtapa / torresPorFrente: mapas estáticos que el frontend usa
+//    para acotar las opciones de los selects en cascada, sin llamadas
+//    adicionales al backend.
+async function valoresProyectoTorre() {
   const rows = await prisma.$queryRaw`
     SELECT DISTINCT datos->>'Proyecto_Torre' AS v
     FROM "InventarioItem"
     WHERE datos->>'Proyecto_Torre' IS NOT NULL`;
+
   const porEtapa = new Map();
+  const porFrente = new Map();
+  const porFrenteTorre = new Map();
+  const frentesPorEtapaSet = new Map();
+  const torresPorFrenteSet = new Map();
+
   for (const { v } of rows) {
     const et = obtenerEtapaTorre(v);
     if (!porEtapa.has(et)) porEtapa.set(et, []);
     porEtapa.get(et).push(v);
-  }
-  return porEtapa;
-}
 
-// Valores crudos de Proyecto_Torre en BD, agrupados por el nombre de Frente
-// (el `proyecto` que devuelve parseProyectoTorre). Mismo patrón que
-// valoresProyectoTorrePorEtapa(), para resolver el filtro de Frente en SQL
-// (`= ANY(...)`) sin duplicar el parseo ahí.
-async function valoresProyectoTorrePorFrente() {
-  const rows = await prisma.$queryRaw`
-    SELECT DISTINCT datos->>'Proyecto_Torre' AS v
-    FROM "InventarioItem"
-    WHERE datos->>'Proyecto_Torre' IS NOT NULL`;
-  const porFrente = new Map();
-  for (const { v } of rows) {
     const info = parseProyectoTorre(v);
     if (!info) continue;
+
     if (!porFrente.has(info.proyecto)) porFrente.set(info.proyecto, []);
     porFrente.get(info.proyecto).push(v);
+
+    const claveFrenteTorre = `${info.proyecto}||${info.torre}`;
+    if (!porFrenteTorre.has(claveFrenteTorre)) porFrenteTorre.set(claveFrenteTorre, []);
+    porFrenteTorre.get(claveFrenteTorre).push(v);
+
+    if (!frentesPorEtapaSet.has(et)) frentesPorEtapaSet.set(et, new Set());
+    frentesPorEtapaSet.get(et).add(info.proyecto);
+
+    if (!torresPorFrenteSet.has(info.proyecto)) torresPorFrenteSet.set(info.proyecto, new Set());
+    torresPorFrenteSet.get(info.proyecto).add(info.torre);
   }
-  return porFrente;
+
+  const frentesPorEtapa = {};
+  for (const [et, set] of frentesPorEtapaSet) frentesPorEtapa[et] = [...set].sort();
+
+  const torresPorFrente = {};
+  for (const [fr, set] of torresPorFrenteSet) torresPorFrente[fr] = [...set].sort((a, b) => Number(a) - Number(b));
+
+  return { porEtapa, porFrente, porFrenteTorre, frentesPorEtapa, torresPorFrente };
 }
 
 // CTE compartida entre la consulta de datos y la de conteo: une todos los
@@ -117,9 +135,11 @@ combinado AS (
 )
 `;
 
-// Arma el WHERE del conjunto unificado. `valoresEtapa` es el Map que
-// devuelve valoresProyectoTorrePorEtapa().
-function construirFiltroCombinado({ search, estado, etapa, frente, saldoPendiente, valoresEtapa, valoresFrente }) {
+// Arma el WHERE del conjunto unificado. `valores` es el objeto que
+// devuelve valoresProyectoTorre(). Torre solo tiene efecto si viene junto
+// con Frente (Torre sin Frente no identifica nada — Torre 1 existe en
+// varios frentes); si `torre` llega sin `frente`, se ignora.
+function construirFiltroCombinado({ search, estado, etapa, frente, torre, saldoPendiente, valores }) {
   const condiciones = [];
   if (estado) {
     condiciones.push(Prisma.sql`c.estado ILIKE ${'%' + estado + '%'}`);
@@ -142,15 +162,18 @@ function construirFiltroCombinado({ search, estado, etapa, frente, saldoPendient
     )`);
   }
   if (etapa) {
-    const lista = valoresEtapa.get(etapa) || [];
+    const lista = valores.porEtapa.get(etapa) || [];
     if (etapa === '0') {
       condiciones.push(Prisma.sql`(c.inventario_datos->>'Proyecto_Torre' = ANY(${lista}::text[]) OR c.inventario_datos IS NULL)`);
     } else {
       condiciones.push(Prisma.sql`c.inventario_datos->>'Proyecto_Torre' = ANY(${lista}::text[])`);
     }
   }
-  if (frente) {
-    const lista = valoresFrente.get(frente) || [];
+  if (frente && torre) {
+    const lista = valores.porFrenteTorre.get(`${frente}||${torre}`) || [];
+    condiciones.push(Prisma.sql`c.inventario_datos->>'Proyecto_Torre' = ANY(${lista}::text[])`);
+  } else if (frente) {
+    const lista = valores.porFrente.get(frente) || [];
     condiciones.push(Prisma.sql`c.inventario_datos->>'Proyecto_Torre' = ANY(${lista}::text[])`);
   }
   return condiciones.length ? Prisma.sql`WHERE ${Prisma.join(condiciones, ' AND ')}` : Prisma.empty;
@@ -160,12 +183,9 @@ function construirFiltroCombinado({ search, estado, etapa, frente, saldoPendient
 // paginación, orden por Proyecto/Torre y los mismos filtros que ya existían
 // (Estado, Solo con abonos, búsqueda) más Etapa y búsqueda por datos del
 // inmueble (Project Code, Proyecto/Torre).
-async function listarNegociosInventario({ search, estado, etapa, frente, saldoPendiente, page, limit }) {
-  const [valoresEtapa, valoresFrente] = await Promise.all([
-    valoresProyectoTorrePorEtapa(),
-    valoresProyectoTorrePorFrente(),
-  ]);
-  const filtro = construirFiltroCombinado({ search, estado, etapa, frente, saldoPendiente, valoresEtapa, valoresFrente });
+async function listarNegociosInventario({ search, estado, etapa, frente, torre, saldoPendiente, page, limit }) {
+  const valores = await valoresProyectoTorre();
+  const filtro = construirFiltroCombinado({ search, estado, etapa, frente, torre, saldoPendiente, valores });
 
   const [totalRows, filas] = await Promise.all([
     prisma.$queryRaw`
@@ -209,8 +229,10 @@ async function listarNegociosInventario({ search, estado, etapa, frente, saldoPe
   return {
     data,
     total,
-    etapasDisponibles: [...valoresEtapa.keys()].sort((a, b) => Number(a) - Number(b)),
-    frentesDisponibles: [...valoresFrente.keys()].sort(),
+    etapasDisponibles: [...valores.porEtapa.keys()].sort((a, b) => Number(a) - Number(b)),
+    frentesDisponibles: [...valores.porFrente.keys()].sort(),
+    frentesPorEtapa: valores.frentesPorEtapa,
+    torresPorFrente: valores.torresPorFrente,
   };
 }
 
