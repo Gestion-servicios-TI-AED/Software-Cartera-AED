@@ -258,11 +258,15 @@ async function findOportunidadByReferencia(referencia) {
     pagoSeparacion: true, fechaInicioPlanPagos: true, camposFinancieros: true,
     seccionInmueble: true, lastSyncedAt: true,
   };
-  // Coincidencia exacta primero; luego tolerante a espacios/formato.
-  let opp = await prisma.opportunity.findFirst({ where: { referenciaRecaudo: referencia }, select });
+  // Coincidencia exacta primero; luego tolerante a espacios/formato. orderBy
+  // id asc: si una referenciaRecaudo tiene mas de una Opportunity (raro pero
+  // real), siempre gana la de menor id -- determinista en vez de depender
+  // del orden arbitrario que devuelva la BD.
+  let opp = await prisma.opportunity.findFirst({ where: { referenciaRecaudo: referencia }, orderBy: { id: 'asc' }, select });
   if (!opp && referencia.length >= 6) {
     opp = await prisma.opportunity.findFirst({
       where: { referenciaRecaudo: { contains: referencia, mode: 'insensitive' } },
+      orderBy: { id: 'asc' },
       select,
     });
   }

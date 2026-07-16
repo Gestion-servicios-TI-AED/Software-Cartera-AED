@@ -64,9 +64,18 @@ async function resolverNegociosYOportunidades(inmuebles) {
     ? await prisma.opportunity.findMany({
         where: { referenciaRecaudo: { in: referenciasNegocio } },
         select: { id: true, referenciaRecaudo: true, fechaInicioPlanPagos: true, formaPago: true, propuestaPago: true },
+        orderBy: { id: 'asc' },
       })
     : [];
-  const oportunidadPorReferencia = new Map(oportunidadesExactas.map((o) => [o.referenciaRecaudo, o]));
+  // orderBy id asc + primer-visto-gana: mismo desempate que
+  // findOportunidadByReferencia ahora usa para una referenciaRecaudo con mas
+  // de una Opportunity -- sin esto, `new Map(...)` se hubiera quedado con la
+  // ULTIMA fila (orden no determinista), no necesariamente la misma que
+  // resuelve el camino uno-a-uno.
+  const oportunidadPorReferencia = new Map();
+  for (const o of oportunidadesExactas) {
+    if (!oportunidadPorReferencia.has(o.referenciaRecaudo)) oportunidadPorReferencia.set(o.referenciaRecaudo, o);
+  }
 
   // Respaldo tolerante a formato (igual que findOportunidadByReferencia), solo
   // para las referencias que no calzaron exacto -- típicamente pocas.
@@ -74,6 +83,7 @@ async function resolverNegociosYOportunidades(inmuebles) {
   for (const referencia of sinMatch) {
     const opp = await prisma.opportunity.findFirst({
       where: { referenciaRecaudo: { contains: referencia, mode: 'insensitive' } },
+      orderBy: { id: 'asc' },
       select: { id: true, referenciaRecaudo: true, fechaInicioPlanPagos: true, formaPago: true, propuestaPago: true },
     });
     if (opp) oportunidadPorReferencia.set(referencia, opp);
