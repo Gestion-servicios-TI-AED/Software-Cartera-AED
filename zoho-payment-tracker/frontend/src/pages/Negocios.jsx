@@ -1305,37 +1305,12 @@ export default function Negocios() {
     : [];
   const isEmpty = !loading && pagination?.total === 0 && !hasFilters;
 
-  // ── Resizable sidebar ──────────────────────────────────────────────────────
-  const MIN_W = 220;
-  const MAX_W = 520;
-  const [sidebarW, setSidebarW] = useState(300);
-  const dragging = useRef(false);
-
-  const onDragStart = useCallback((e) => {
-    e.preventDefault();
-    dragging.current = true;
-    const onMove = (ev) => {
-      if (!dragging.current) return;
-      const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
-      setSidebarW(Math.min(MAX_W, Math.max(MIN_W, clientX)));
-    };
-    const onUp = () => {
-      dragging.current = false;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      window.removeEventListener('touchmove', onMove);
-      window.removeEventListener('touchend', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('touchmove', onMove, { passive: false });
-    window.addEventListener('touchend', onUp);
-  }, []);
+  const SIDEBAR_W = 520;
 
   return (
     <div className="flex h-screen overflow-hidden">
       {/* ── Left panel ── */}
-      <div style={{ width: sidebarW }} className="flex-shrink-0 bg-white border-r border-aed-border flex flex-col min-w-0">
+      <div style={{ width: SIDEBAR_W }} className="flex-shrink-0 bg-white border-r border-aed-border flex flex-col min-w-0">
         {/* Panel header */}
         <div className="px-3 py-3 border-b border-aed-border">
           <div className="flex items-center gap-2 mb-2">
@@ -1381,87 +1356,90 @@ export default function Negocios() {
               </div>
             </div>
 
-            {/* Estado filter */}
-            {estados.length > 0 && (
-              <div className="field">
-                <label className="field-label">
-                  <CircleDot size={13} className="text-info" />
-                  Estado del negocio
-                  <HelpTip text="Filtra según la situación del negocio: al día, en proceso, pendiente o cancelado." />
-                </label>
-                <select
-                  value={estadoFilter}
-                  onChange={(e) => setEstadoFilter(e.target.value)}
-                  className="input text-[14px] h-8 py-0 pr-2 leading-none"
-                >
-                  <option value="">Todos los estados</option>
-                  {estados.map((e) => <option key={e} value={e}>{e}</option>)}
-                </select>
-              </div>
-            )}
+            {/* Estado / Etapa / Frente / Torre — dos por línea */}
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* Estado filter */}
+              {estados.length > 0 && (
+                <div className="field">
+                  <label className="field-label">
+                    <CircleDot size={13} className="text-info" />
+                    Estado del negocio
+                    <HelpTip text="Filtra según la situación del negocio: al día, en proceso, pendiente o cancelado." />
+                  </label>
+                  <select
+                    value={estadoFilter}
+                    onChange={(e) => setEstadoFilter(e.target.value)}
+                    className="input text-[14px] h-8 py-0 pr-2 leading-none"
+                  >
+                    <option value="">Todos los estados</option>
+                    {estados.map((e) => <option key={e} value={e}>{e}</option>)}
+                  </select>
+                </div>
+              )}
 
-            {/* Etapa filter */}
-            {etapas.length > 0 && (
-              <div className="field">
-                <label className="field-label">
-                  <Layers size={13} className="text-[#7c3aed]" />
-                  Etapa
-                  <HelpTip text="Filtra por la etapa del inmueble asociado al negocio. Los proyectos sin etapa numerada y los negocios sin inmueble asociado se agrupan en Etapa 0." />
-                </label>
-                <select
-                  value={etapaFilter}
-                  onChange={(e) => handleEtapaChange(e.target.value)}
-                  className="input text-[14px] h-8 py-0 pr-2 leading-none"
-                >
-                  <option value="">Todas las etapas</option>
-                  {etapas.map((et) => (
-                    <option key={et} value={et}>Etapa {et}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+              {/* Etapa filter */}
+              {etapas.length > 0 && (
+                <div className="field">
+                  <label className="field-label">
+                    <Layers size={13} className="text-[#7c3aed]" />
+                    Etapa
+                    <HelpTip text="Filtra por la etapa del inmueble asociado al negocio. Los proyectos sin etapa numerada y los negocios sin inmueble asociado se agrupan en Etapa 0." />
+                  </label>
+                  <select
+                    value={etapaFilter}
+                    onChange={(e) => handleEtapaChange(e.target.value)}
+                    className="input text-[14px] h-8 py-0 pr-2 leading-none"
+                  >
+                    <option value="">Todas las etapas</option>
+                    {etapas.map((et) => (
+                      <option key={et} value={et}>Etapa {et}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
-            {/* Frente filter */}
-            {frentes.length > 0 && (
-              <div className="field">
-                <label className="field-label">
-                  <MapPin size={13} className="text-[#7c3aed]" />
-                  Frente
-                  <HelpTip text="Filtra por el proyecto/desarrollo del inmueble asociado al negocio. Si hay una Etapa elegida, solo se muestran los frentes de esa etapa. Los negocios sin inmueble asociado no aparecen al filtrar por un Frente específico." />
-                </label>
-                <select
-                  value={frenteFilter}
-                  onChange={(e) => handleFrenteChange(e.target.value)}
-                  className="input text-[14px] h-8 py-0 pr-2 leading-none"
-                >
-                  <option value="">Todos los frentes</option>
-                  {frenteOptions.map((fr) => (
-                    <option key={fr} value={fr}>{fr}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+              {/* Frente filter */}
+              {frentes.length > 0 && (
+                <div className="field">
+                  <label className="field-label">
+                    <MapPin size={13} className="text-[#7c3aed]" />
+                    Frente
+                    <HelpTip text="Filtra por el proyecto/desarrollo del inmueble asociado al negocio. Si hay una Etapa elegida, solo se muestran los frentes de esa etapa. Los negocios sin inmueble asociado no aparecen al filtrar por un Frente específico." />
+                  </label>
+                  <select
+                    value={frenteFilter}
+                    onChange={(e) => handleFrenteChange(e.target.value)}
+                    className="input text-[14px] h-8 py-0 pr-2 leading-none"
+                  >
+                    <option value="">Todos los frentes</option>
+                    {frenteOptions.map((fr) => (
+                      <option key={fr} value={fr}>{fr}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
-            {/* Torre filter */}
-            {frenteFilter && torreOptions.length > 0 && (
-              <div className="field">
-                <label className="field-label">
-                  <Building size={13} className="text-[#7c3aed]" />
-                  Torre
-                  <HelpTip text="Filtra por la torre del Frente seleccionado." />
-                </label>
-                <select
-                  value={torreFilter}
-                  onChange={(e) => setTorreFilter(e.target.value)}
-                  className="input text-[14px] h-8 py-0 pr-2 leading-none"
-                >
-                  <option value="">Todas las torres</option>
-                  {torreOptions.map((tr) => (
-                    <option key={tr} value={tr}>Torre {tr}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+              {/* Torre filter */}
+              {frenteFilter && torreOptions.length > 0 && (
+                <div className="field">
+                  <label className="field-label">
+                    <Building size={13} className="text-[#7c3aed]" />
+                    Torre
+                    <HelpTip text="Filtra por la torre del Frente seleccionado." />
+                  </label>
+                  <select
+                    value={torreFilter}
+                    onChange={(e) => setTorreFilter(e.target.value)}
+                    className="input text-[14px] h-8 py-0 pr-2 leading-none"
+                  >
+                    <option value="">Todas las torres</option>
+                    {torreOptions.map((tr) => (
+                      <option key={tr} value={tr}>Torre {tr}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
 
             {/* Con abonos toggle */}
             <button
@@ -1517,16 +1495,6 @@ export default function Negocios() {
               className="text-[13px] text-slate-500 hover:text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">Sig. →</button>
           </div>
         )}
-      </div>
-
-      {/* ── Resize handle ── */}
-      <div
-        onMouseDown={onDragStart}
-        onTouchStart={onDragStart}
-        className="w-1 flex-shrink-0 bg-aed-border hover:bg-brand active:bg-brand-strong cursor-col-resize transition-colors group relative"
-        title="Arrastrar para redimensionar"
-      >
-        <div className="absolute inset-y-0 -left-1 -right-1" />
       </div>
 
       {/* ── Right panel ── */}
