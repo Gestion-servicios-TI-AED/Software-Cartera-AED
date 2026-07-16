@@ -1,34 +1,26 @@
-const { Prisma } = require('@prisma/client');
 const { prisma, parseProyectoTorre, obtenerEtapaTorre, valoresProyectoTorre } = require('./inventarioNegocioService');
 const { construirPlan, normalizarPagos, conciliar } = require('./conciliacionService');
 
-// Arma el WHERE (solo sobre InventarioItem, sin huérfanos) para el reporte
-// Dashboard: mismos filtros Etapa/Frente/Torre/búsqueda que el módulo de
-// Negocios, sin Estado/Solo con abonos (ese reporte no tiene esos campos —
-// no hay Negocio.estado/saldoActual cuando el inmueble no tiene negocio).
-function construirFiltroInventario({ search, etapa, frente, torre, valores }) {
-  const condiciones = [];
-  if (search) {
-    const like = `%${search}%`;
-    condiciones.push(Prisma.sql`(inv.datos->>'Project_Code' ILIKE ${like} OR inv.datos->>'Proyecto_Torre' ILIKE ${like})`);
-  }
-  if (etapa) {
-    const lista = valores.porEtapa.get(etapa) || [];
-    condiciones.push(Prisma.sql`inv.datos->>'Proyecto_Torre' = ANY(${lista}::text[])`);
-  }
-  if (frente && torre) {
-    const lista = valores.porFrenteTorre.get(`${frente}||${torre}`) || [];
-    condiciones.push(Prisma.sql`inv.datos->>'Proyecto_Torre' = ANY(${lista}::text[])`);
-  } else if (frente) {
-    const lista = valores.porFrente.get(frente) || [];
-    condiciones.push(Prisma.sql`inv.datos->>'Proyecto_Torre' = ANY(${lista}::text[])`);
-  }
-  return condiciones.length ? Prisma.sql`WHERE ${Prisma.join(condiciones, ' AND ')}` : Prisma.empty;
+// ── Cache en memoria del cálculo pesado ─────────────────────────────────────
+// obtenerDashboardRecaudo recibe filtros distintos en cada llamada (Etapa,
+// Frente, Torre, búsqueda, Solo con movimientos), pero el cálculo caro --
+// construirPlan+normalizarPagos+conciliar por cada inmueble del portafolio --
+// es el mismo sin importar el filtro. Se calcula una sola vez para TODO el
+// portafolio sin filtrar, se cachea en memoria, y cada request solo filtra y
+// reagrega sobre ese resultado ya calculado (rápido, sin volver a correr
+// conciliar()). invalidarCacheDashboard() se llama desde cualquier lugar que
+// cambie los datos fuente: sync de Zoho, backfill de subforms, subida de
+// Fiducia, backfill de negocios, sync de inventario.
+let cache = null; // { filas, valores, builtAt }
+let cacheEnConstruccion = null; // Promise en vuelo -- evita reconstruir en paralelo
+
+function invalidarCacheDashboard() {
+  cache = null;
+  cacheEnConstruccion = null;
 }
 
-// Resuelve, para un conjunto de InventarioItem ya filtrado, su Negocio y
-// Opportunity vinculados -- en bloque (pocas queries, no una por inmueble),
-// para que sea viable sobre todo el portafolio filtrado a la vez. Mismo
+// Resuelve, para un conjunto de InventarioItem, su Negocio y Opportunity
+// vinculados -- en bloque (pocas queries, no una por inmueble). Mismo
 // criterio de match que resolverNegocioIdDesdeInmueble/
 // findOportunidadByReferencia (inventarioNegocioService.js), resuelto con
 // mapas en JS en vez de una consulta SQL por inmueble.
@@ -97,19 +89,16 @@ function mesKey(fecha) {
   return `${fecha.getUTCFullYear()}-${String(fecha.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-// Reporte Dashboard: plan de pagos vs. recaudado, por mes, para todo el
-// inventario que cumple los filtros (no solo la página actual -- los
-// totales necesitan el conjunto filtrado completo, sin importar la
-// paginación). Corre construirPlan+normalizarPagos+conciliar por cada
-// inmueble con oportunidad vinculada.
-async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimientos, page, limit }) {
+// Calcula, para TODO el inventario (sin filtrar), la fila completa de cada
+// inmueble -- construirPlan+normalizarPagos+conciliar por cada uno con
+// oportunidad vinculada. Es la parte cara del reporte Dashboard, por eso se
+// cachea en vez de correrla en cada request.
+async function construirFilasCompletas() {
   const valores = await valoresProyectoTorre();
-  const filtro = construirFiltroInventario({ search, etapa, frente, torre, valores });
 
   const inmuebles = await prisma.$queryRaw`
     SELECT id, datos, "referenciaRecaudo"
-    FROM "InventarioItem" inv
-    ${filtro}
+    FROM "InventarioItem"
     ORDER BY datos->>'Proyecto_Torre' ASC NULLS LAST, datos->>'Project_Code' ASC NULLS LAST
   `;
 
@@ -125,19 +114,7 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
     movimientosPorNegocioId.get(m.negocioId).push(m);
   }
 
-  // "Solo con movimientos" se resuelve aquí (no en el WHERE de arriba) porque
-  // el vínculo Inmueble->Negocio se resuelve en bloque en JS, no por join SQL.
-  const inmueblesEnAlcance = conMovimientos === 'true'
-    ? inmuebles.filter((inv) => {
-        const negocio = negocioPorInmuebleId.get(inv.id);
-        return negocio && (movimientosPorNegocioId.get(negocio.id)?.length ?? 0) > 0;
-      })
-    : inmuebles;
-
-  const mesesSet = new Set();
-  const totalesPorMes = new Map();
-  const totalesPorEtapa = new Map();
-  const filasCompletas = inmueblesEnAlcance.map((inv) => {
+  const filas = inmuebles.map((inv) => {
     const info = parseProyectoTorre(inv.datos?.Proyecto_Torre);
     const etapa = info ? obtenerEtapaTorre(inv.datos.Proyecto_Torre) : null;
     const negocio = negocioPorInmuebleId.get(inv.id) ?? null;
@@ -165,24 +142,12 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
       valorSaldoContraentrega = resumen.saldoContraentrega?.valorPlan ?? null;
       totalAbonado = resumen.totalPagado;
 
-      const sumar = (mes, campo, valor) => {
-        mesesSet.add(mes);
-        if (!porMes[mes]) porMes[mes] = { esperado: 0, recaudado: 0 };
-        porMes[mes][campo] += valor;
-
-        if (!totalesPorMes.has(mes)) totalesPorMes.set(mes, { esperado: 0, recaudado: 0 });
-        totalesPorMes.get(mes)[campo] += valor;
-
-        if (etapa != null) {
-          if (!totalesPorEtapa.has(etapa)) totalesPorEtapa.set(etapa, { esperado: 0, recaudado: 0 });
-          totalesPorEtapa.get(etapa)[campo] += valor;
-        }
-      };
-
-      // Esperado: por mes de cada cuota del plan (sin cambios).
+      // Esperado: por mes de cada cuota del plan.
       for (const c of cuotas) {
         if (!c.fechaEstimada) continue;
-        sumar(mesKey(c.fechaEstimada), 'esperado', c.valorPlan);
+        const mes = mesKey(c.fechaEstimada);
+        if (!porMes[mes]) porMes[mes] = { esperado: 0, recaudado: 0 };
+        porMes[mes].esperado += c.valorPlan;
       }
 
       // Recaudado: por mes real de cada movimiento -- a diferencia de la
@@ -191,7 +156,9 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
       // ese mes, sin repartirlo hacia el mes de la cuota que termine cubriendo.
       for (const p of pagos) {
         if (!p.fecha) continue;
-        sumar(mesKey(p.fecha), 'recaudado', p.valor);
+        const mes = mesKey(p.fecha);
+        if (!porMes[mes]) porMes[mes] = { esperado: 0, recaudado: 0 };
+        porMes[mes].recaudado += p.valor;
       }
     }
 
@@ -205,19 +172,87 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
       fechaSaldoContraentrega,
       valorSaldoContraentrega,
       totalAbonado,
+      opportunityId: oportunidad?.id ?? null,
+      // Campo interno, no se expone en la respuesta -- resuelve el filtro
+      // "Solo con movimientos" sin tener que recorrer movimientos otra vez.
+      _tieneMovimientos: !!negocio && (movimientosPorNegocioId.get(negocio.id)?.length ?? 0) > 0,
       porMes,
     };
   });
 
+  return { filas, valores };
+}
+
+async function obtenerCache() {
+  if (cache) return cache;
+  if (!cacheEnConstruccion) {
+    cacheEnConstruccion = construirFilasCompletas()
+      .then((resultado) => {
+        cache = { ...resultado, builtAt: Date.now() };
+        cacheEnConstruccion = null;
+        return cache;
+      })
+      .catch((err) => {
+        cacheEnConstruccion = null;
+        throw err;
+      });
+  }
+  return cacheEnConstruccion;
+}
+
+// Reporte Dashboard: plan de pagos vs. recaudado, por mes, para todo el
+// inventario que cumple los filtros (no solo la página actual -- los totales
+// necesitan el conjunto filtrado completo, sin importar la paginación). El
+// cálculo pesado por inmueble sale del cache (ver arriba); aquí solo se
+// filtra, pagina y reagregan totales en memoria.
+async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimientos, page, limit }) {
+  const { filas: todasLasFilas, valores } = await obtenerCache();
+
+  let filas = todasLasFilas;
+  if (search) {
+    const s = search.toLowerCase();
+    filas = filas.filter((f) =>
+      f.nomenclatura?.toLowerCase().includes(s) ||
+      `${f.frente ?? ''} ${f.torre ?? ''}`.toLowerCase().includes(s)
+    );
+  }
+  if (etapa) filas = filas.filter((f) => f.etapa === etapa);
+  if (frente && torre) filas = filas.filter((f) => f.frente === frente && f.torre === torre);
+  else if (frente) filas = filas.filter((f) => f.frente === frente);
+  if (conMovimientos === 'true') filas = filas.filter((f) => f._tieneMovimientos);
+
+  // Totales del subconjunto filtrado -- reagregar es barato (solo sumar lo
+  // que ya está calculado en cada fila, no volver a correr conciliar()).
+  const mesesSet = new Set();
+  const totalesPorMes = new Map();
+  const totalesPorEtapa = new Map();
+  for (const f of filas) {
+    for (const [mes, v] of Object.entries(f.porMes)) {
+      mesesSet.add(mes);
+      if (!totalesPorMes.has(mes)) totalesPorMes.set(mes, { esperado: 0, recaudado: 0 });
+      const t = totalesPorMes.get(mes);
+      t.esperado += v.esperado;
+      t.recaudado += v.recaudado;
+
+      if (f.etapa != null) {
+        if (!totalesPorEtapa.has(f.etapa)) totalesPorEtapa.set(f.etapa, { esperado: 0, recaudado: 0 });
+        const te = totalesPorEtapa.get(f.etapa);
+        te.esperado += v.esperado;
+        te.recaudado += v.recaudado;
+      }
+    }
+  }
   const meses = [...mesesSet].sort();
   const totales = Object.fromEntries(meses.map((m) => [m, totalesPorMes.get(m)]));
   const etapasOrdenadas = [...totalesPorEtapa.keys()].sort((a, b) => Number(a) - Number(b));
   const totalesEtapa = Object.fromEntries(etapasOrdenadas.map((e) => [e, totalesPorEtapa.get(e)]));
 
-  const total = filasCompletas.length;
+  const total = filas.length;
   const pageNum = Math.max(1, page);
   const limitNum = Math.max(1, limit);
-  const data = filasCompletas.slice((pageNum - 1) * limitNum, pageNum * limitNum);
+  const data = filas
+    .slice((pageNum - 1) * limitNum, pageNum * limitNum)
+    .map(({ _tieneMovimientos, ...fila }) => fila);
 
   return {
     data,
@@ -233,4 +268,4 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
   };
 }
 
-module.exports = { construirFiltroInventario, resolverNegociosYOportunidades, obtenerDashboardRecaudo };
+module.exports = { resolverNegociosYOportunidades, obtenerDashboardRecaudo, invalidarCacheDashboard };

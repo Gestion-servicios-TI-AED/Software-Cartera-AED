@@ -7,6 +7,7 @@ const {
   parseCompradoresCell,
   extraerDatosMovimiento,
 } = require('./movPorPropietarioParser');
+const { invalidarCacheDashboard } = require('./dashboardRecaudoService');
 
 const prisma = new PrismaClient();
 
@@ -208,6 +209,8 @@ async function procesarArchivoFiducia(buffer, filename, metadata = {}) {
       console.warn(`[fiducia] No se pudo auto-detectar nombre del proyecto: ${err.message}`);
     }
   }
+
+  if (hojasCreadas.length > 0) invalidarCacheDashboard();
 
   return { encargo, hojas: hojasCreadas };
 }

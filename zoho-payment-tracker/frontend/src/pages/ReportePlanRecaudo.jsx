@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo, Fragment } from 'react';
 import { useReactTable, getCoreRowModel, flexRender, createColumnHelper } from '@tanstack/react-table';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Search, Layers, MapPin, Building, X, Download, History, CalendarRange } from 'lucide-react';
+import { Search, Layers, MapPin, Building, X, Download, History, CalendarRange, Briefcase, ExternalLink } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { getDashboardRecaudo } from '../utils/api';
 import { formatCOP, formatDate } from '../utils/format';
@@ -109,6 +109,26 @@ const COLUMNAS_FIJAS_IDS = new Set([
   'fechaSaldoContraentrega', 'valorSaldoContraentrega', 'totalAbonado',
 ]);
 
+// Anchos fijos en px para table-layout:fixed (ver TablaDashboard) -- con
+// cientos de columnas (hasta ~200 meses x2), table-layout:auto obliga al
+// navegador a medir el contenido de TODAS las filas por cada columna antes
+// de poder pintar nada; fixed solo mira estos anchos, mucho más liviano al
+// renderizar/scrollear. Los que no están en el mapa (Esperado/Recaudado de
+// cada mes) usan el default más abajo.
+const ANCHOS_FIJOS = {
+  etapa: 70,
+  frente: 120,
+  torre: 70,
+  nomenclatura: 210,
+  valorInmueble: 150,
+  fechaSaldoContraentrega: 180,
+  valorSaldoContraentrega: 180,
+  totalAbonado: 210,
+};
+function anchoColumna(id) {
+  return ANCHOS_FIJOS[id] ?? 120;
+}
+
 const COLUMNA_ESPERADO = (mes) =>
   columnHelper.accessor((row) => row.porMes[mes]?.esperado ?? 0, {
     id: `${mes}-esperado`,
@@ -139,6 +159,132 @@ function construirColumnasMeses(meses, vista = 'ambos') {
   });
 }
 
+// ── Tabla del Dashboard, memoizada ──────────────────────────────────────────
+// Separada del componente principal para que abrir/cerrar el menú contextual
+// (estado que vive en ReportePlanRecaudo) no obligue a React a recalcular y
+// diffear un árbol de miles de celdas -- con React.memo, este componente solo
+// vuelve a renderizar cuando alguna de SUS props realmente cambia (filas,
+// columnas, filtros, resaltado...), no en cada clic derecho.
+const TablaDashboard = memo(function TablaDashboard({
+  filas, columns, pagination, loading, mesesFiltrados, mesIndexPorColumna,
+  primeraColMes, filasResaltadas, toggleResaltado, abrirMenuContextual, vistaMeses, totales,
+}) {
+  const table = useReactTable({
+    data: filas,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    manualPagination: true,
+    pageCount: pagination.totalPages,
+  });
+
+  const leafColumns = table.getAllLeafColumns();
+
+  return (
+    <div className="overflow-auto flex-1 min-h-0">
+      <table className="text-[14px] table-fixed">
+        <colgroup>
+          {leafColumns.map((col) => (
+            <col key={col.id} style={{ width: anchoColumna(col.id) }} />
+          ))}
+        </colgroup>
+        <thead>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id} className="border-b border-aed-border bg-aed-base">
+              {headerGroup.headers.map((header) => {
+                const esFija = COLUMNAS_FIJAS_IDS.has(header.column.id);
+                const mesIdx = mesIndexPorColumna[header.column.id];
+                const esImpar = mesIdx !== undefined && mesIdx % 2 === 1;
+                const esInicioMes = header.column.id.startsWith('mes-') || header.column.id.endsWith(`-${primeraColMes}`);
+                return (
+                  <th
+                    key={header.id}
+                    colSpan={header.colSpan}
+                    className={`section-label px-3 py-2 text-left whitespace-nowrap ${
+                      esFija ? 'bg-teal-600 text-white' : esImpar ? 'bg-slate-100' : ''
+                    } ${
+                      header.column.id === 'totalAbonado' ? 'border-r-4 border-teal-700' : ''
+                    } ${esInicioMes && mesIdx > 0 ? 'border-l border-aed-border' : ''}`}
+                  >
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  </th>
+                );
+              })}
+            </tr>
+          ))}
+        </thead>
+        <tbody>
+          {loading ? (
+            <tr>
+              <td colSpan={columns.length} className="px-4 py-12 text-center text-slate-400">Cargando…</td>
+            </tr>
+          ) : filas.length === 0 ? (
+            <tr>
+              <td colSpan={columns.length} className="px-4 py-12 text-center text-slate-400">Sin resultados.</td>
+            </tr>
+          ) : (
+            table.getRowModel().rows.map((row) => {
+              const clave = claveFila(row.original);
+              const resaltada = filasResaltadas.has(clave);
+              return (
+                <tr
+                  key={row.id}
+                  onClick={() => toggleResaltado(clave)}
+                  onContextMenu={(e) => abrirMenuContextual(e, row.original)}
+                  className={`border-b border-aed-border cursor-pointer transition-colors ${
+                    resaltada ? 'bg-amber-100 hover:bg-amber-200' : 'hover:bg-slate-50'
+                  }`}
+                >
+                  {row.getVisibleCells().map((cell) => {
+                    const esFija = COLUMNAS_FIJAS_IDS.has(cell.column.id);
+                    const mesIdx = mesIndexPorColumna[cell.column.id];
+                    const esImpar = mesIdx !== undefined && mesIdx % 2 === 1;
+                    const esInicioMes = cell.column.id.endsWith(`-${primeraColMes}`);
+                    return (
+                      <td
+                        key={cell.id}
+                        className={`px-3 py-2 whitespace-nowrap overflow-hidden text-ellipsis ${
+                          resaltada
+                            ? ''
+                            : esFija ? 'bg-teal-100' : esImpar ? 'bg-slate-50' : ''
+                        } ${cell.column.id === 'totalAbonado' ? 'border-r-4 border-teal-700' : ''} ${
+                          esInicioMes && mesIdx > 0 ? 'border-l border-aed-border' : ''
+                        }`}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+        {mesesFiltrados.length > 0 && (
+          <tfoot>
+            <tr className="border-t-2 border-aed-border bg-aed-base font-semibold">
+              <td colSpan={COLUMNAS_FIJAS.length} className="px-3 py-2 text-[13px] text-slate-600">Total del portafolio filtrado</td>
+              {mesesFiltrados.map((mes) => (
+                <Fragment key={mes}>
+                  {vistaMeses !== 'recaudado' && (
+                    <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px]">
+                      {formatCOP(totales[mes]?.esperado ?? 0)}
+                    </td>
+                  )}
+                  {vistaMeses !== 'esperado' && (
+                    <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-emerald-700">
+                      {formatCOP(totales[mes]?.recaudado ?? 0)}
+                    </td>
+                  )}
+                </Fragment>
+              ))}
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  );
+});
+
 export default function ReportePlanRecaudo() {
   const [filas, setFilas] = useState([]);
   const [meses, setMeses] = useState([]);
@@ -160,17 +306,42 @@ export default function ReportePlanRecaudo() {
   const [torresPorEtapaFrente, setTorresPorEtapaFrente] = useState({});
   const [totales, setTotales] = useState({});
   const [filasResaltadas, setFilasResaltadas] = useState(() => new Set());
+  const [menuContextual, setMenuContextual] = useState(null); // { x, y, fila } | null
 
   const debouncedSearch = useDebounce(search);
 
-  const toggleResaltado = (clave) => {
+  // useCallback con deps vacías (solo usan setters/actualizaciones
+  // funcionales) para que su referencia sea estable entre renders -- si no,
+  // React.memo de TablaDashboard no serviría de nada, porque recibiría una
+  // prop "nueva" (aunque haga lo mismo) en cada render del padre.
+  const toggleResaltado = useCallback((clave) => {
     setFilasResaltadas((prev) => {
       const next = new Set(prev);
       if (next.has(clave)) next.delete(clave);
       else next.add(clave);
       return next;
     });
-  };
+  }, []);
+
+  const abrirMenuContextual = useCallback((e, fila) => {
+    e.preventDefault();
+    setMenuContextual({ x: e.clientX, y: e.clientY, fila });
+  }, []);
+
+  // Cerrar el menú contextual al hacer clic afuera, con Escape, o al scrollear.
+  useEffect(() => {
+    if (!menuContextual) return;
+    const cerrar = () => setMenuContextual(null);
+    const cerrarConEscape = (e) => { if (e.key === 'Escape') cerrar(); };
+    document.addEventListener('click', cerrar);
+    document.addEventListener('scroll', cerrar, true);
+    document.addEventListener('keydown', cerrarConEscape);
+    return () => {
+      document.removeEventListener('click', cerrar);
+      document.removeEventListener('scroll', cerrar, true);
+      document.removeEventListener('keydown', cerrarConEscape);
+    };
+  }, [menuContextual]);
 
   const load = useCallback(async (p) => {
     setLoading(true);
@@ -427,14 +598,6 @@ export default function ReportePlanRecaudo() {
     }
   }, [search, etapaFilter, frenteFilter, torreFilter, conMovimientos, mesDesde, mesHasta, vistaMeses, filasResaltadas]);
 
-  const table = useReactTable({
-    data: filas,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    manualPagination: true,
-    pageCount: pagination.totalPages,
-  });
-
   return (
     <div className="h-full flex flex-col gap-3 p-5 overflow-hidden">
       <div className="flex items-center gap-2 flex-shrink-0">
@@ -566,102 +729,20 @@ export default function ReportePlanRecaudo() {
       )}
 
       <div className="card overflow-hidden flex flex-col flex-1 min-h-0">
-        <div className="overflow-auto flex-1 min-h-0">
-          <table className="w-full text-[14px]">
-            <thead>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id} className="border-b border-aed-border bg-aed-base">
-                  {headerGroup.headers.map((header) => {
-                    const esFija = COLUMNAS_FIJAS_IDS.has(header.column.id);
-                    const mesIdx = mesIndexPorColumna[header.column.id];
-                    const esImpar = mesIdx !== undefined && mesIdx % 2 === 1;
-                    const esInicioMes = header.column.id.startsWith('mes-') || header.column.id.endsWith(`-${primeraColMes}`);
-                    return (
-                      <th
-                        key={header.id}
-                        colSpan={header.colSpan}
-                        className={`section-label px-3 py-2 text-left whitespace-nowrap ${
-                          esFija ? 'bg-teal-600 text-white' : esImpar ? 'bg-slate-100' : ''
-                        } ${
-                          header.column.id === 'totalAbonado' ? 'border-r-4 border-teal-700' : ''
-                        } ${esInicioMes && mesIdx > 0 ? 'border-l border-aed-border' : ''}`}
-                      >
-                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                      </th>
-                    );
-                  })}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={columns.length} className="px-4 py-12 text-center text-slate-400">Cargando…</td>
-                </tr>
-              ) : filas.length === 0 ? (
-                <tr>
-                  <td colSpan={columns.length} className="px-4 py-12 text-center text-slate-400">Sin resultados.</td>
-                </tr>
-              ) : (
-                table.getRowModel().rows.map((row) => {
-                  const clave = claveFila(row.original);
-                  const resaltada = filasResaltadas.has(clave);
-                  return (
-                    <tr
-                      key={row.id}
-                      onClick={() => toggleResaltado(clave)}
-                      className={`border-b border-aed-border cursor-pointer transition-colors ${
-                        resaltada ? 'bg-amber-100 hover:bg-amber-200' : 'hover:bg-slate-50'
-                      }`}
-                    >
-                      {row.getVisibleCells().map((cell) => {
-                        const esFija = COLUMNAS_FIJAS_IDS.has(cell.column.id);
-                        const mesIdx = mesIndexPorColumna[cell.column.id];
-                        const esImpar = mesIdx !== undefined && mesIdx % 2 === 1;
-                        const esInicioMes = cell.column.id.endsWith(`-${primeraColMes}`);
-                        return (
-                          <td
-                            key={cell.id}
-                            className={`px-3 py-2 whitespace-nowrap ${
-                              resaltada
-                                ? ''
-                                : esFija ? 'bg-teal-100' : esImpar ? 'bg-slate-50' : ''
-                            } ${cell.column.id === 'totalAbonado' ? 'border-r-4 border-teal-700' : ''} ${
-                              esInicioMes && mesIdx > 0 ? 'border-l border-aed-border' : ''
-                            }`}
-                          >
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-            {mesesFiltrados.length > 0 && (
-              <tfoot>
-                <tr className="border-t-2 border-aed-border bg-aed-base font-semibold">
-                  <td colSpan={COLUMNAS_FIJAS.length} className="px-3 py-2 text-[13px] text-slate-600">Total del portafolio filtrado</td>
-                  {mesesFiltrados.map((mes) => (
-                    <Fragment key={mes}>
-                      {vistaMeses !== 'recaudado' && (
-                        <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px]">
-                          {formatCOP(totales[mes]?.esperado ?? 0)}
-                        </td>
-                      )}
-                      {vistaMeses !== 'esperado' && (
-                        <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-emerald-700">
-                          {formatCOP(totales[mes]?.recaudado ?? 0)}
-                        </td>
-                      )}
-                    </Fragment>
-                  ))}
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
+        <TablaDashboard
+          filas={filas}
+          columns={columns}
+          pagination={pagination}
+          loading={loading}
+          mesesFiltrados={mesesFiltrados}
+          mesIndexPorColumna={mesIndexPorColumna}
+          primeraColMes={primeraColMes}
+          filasResaltadas={filasResaltadas}
+          toggleResaltado={toggleResaltado}
+          abrirMenuContextual={abrirMenuContextual}
+          vistaMeses={vistaMeses}
+          totales={totales}
+        />
 
         {pagination.totalPages > 1 && (
           <div className="px-4 py-3 border-t border-aed-border flex items-center justify-between flex-shrink-0">
@@ -679,6 +760,36 @@ export default function ReportePlanRecaudo() {
           </div>
         )}
       </div>
+
+      {menuContextual && (
+        <div
+          className="fixed z-50 bg-white border border-aed-border rounded-md shadow-lg py-1 min-w-[200px]"
+          style={{ top: menuContextual.y, left: menuContextual.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              window.open(`/?negocio=inv-${menuContextual.fila.id}`, '_blank');
+              setMenuContextual(null);
+            }}
+            className="w-full text-left px-3 py-1.5 text-[14px] text-slate-700 hover:bg-aed-base flex items-center gap-2"
+          >
+            <Briefcase size={13} className="text-brand" /> Ver negocio
+          </button>
+          <button
+            onClick={() => {
+              if (!menuContextual.fila.opportunityId) return;
+              window.open(`/opportunity/${menuContextual.fila.opportunityId}`, '_blank');
+              setMenuContextual(null);
+            }}
+            disabled={!menuContextual.fila.opportunityId}
+            title={menuContextual.fila.opportunityId ? undefined : 'No hay oportunidad vinculada a este inmueble'}
+            className="w-full text-left px-3 py-1.5 text-[14px] text-slate-700 hover:bg-aed-base flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          >
+            <ExternalLink size={13} className="text-brand" /> Ver oportunidad
+          </button>
+        </div>
+      )}
     </div>
   );
 }

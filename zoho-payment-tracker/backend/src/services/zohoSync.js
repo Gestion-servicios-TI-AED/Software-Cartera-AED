@@ -3,6 +3,7 @@ const { getAccessToken } = require('./zohoAuth');
 const config = require('../config/zoho');
 const { PrismaClient } = require('@prisma/client');
 const { runSubformsBackfill } = require('./subformsBackfillService');
+const { invalidarCacheDashboard } = require('./dashboardRecaudoService');
 
 const prisma = new PrismaClient();
 
@@ -441,6 +442,7 @@ async function syncOpportunitiesFromZoho(force = false) {
     });
 
     console.log(`[sync] Done. ${saved} records synced.`);
+    invalidarCacheDashboard();
 
     // Disparar en segundo plano el backfill de subforms (plan de pagos) --
     // el sync masivo nunca los trae, así que cualquier Opportunity nueva o

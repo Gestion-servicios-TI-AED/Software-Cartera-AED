@@ -2,6 +2,7 @@ const axios = require('axios');
 const { PrismaClient, Prisma } = require('@prisma/client');
 const { getAccessToken } = require('./zohoAuth');
 const zohoConfig = require('../config/zoho');
+const { invalidarCacheDashboard } = require('./dashboardRecaudoService');
 
 const prisma = new PrismaClient();
 
@@ -109,6 +110,7 @@ async function runSubformsBackfill() {
     const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
     subformsBackfillResult = { ok: true, total: pendientes.length, actualizadas, errores, elapsed: `${elapsed}s` };
     console.log(`[subformsBackfill] Listo: ${actualizadas}/${pendientes.length} en ${elapsed}s (${errores} errores)`);
+    if (actualizadas > 0) invalidarCacheDashboard();
   } catch (err) {
     subformsBackfillResult = { ok: false, error: err.message };
     console.error('[subformsBackfill] Error fatal:', err.message);

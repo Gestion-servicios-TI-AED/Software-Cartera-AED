@@ -84,18 +84,22 @@ function construirPlan(rows, fechaBase) {
   return plan;
 }
 
-const TIPOS_REVERSA_SIEMPRE = ['DESISTIMIENTOS', 'DEVOLUCION MAYOR VALOR PAGADO'];
+// "Generado por venta unidad" no es un pago -- es el asiento que registra el
+// valor total de venta del inmueble (siempre negativo, de -9M a -1.269M en
+// los datos reales), y sumarlo cancela pagos reales de ese mismo negocio.
+const TIPOS_EXCLUIDOS_SIEMPRE = ['GENERADO POR VENTA UNIDAD'];
 
-// Pagos reales: movimientos APLICADO (cualquier signo) más las reversas
-// reconocidas de arriba, sin importar su Estado. Ordenados por fecha
-// contable ascendente (sin fecha al final).
+// Pagos reales: todo movimiento del negocio cuenta (cualquier Tipo
+// Movimiento y cualquier Estado, incluyendo null, salvo los excluidos
+// arriba) -- la mayoría de tipos (AJUSTE MANUAL + y -, LEGALIZACION_APORTES,
+// SUBROGACION BANCO..., etc.) nunca traen Estado "Aplicado" poblado en el
+// Excel de origen, pero igual representan plata real del negocio. Ordenados
+// por fecha contable ascendente (sin fecha al final).
 function normalizarPagos(movimientos) {
   return (movimientos || [])
     .filter((m) => {
-      const estado = String(m.datos?.Estado || '').trim().toUpperCase();
-      if (estado === 'APLICADO') return true;
       const tipo = String(m.datos?.['Tipo Movimiento'] || '').trim().toUpperCase();
-      return TIPOS_REVERSA_SIEMPRE.includes(tipo);
+      return !TIPOS_EXCLUIDOS_SIEMPRE.includes(tipo);
     })
     .map((m) => ({ id: m.idMovimiento ?? null, fecha: m.fechaContable ? new Date(m.fechaContable) : null, valor: parseMonto(m.datos?.Valor) }))
     .filter((p) => !isNaN(p.valor) && p.valor !== 0)

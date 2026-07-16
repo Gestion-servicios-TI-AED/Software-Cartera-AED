@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search, X, ChevronDown, ChevronRight, User, Building2, Layers, BarChart3, History, RefreshCw, Download, CircleDot, Wallet, ClipboardList, Scale, MapPin, Building } from 'lucide-react';
 import { getNegocios, getNegocio, getNegocioMovimientos, triggerNegociosBackfill, getNegociosBackfillStatus, getNegociosStats, getSubforms } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
@@ -1219,7 +1220,11 @@ export default function Negocios() {
   const [torreFilter, setTorreFilter] = useState('');
   const [saldoPendiente, setSaldoPendiente] = useState(false);
   const [conMovimientos, setConMovimientos] = useState(false);
-  const [selected, setSelected] = useState(null);
+  // Deep link: ?negocio=inv-xxx / neg-xxx (ej. desde el menú de clic derecho
+  // del Dashboard) preselecciona el detalle sin depender de que ese id esté
+  // en la página actual de la lista de la izquierda.
+  const [searchParams] = useSearchParams();
+  const [selected, setSelected] = useState(() => searchParams.get('negocio') || null);
   const [stats, setStats] = useState(null);
 
   const debouncedSearch = useDebounce(search);

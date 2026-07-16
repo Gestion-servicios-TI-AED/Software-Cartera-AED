@@ -11,7 +11,7 @@ const {
   obtenerNegocioPorId,
   obtenerMovimientosPorId,
 } = require('../services/inventarioNegocioService');
-const { obtenerDashboardRecaudo } = require('../services/dashboardRecaudoService');
+const { obtenerDashboardRecaudo, invalidarCacheDashboard } = require('../services/dashboardRecaudoService');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -239,6 +239,7 @@ async function runBackfill() {
     const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
     backfillResult = { ok: true, negocios: total, elapsed: `${elapsed}s` };
     console.log(`[backfill] Listo: ${total} negocios en ${elapsed}s`);
+    invalidarCacheDashboard();
   } catch (err) {
     backfillResult = { ok: false, error: err.message };
     console.error('[backfill] Error:', err.message);
