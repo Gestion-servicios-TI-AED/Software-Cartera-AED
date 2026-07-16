@@ -159,6 +159,107 @@ router.get('/:id/subforms', async (req, res) => {
   }
 });
 
+// ── Backfill de subforms (plan de pagos) ────────────────────────────────────
+// Los subforms (Forma_de_Pago / Propuesta_de_Pago) no vienen en el sync
+// masivo de Zoho (la API de Deals en bloque no los devuelve, pese a pedirlos
+// en el `fields` — solo se obtienen pidiendo el deal individual, como ya hace
+// GET /:id/subforms). Este backfill recorre las oportunidades que tienen
+// fecha de inicio de plan de pagos pero ningún subform cacheado aún, y los
+// trae uno por uno desde Zoho (mismo fetch + limpieza que /:id/subforms).
+
+let subformsBackfillRunning = false;
+let subformsBackfillResult = null;
+
+const SKIP_SUBFORM_KEYS = ['$in_merge', '$field_states', '$layout_id', '$permissions', 'Parent_Id', 'Created_Time', 'Modified_Time'];
+function limpiarFilasSubform(arr) {
+  return (arr || []).map((row) =>
+    Object.fromEntries(Object.entries(row).filter(([k, v]) => !SKIP_SUBFORM_KEYS.includes(k) && v != null && v !== ''))
+  );
+}
+
+async function runSubformsBackfill() {
+  if (subformsBackfillRunning) return;
+  subformsBackfillRunning = true;
+  subformsBackfillResult = null;
+  const startedAt = Date.now();
+  let procesadas = 0;
+  let actualizadas = 0;
+  let errores = 0;
+
+  try {
+    const pendientes = await prisma.opportunity.findMany({
+      where: {
+        fechaInicioPlanPagos: { not: null },
+        formaPago: { equals: Prisma.JsonNull },
+        propuestaPago: { equals: Prisma.JsonNull },
+      },
+      select: { id: true, zohoId: true },
+    });
+
+    for (const opp of pendientes) {
+      try {
+        const token = await getAccessToken();
+        const response = await axios.get(
+          `${zohoConfig.apiBase}/Deals/${opp.zohoId}`,
+          {
+            headers: { Authorization: `Zoho-oauthtoken ${token}` },
+            params: { fields: 'Forma_de_Pago,Propuesta_de_Pago' },
+          }
+        );
+        const deal = response.data?.data?.[0] || {};
+        const formaPago = limpiarFilasSubform(deal.Forma_de_Pago);
+        const propuestaPago = limpiarFilasSubform(deal.Propuesta_de_Pago);
+
+        await prisma.opportunity.update({
+          where: { id: opp.id },
+          data: {
+            formaPago: formaPago.length ? formaPago : null,
+            propuestaPago: propuestaPago.length ? propuestaPago : null,
+          },
+        });
+        actualizadas++;
+      } catch (err) {
+        errores++;
+        console.error(`[subformsBackfill] Error en ${opp.zohoId}:`, err.message);
+      }
+
+      procesadas++;
+      if (procesadas % 50 === 0 || procesadas === pendientes.length) {
+        subformsBackfillResult = { running: true, progreso: `${procesadas}/${pendientes.length}`, actualizadas, errores };
+        console.log(`[subformsBackfill] Progreso: ${procesadas}/${pendientes.length} (${actualizadas} ok, ${errores} errores)`);
+      }
+    }
+
+    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
+    subformsBackfillResult = { ok: true, total: pendientes.length, actualizadas, errores, elapsed: `${elapsed}s` };
+    console.log(`[subformsBackfill] Listo: ${actualizadas}/${pendientes.length} en ${elapsed}s (${errores} errores)`);
+  } catch (err) {
+    subformsBackfillResult = { ok: false, error: err.message };
+    console.error('[subformsBackfill] Error fatal:', err.message);
+  } finally {
+    subformsBackfillRunning = false;
+  }
+}
+
+// POST /api/opportunities/backfill-subforms — trae Forma de Pago / Propuesta
+// de Pago de Zoho para toda oportunidad con fecha de inicio de plan pero sin
+// subform cacheado. Corre en background; consultar progreso con el status.
+router.post('/backfill-subforms', (req, res) => {
+  if (subformsBackfillRunning) {
+    return res.json({ message: 'Backfill de planes de pago ya en ejecución', running: true });
+  }
+  res.json({ message: 'Backfill de planes de pago iniciado en segundo plano', running: true });
+  runSubformsBackfill();
+});
+
+// GET /api/opportunities/backfill-subforms/status
+router.get('/backfill-subforms/status', (req, res) => {
+  res.json({
+    running: subformsBackfillRunning,
+    result: subformsBackfillResult,
+  });
+});
+
 // POST /api/sync — disparar sincronización manual
 router.post('/sync', async (req, res) => {
   // Responder inmediatamente y sincronizar en background
