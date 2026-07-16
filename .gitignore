@@ -3,3 +3,6 @@
 
 # Environment files at root level
 .env
+
+# Superpowers subagent-driven-development scratch (progress ledger, etc.)
+.superpowers/

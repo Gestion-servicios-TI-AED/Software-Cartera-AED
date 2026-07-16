@@ -6,75 +6,16 @@ const {
   parseCompradoresCell,
   extraerDatosMovimiento,
 } = require('../services/movPorPropietarioParser');
+const {
+  listarNegociosInventario,
+  obtenerNegocioPorId,
+  obtenerMovimientosPorId,
+} = require('../services/inventarioNegocioService');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-// Etapa de cada Torre, según la tabla que definió AED (proyecto + número de
-// torre → etapa). Lo que no aparezca acá (Isla Laguna, Vela Village, The
-// Plaza, Laguna y Ambiental, Urbanismo, o negocios sin inmueble) cae en "0".
-const ETAPA_POR_TORRE = {
-  'KABO 1': '1', 'KABO 2': '1', 'PRIVE 2': '1', 'PRIVE 3': '1',
-  'KABO 3': '2', 'KABO 4': '2', 'PRIVE 1': '2', 'PRIVE 4': '2',
-  'KALA 1': '3', 'KALA 2': '3', 'KALIZA 1': '3', 'KALIZA 2': '3',
-  'KALA 3': '4', 'KALA 4': '4', 'KALIZA 3': '4',
-};
-
-// Parsea el campo Proyecto_Torre del Product de Zoho ("Kabo - Torre 3",
-// "Kala Golf - Torre  4") en { proyecto: "Kabo", torre: "3" }.
-function parseProyectoTorre(proyectoTorreRaw) {
-  const m = String(proyectoTorreRaw ?? '').match(/^(.+?)\s*-\s*Torre\s*(\d+)/i);
-  if (!m) return null;
-  const proyecto = m[1].trim().replace(/\s*golf$/i, ''); // "Kala Golf" → "Kala"
-  return { proyecto, torre: m[2] };
-}
-
-// Etiqueta legible para el selector de negocios: "Kabo Torre 3".
-function formatearProyectoTorre(info) {
-  return `${info.proyecto} Torre ${info.torre}`;
-}
-
-function obtenerEtapaTorre(proyectoTorreRaw) {
-  const info = parseProyectoTorre(proyectoTorreRaw);
-  return (info && ETAPA_POR_TORRE[`${info.proyecto.toUpperCase()} ${info.torre}`]) ?? '0';
-}
-
-// Resuelve el inmueble (Product de Zoho) de cada negocio: primero por
-// Referencia de Recaudo directa; si no calza (pasa cuando la Referencia
-// viene truncada/enmascarada con "****" en el Excel de origen), por
-// Nomenclatura → Código de inmueble, igual que el respaldo del detalle de
-// negocio. Devuelve un Map de Negocio.referencia → { datos } de InventarioItem.
-async function resolverInventarioPorNegocio(negocios) {
-  const refs = negocios.map((n) => n.referencia);
-  const items = refs.length
-    ? await prisma.inventarioItem.findMany({
-        where: { referenciaRecaudo: { in: refs } },
-        select: { referenciaRecaudo: true, datos: true },
-      })
-    : [];
-  const porReferencia = new Map(items.map((it) => [it.referenciaRecaudo, it]));
-
-  const pendientes = negocios
-    .filter((n) => !porReferencia.has(n.referencia))
-    .map((n) => ({ referencia: n.referencia, codigo: n.datos?.Nomenclatura }))
-    .filter((p) => p.codigo != null && /^\d+$/.test(String(p.codigo)));
-  if (pendientes.length) {
-    const encontrados = await Promise.all(
-      pendientes.map((p) =>
-        prisma.inventarioItem.findFirst({
-          where: { datos: { path: ['C_digo_inmueble'], equals: Number(p.codigo) } },
-          select: { datos: true },
-        })
-      )
-    );
-    pendientes.forEach((p, i) => {
-      if (encontrados[i]) porReferencia.set(p.referencia, encontrados[i]);
-    });
-  }
-  return porReferencia;
-}
 
 function cleanRef(ref) {
   if (ref == null) return null;
@@ -324,61 +265,16 @@ router.get('/backfill/status', (req, res) => {
 
 // ── CRUD ───────────────────────────────────────────────────────────────────
 
-// GET /api/negocios?search=&estado=&etapa=&page=&limit=
+// GET /api/negocios?search=&estado=&etapa=&frente=&saldoPendiente=&page=&limit=
 router.get('/', async (req, res) => {
   try {
-    const { search, estado, etapa, saldoPendiente, page = '1', limit = '50' } = req.query;
+    const { search, estado, etapa, frente, saldoPendiente, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
+    const noFilters = !search && !estado && !etapa && !frente;
 
-    const noFilters = !search && !estado && !etapa;
-
-    // Etapa de cada negocio (vía su inmueble asociado), solo cuando hace
-    // falta: para poblar las opciones del filtro (sin filtros activos) o
-    // para resolver qué negocios caen en la etapa pedida.
-    let etapaPorReferencia = null;
-    if (noFilters || etapa) {
-      const todosNegocios = await prisma.negocio.findMany({ select: { referencia: true, datos: true } });
-      const inventarioPorNegocio = await resolverInventarioPorNegocio(todosNegocios);
-      etapaPorReferencia = new Map(
-        todosNegocios.map((n) => [n.referencia, obtenerEtapaTorre(inventarioPorNegocio.get(n.referencia)?.datos?.Proyecto_Torre)])
-      );
-    }
-
-    const where = {};
-    const andConditions = [];
-    if (estado) where.estado = { contains: estado, mode: 'insensitive' };
-    if (saldoPendiente === 'true') where.saldoActual = { gt: 0 };
-    if (search) {
-      andConditions.push({
-        OR: [
-          { referencia: { contains: search, mode: 'insensitive' } },
-          { compradores: { some: { nombre: { contains: search, mode: 'insensitive' } } } },
-          { compradores: { some: { nroId: { contains: search, mode: 'insensitive' } } } },
-          { datos: { path: ['Nomenclatura'], string_contains: search } },
-        ],
-      });
-    }
-    if (etapa) {
-      const referenciasEtapa = [...etapaPorReferencia.entries()]
-        .filter(([, et]) => et === etapa)
-        .map(([referencia]) => referencia);
-      andConditions.push({ referencia: { in: referenciasEtapa } });
-    }
-    if (andConditions.length) where.AND = andConditions;
-
-    const [total, negocios, estadosRaw] = await Promise.all([
-      prisma.negocio.count({ where }),
-      prisma.negocio.findMany({
-        where,
-        skip: (pageNum - 1) * limitNum,
-        take: limitNum,
-        orderBy: { referencia: 'asc' },
-        include: {
-          compradores: { orderBy: { orden: 'asc' } },
-          _count: { select: { movimientos: true } },
-        },
-      }),
+    const [{ data, total, etapasDisponibles, frentesDisponibles }, estadosRaw] = await Promise.all([
+      listarNegociosInventario({ search, estado, etapa, frente, saldoPendiente, page: pageNum, limit: limitNum }),
       noFilters
         ? prisma.negocio.findMany({
             select: { estado: true },
@@ -389,28 +285,8 @@ router.get('/', async (req, res) => {
         : Promise.resolve(null),
     ]);
 
-    // Project Code / Proyecto+Torre+Etapa de Zoho Products para esta página,
-    // con el mismo respaldo por Nomenclatura que usa el detalle de negocio
-    // cuando la Referencia de Recaudo viene truncada/enmascarada en el Excel.
-    const inventarioPorNegocioPagina = await resolverInventarioPorNegocio(negocios);
-
     res.json({
-      data: negocios.map((n) => {
-        const inv = inventarioPorNegocioPagina.get(n.referencia);
-        const info = parseProyectoTorre(inv?.datos?.Proyecto_Torre);
-        return {
-          id: n.id,
-          referencia: n.referencia,
-          estado: n.estado,
-          datos: n.datos,
-          saldoActual: n.saldoActual,
-          compradores: n.compradores,
-          totalMovimientos: n._count.movimientos,
-          projectCode: inv?.datos?.Project_Code ?? null,
-          proyectoTorre: info ? formatearProyectoTorre(info) : null,
-          etapa: info ? obtenerEtapaTorre(inv.datos.Proyecto_Torre) : null,
-        };
-      }),
+      data,
       pagination: {
         total,
         page: pageNum,
@@ -418,7 +294,7 @@ router.get('/', async (req, res) => {
         totalPages: Math.ceil(total / limitNum),
       },
       ...(estadosRaw ? { estados: estadosRaw.map((e) => e.estado).filter(Boolean) } : {}),
-      ...(noFilters ? { etapas: [...new Set(etapaPorReferencia.values())].sort((a, b) => Number(a) - Number(b)) } : {}),
+      ...(noFilters ? { etapas: etapasDisponibles, frentes: frentesDisponibles } : {}),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -585,100 +461,31 @@ router.get('/stats', async (_req, res) => {
   }
 });
 
-// Busca la oportunidad de Zoho vinculada a un negocio por su referencia.
-// La clave de unión es Negocio.referencia ↔ Opportunity.referenciaRecaudo.
-async function findOportunidadByReferencia(referencia) {
-  const select = {
-    id: true, dealName: true, stage: true, referenciaRecaudo: true,
-    pagoSeparacion: true, fechaInicioPlanPagos: true, camposFinancieros: true,
-    seccionInmueble: true, lastSyncedAt: true,
-  };
-  // Coincidencia exacta primero; luego tolerante a espacios/formato.
-  let opp = await prisma.opportunity.findFirst({ where: { referenciaRecaudo: referencia }, select });
-  if (!opp && referencia && referencia.length >= 6) {
-    opp = await prisma.opportunity.findFirst({
-      where: { referenciaRecaudo: { contains: referencia, mode: 'insensitive' } },
-      select,
-    });
-  }
-  return opp;
-}
-
-// GET /api/negocios/:referencia
-router.get('/:referencia', async (req, res) => {
+// GET /api/negocios/:id  (id = "inv-<InventarioItem.id>" o "neg-<Negocio.id>")
+router.get('/:id', async (req, res) => {
   try {
-    const referencia = decodeURIComponent(req.params.referencia);
-    const negocio = await prisma.negocio.findUnique({
-      where: { referencia },
-      include: {
-        compradores: { orderBy: { orden: 'asc' } },
-        _count: { select: { movimientos: true } },
-      },
-    });
-    if (!negocio) return res.status(404).json({ error: 'Negocio no encontrado' });
-    const oportunidad = await findOportunidadByReferencia(referencia);
-    // Código de Inmueble de Zoho Products — cruzado por la misma Referencia
-    // de Recaudo que ya se usa para vincular Negocio ↔ InventarioItem.
-    // Si no hay match directo (pasa en ~57 casos), dos respaldos en orden:
-    //  1. El Inmueble.id que trae la oportunidad de Zoho vinculada (el dato
-    //     "oficial" — el lookup real de Deals a Products), cuando exista.
-    //  2. La Nomenclatura del Excel cuando venga en crudo como el código
-    //     numérico de Zoho (heurística, pero cubre casos sin oportunidad).
-    let inmueble = await prisma.inventarioItem.findFirst({
-      where: { referenciaRecaudo: referencia },
-      select: { datos: true },
-    });
-    if (!inmueble) {
-      const inmuebleId = oportunidad?.seccionInmueble?.Inmueble?.id;
-      if (inmuebleId) {
-        inmueble = await prisma.inventarioItem.findFirst({
-          where: { zohoId: inmuebleId },
-          select: { datos: true },
-        });
-      }
-    }
-    if (!inmueble) {
-      const nomenclatura = negocio.datos?.Nomenclatura;
-      if (nomenclatura != null && /^\d+$/.test(String(nomenclatura))) {
-        inmueble = await prisma.inventarioItem.findFirst({
-          where: { datos: { path: ['C_digo_inmueble'], equals: Number(nomenclatura) } },
-          select: { datos: true },
-        });
-      }
-    }
-    const codigoInmueble = inmueble?.datos?.C_digo_inmueble ?? null;
-    const projectCode = inmueble?.datos?.Project_Code ?? null;
-    res.json({ ...negocio, totalMovimientos: negocio._count.movimientos, oportunidad, codigoInmueble, projectCode });
+    const id = decodeURIComponent(req.params.id);
+    const detalle = await obtenerNegocioPorId(id);
+    if (detalle === undefined) return res.status(400).json({ error: 'Id inválido' });
+    if (detalle === null) return res.status(404).json({ error: 'No encontrado' });
+    res.json(detalle);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/negocios/:referencia/movimientos?page=&limit=
-router.get('/:referencia/movimientos', async (req, res) => {
+// GET /api/negocios/:id/movimientos?page=&limit=
+router.get('/:id/movimientos', async (req, res) => {
   try {
-    const referencia = decodeURIComponent(req.params.referencia);
+    const id = decodeURIComponent(req.params.id);
     const { page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
 
-    const negocio = await prisma.negocio.findUnique({ where: { referencia } });
-    if (!negocio) return res.status(404).json({ error: 'Negocio no encontrado' });
-
-    const [total, movimientos] = await Promise.all([
-      prisma.negocioMovimiento.count({ where: { negocioId: negocio.id } }),
-      prisma.negocioMovimiento.findMany({
-        where: { negocioId: negocio.id },
-        skip: (pageNum - 1) * limitNum,
-        take: limitNum,
-        orderBy: [{ fechaContable: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
-      }),
-    ]);
-
-    res.json({
-      data: movimientos,
-      pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
-    });
+    const resultado = await obtenerMovimientosPorId(id, { page: pageNum, limit: limitNum });
+    if (resultado === undefined) return res.status(400).json({ error: 'Id inválido' });
+    if (resultado === null) return res.status(404).json({ error: 'No encontrado' });
+    res.json(resultado);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

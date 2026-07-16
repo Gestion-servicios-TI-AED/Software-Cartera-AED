@@ -15,6 +15,7 @@
 - El respaldo por Inmueble.id de la oportunidad Zoho (tercer nivel del detalle actual) NO se replica en la detección de huérfanos ni en el `LEFT JOIN LATERAL` de la lista — límite conocido y aceptado, documentado en el spec (afecta 2 de 979 negocios).
 - Id de fila: `inv-<InventarioItem.id>` para inmuebles, `neg-<Negocio.id>` para huérfanos — es la única llave de selección/detalle/movimientos en todo el módulo.
 - Spec de referencia: `docs/superpowers/specs/2026-07-15-todos-los-inmuebles-en-negocios-design.md`.
+- El backend exige sesión: cualquier verificación por `curl` contra `/api/negocios*` debe autenticar primero contra `POST /api/auth/login` (body `{"password": "<APP_PASSWORD>"}`, cookie de sesión) y reenviar esa cookie en las siguientes llamadas. **Nunca** escribas el valor de `APP_PASSWORD` como texto literal en este plan ni en ningún archivo commiteado — léelo del `.env` en el momento de verificar, con `node -e "require('dotenv').config({path:'zoho-payment-tracker/backend/.env'});process.stdout.write(process.env.APP_PASSWORD||'')"`.
 
 ---
 
@@ -242,9 +243,13 @@ huerfanos AS (
     n.datos AS negocio_datos
   FROM "Negocio" n
   WHERE NOT EXISTS (
-    SELECT 1 FROM "InventarioItem" inv2
-    WHERE inv2."referenciaRecaudo" = n.referencia
-       OR (inv2.datos->>'C_digo_inmueble') = (n.datos->>'Nomenclatura')
+    -- Un negocio es huérfano solo si NO fue el ganador del LATERAL de
+    -- ningún inmueble (no basta con que "algún" inmueble calce con él por
+    -- Nomenclatura: si dos negocios comparten Nomenclatura y calzan con el
+    -- mismo inmueble, el LATERAL de arriba solo elige uno con LIMIT 1 — sin
+    -- este chequeo contra `inmuebles.negocio_id`, el otro desaparecería sin
+    -- aparecer ni colgado de un inmueble ni como huérfano).
+    SELECT 1 FROM inmuebles i WHERE i.negocio_id = n.id
   )
 ),
 combinado AS (
@@ -477,9 +482,14 @@ cd zoho-payment-tracker/backend && npm run dev
 En otra terminal:
 
 ```bash
-curl -s "http://localhost:3001/api/negocios?limit=3" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d.pagination, d.etapas, d.data[0])"
-curl -s "http://localhost:3001/api/negocios?etapa=0&limit=3" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d.pagination.total, d.data.map(x=>x.tieneNegocio))"
-curl -s "http://localhost:3001/api/negocios?saldoPendiente=true&limit=200" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log('total:',d.pagination.total,'todos con negocio:',d.data.every(x=>x.tieneNegocio))"
+# Autenticar y guardar la cookie de sesión (ver Global Constraints — nunca escribas el password literal)
+curl -s -c /tmp/negocios-cookies.txt -X POST http://localhost:3001/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d "{\"password\":\"$(node -e "require('dotenv').config({path:'zoho-payment-tracker/backend/.env'});process.stdout.write(process.env.APP_PASSWORD||'')")\"}" > /dev/null
+
+curl -s -b /tmp/negocios-cookies.txt "http://localhost:3001/api/negocios?limit=3" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d.pagination, d.etapas, d.data[0])"
+curl -s -b /tmp/negocios-cookies.txt "http://localhost:3001/api/negocios?etapa=0&limit=3" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d.pagination.total, d.data.map(x=>x.tieneNegocio))"
+curl -s -b /tmp/negocios-cookies.txt "http://localhost:3001/api/negocios?saldoPendiente=true&limit=200" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log('total:',d.pagination.total,'todos con negocio:',d.data.every(x=>x.tieneNegocio))"
 ```
 
 Expected: `pagination.total` ≈ 1976 sin filtros; con `etapa=0` un subconjunto que incluye filas con `tieneNegocio: false`; con `saldoPendiente=true` todas las filas tienen `tieneNegocio: true`.
@@ -680,9 +690,14 @@ const { listarNegociosInventario } = require('./src/services/inventarioNegocioSe
 Con los tres ids impresos, contra el servidor corriendo:
 
 ```bash
-curl -s "http://localhost:3001/api/negocios/<id-con-negocio>" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d.referencia, d.projectCode, d.tieneNegocio)"
-curl -s "http://localhost:3001/api/negocios/<id-sin-negocio>" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d.referencia, d.projectCode, d.tieneNegocio, d.oportunidad)"
-curl -s "http://localhost:3001/api/negocios/<id-huerfano>" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d.referencia, d.projectCode, d.proyectoTorre, d.tieneNegocio)"
+# Autenticar (una vez; reusa /tmp/negocios-cookies.txt si ya la generaste en este Task)
+curl -s -c /tmp/negocios-cookies.txt -X POST http://localhost:3001/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d "{\"password\":\"$(node -e "require('dotenv').config({path:'zoho-payment-tracker/backend/.env'});process.stdout.write(process.env.APP_PASSWORD||'')")\"}" > /dev/null
+
+curl -s -b /tmp/negocios-cookies.txt "http://localhost:3001/api/negocios/<id-con-negocio>" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d.referencia, d.projectCode, d.tieneNegocio)"
+curl -s -b /tmp/negocios-cookies.txt "http://localhost:3001/api/negocios/<id-sin-negocio>" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d.referencia, d.projectCode, d.tieneNegocio, d.oportunidad)"
+curl -s -b /tmp/negocios-cookies.txt "http://localhost:3001/api/negocios/<id-huerfano>" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d.referencia, d.projectCode, d.proyectoTorre, d.tieneNegocio)"
 ```
 
 Expected: el primero trae `referencia`/`projectCode`/`tieneNegocio: true`; el segundo trae `projectCode` pero `referencia: null`, `tieneNegocio: false`, `oportunidad: null`; el tercero trae `referencia` pero `projectCode: null`, `proyectoTorre: null`.
@@ -776,8 +791,13 @@ router.get('/:id/movimientos', async (req, res) => {
 Reusa los tres ids obtenidos en el Task 4 (con negocio, sin negocio, huérfano):
 
 ```bash
-curl -s "http://localhost:3001/api/negocios/<id-con-negocio>/movimientos?limit=5" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d.pagination)"
-curl -s "http://localhost:3001/api/negocios/<id-sin-negocio>/movimientos" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d)"
+# Autenticar (una vez; reusa /tmp/negocios-cookies.txt si ya la generaste en este Task)
+curl -s -c /tmp/negocios-cookies.txt -X POST http://localhost:3001/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d "{\"password\":\"$(node -e "require('dotenv').config({path:'zoho-payment-tracker/backend/.env'});process.stdout.write(process.env.APP_PASSWORD||'')")\"}" > /dev/null
+
+curl -s -b /tmp/negocios-cookies.txt "http://localhost:3001/api/negocios/<id-con-negocio>/movimientos?limit=5" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d.pagination)"
+curl -s -b /tmp/negocios-cookies.txt "http://localhost:3001/api/negocios/<id-sin-negocio>/movimientos" | node -e "const d=JSON.parse(require('fs').readFileSync(0));console.log(d)"
 ```
 
 Expected: el primero trae `pagination.total > 0` con datos; el segundo trae `{ data: [], pagination: { total: 0, ... } }` sin error.
