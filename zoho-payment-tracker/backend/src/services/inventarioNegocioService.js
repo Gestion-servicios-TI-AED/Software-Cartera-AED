@@ -48,6 +48,25 @@ async function valoresProyectoTorrePorEtapa() {
   return porEtapa;
 }
 
+// Valores crudos de Proyecto_Torre en BD, agrupados por el nombre de Frente
+// (el `proyecto` que devuelve parseProyectoTorre). Mismo patrón que
+// valoresProyectoTorrePorEtapa(), para resolver el filtro de Frente en SQL
+// (`= ANY(...)`) sin duplicar el parseo ahí.
+async function valoresProyectoTorrePorFrente() {
+  const rows = await prisma.$queryRaw`
+    SELECT DISTINCT datos->>'Proyecto_Torre' AS v
+    FROM "InventarioItem"
+    WHERE datos->>'Proyecto_Torre' IS NOT NULL`;
+  const porFrente = new Map();
+  for (const { v } of rows) {
+    const info = parseProyectoTorre(v);
+    if (!info) continue;
+    if (!porFrente.has(info.proyecto)) porFrente.set(info.proyecto, []);
+    porFrente.get(info.proyecto).push(v);
+  }
+  return porFrente;
+}
+
 // CTE compartida entre la consulta de datos y la de conteo: une todos los
 // InventarioItem (con su Negocio vinculado, si existe) con los Negocio que
 // no calzan con ningún InventarioItem ("huérfanos" — depósitos, parqueaderos,
@@ -100,7 +119,7 @@ combinado AS (
 
 // Arma el WHERE del conjunto unificado. `valoresEtapa` es el Map que
 // devuelve valoresProyectoTorrePorEtapa().
-function construirFiltroCombinado({ search, estado, etapa, saldoPendiente, valoresEtapa }) {
+function construirFiltroCombinado({ search, estado, etapa, frente, saldoPendiente, valoresEtapa, valoresFrente }) {
   const condiciones = [];
   if (estado) {
     condiciones.push(Prisma.sql`c.estado ILIKE ${'%' + estado + '%'}`);
@@ -130,6 +149,10 @@ function construirFiltroCombinado({ search, estado, etapa, saldoPendiente, valor
       condiciones.push(Prisma.sql`c.inventario_datos->>'Proyecto_Torre' = ANY(${lista}::text[])`);
     }
   }
+  if (frente) {
+    const lista = valoresFrente.get(frente) || [];
+    condiciones.push(Prisma.sql`c.inventario_datos->>'Proyecto_Torre' = ANY(${lista}::text[])`);
+  }
   return condiciones.length ? Prisma.sql`WHERE ${Prisma.join(condiciones, ' AND ')}` : Prisma.empty;
 }
 
@@ -137,9 +160,12 @@ function construirFiltroCombinado({ search, estado, etapa, saldoPendiente, valor
 // paginación, orden por Proyecto/Torre y los mismos filtros que ya existían
 // (Estado, Solo con abonos, búsqueda) más Etapa y búsqueda por datos del
 // inmueble (Project Code, Proyecto/Torre).
-async function listarNegociosInventario({ search, estado, etapa, saldoPendiente, page, limit }) {
-  const valoresEtapa = await valoresProyectoTorrePorEtapa();
-  const filtro = construirFiltroCombinado({ search, estado, etapa, saldoPendiente, valoresEtapa });
+async function listarNegociosInventario({ search, estado, etapa, frente, saldoPendiente, page, limit }) {
+  const [valoresEtapa, valoresFrente] = await Promise.all([
+    valoresProyectoTorrePorEtapa(),
+    valoresProyectoTorrePorFrente(),
+  ]);
+  const filtro = construirFiltroCombinado({ search, estado, etapa, frente, saldoPendiente, valoresEtapa, valoresFrente });
 
   const totalRows = await prisma.$queryRaw`
     ${BASE_CTE}
@@ -183,6 +209,7 @@ async function listarNegociosInventario({ search, estado, etapa, saldoPendiente,
     data,
     total,
     etapasDisponibles: [...valoresEtapa.keys()].sort((a, b) => Number(a) - Number(b)),
+    frentesDisponibles: [...valoresFrente.keys()].sort(),
   };
 }
 
