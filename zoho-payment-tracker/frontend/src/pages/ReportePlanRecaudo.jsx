@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useReactTable, getCoreRowModel, flexRender, createColumnHelper } from '@tanstack/react-table';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Search, Layers, MapPin, Building, X } from 'lucide-react';
+import { Search, Layers, MapPin, Building, X, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { getDashboardRecaudo } from '../utils/api';
 import { formatCOP } from '../utils/format';
 
@@ -136,6 +137,37 @@ export default function ReportePlanRecaudo() {
 
   const columns = useMemo(() => [...COLUMNAS_FIJAS, ...construirColumnasMeses(meses)], [meses]);
 
+  const [exporting, setExporting] = useState(false);
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const res = await getDashboardRecaudo({
+        search: search || undefined,
+        etapa: etapaFilter || undefined,
+        frente: frenteFilter || undefined,
+        torre: torreFilter || undefined,
+        page: 1,
+        limit: 9999,
+      });
+      const filas = res.data.map((n) => {
+        const row = { Etapa: n.etapa ?? '', Frente: n.frente ?? '', Torre: n.torre ?? '', Nomenclatura: n.nomenclatura ?? '' };
+        for (const mes of res.meses) {
+          row[`${mes} Esperado`] = n.porMes[mes]?.esperado ?? '';
+          row[`${mes} Recaudado`] = n.porMes[mes]?.recaudado ?? '';
+        }
+        return row;
+      });
+      const ws = XLSX.utils.json_to_sheet(filas);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Dashboard');
+      XLSX.writeFile(wb, `dashboard-plan-vs-recaudo-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (err) {
+      console.error('Export error:', err);
+    } finally {
+      setExporting(false);
+    }
+  }, [search, etapaFilter, frenteFilter, torreFilter]);
+
   const table = useReactTable({
     data: filas,
     columns,
@@ -146,7 +178,16 @@ export default function ReportePlanRecaudo() {
 
   return (
     <div className="p-5 flex flex-col gap-3">
-      <h1 className="text-[19px] font-bold text-slate-800">Dashboard: Plan de pagos vs. Recaudo</h1>
+      <div className="flex items-center gap-2">
+        <h1 className="text-[19px] font-bold text-slate-800 flex-1">Dashboard: Plan de pagos vs. Recaudo</h1>
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="btn-secondary px-3 py-1.5 text-[14px] flex items-center gap-1.5 disabled:opacity-50"
+        >
+          <Download size={13} /> Exportar a Excel
+        </button>
+      </div>
 
       <div className="flex flex-wrap items-end gap-2.5">
         <div className="field">
