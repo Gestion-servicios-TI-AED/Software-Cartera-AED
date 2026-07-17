@@ -131,6 +131,7 @@ async function construirFilasCompletas() {
     let cuotasEnMora = 0;
     let montoEnMora = 0;
     let maxDiasAtraso = 0;
+    let esperadoAFecha = null;
     if (oportunidad) {
       const planRows = oportunidad.formaPago?.length ? oportunidad.formaPago : (oportunidad.propuestaPago || []);
       const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos);
@@ -150,6 +151,14 @@ async function construirFilasCompletas() {
       cuotasEnMora = resumen.cuotasEnMora;
       montoEnMora = resumen.montoEnMora;
       maxDiasAtraso = resumen.maxDiasAtraso;
+      // Recaudo esperado a la fecha = suma de las cuotas cuya fecha estimada
+      // ya pasó (pagadas o no) -- lo que "ya debería" haberse recaudado según
+      // el plan, para sacar el % de lo vencido sobre lo esperado (no sobre el
+      // valor total del apartamento, que incluye cuotas futuras).
+      const hoy = new Date();
+      esperadoAFecha = cuotas
+        .filter((c) => c.fechaEstimada && c.fechaEstimada <= hoy)
+        .reduce((s, c) => s + c.valorPlan, 0);
 
       // Esperado: por mes de cada cuota del plan.
       for (const c of cuotas) {
@@ -188,6 +197,7 @@ async function construirFilasCompletas() {
       cuotasEnMora,
       montoEnMora,
       maxDiasAtraso,
+      esperadoAFecha,
       // Identidad del negocio -- para el listado de Cartera en Gestión.
       negocioId: negocio?.id ?? null,
       referencia: negocio?.referencia ?? null,
@@ -346,17 +356,25 @@ async function obtenerCarteraMora({ search, etapa, frente, torre, rango, page, l
 
   const totalCuotasEnMora = filas.reduce((s, f) => s + f.cuotasEnMora, 0);
   const totalMontoEnMora = filas.reduce((s, f) => s + f.montoEnMora, 0);
+  // % de lo que ya debería estar recaudado (según el plan, a la fecha de
+  // hoy) que está vencido -- no sobre el valor total del apartamento, que
+  // incluye cuotas futuras que todavía no le tocaba pagar.
+  const totalEsperadoAFecha = filas.reduce((s, f) => s + (f.esperadoAFecha ?? 0), 0);
+  const pctMoraPortafolio = totalEsperadoAFecha > 0 ? (totalMontoEnMora / totalEsperadoAFecha) * 100 : null;
 
   const total = filas.length;
   const pageNum = Math.max(1, page);
   const limitNum = Math.max(1, limit);
   const data = filas
     .slice((pageNum - 1) * limitNum, pageNum * limitNum)
-    .map(({ _tieneMovimientos, porMes, ...fila }) => fila);
+    .map(({ _tieneMovimientos, porMes, esperadoAFecha, ...fila }) => ({
+      ...fila,
+      pctEnMora: esperadoAFecha > 0 ? (fila.montoEnMora / esperadoAFecha) * 100 : null,
+    }));
 
   return {
     data,
-    resumen: { negociosEnMora: total, totalCuotasEnMora, totalMontoEnMora },
+    resumen: { negociosEnMora: total, totalCuotasEnMora, totalMontoEnMora, totalEsperadoAFecha, pctMoraPortafolio },
     porRangoMora,
     pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
     etapasDisponibles: [...valores.porEtapa.keys()].sort((a, b) => Number(a) - Number(b)),

@@ -121,7 +121,7 @@ export default function CarteraMora() {
       </div>
 
       {resumen && (
-        <div className="grid grid-cols-3 gap-3 flex-shrink-0">
+        <div className="grid grid-cols-4 gap-3 flex-shrink-0">
           <div className="card p-4">
             <p className="section-label mb-1">Negocios en mora</p>
             <p className="text-[28px] font-bold text-slate-800 tabular-nums">{resumen.negociosEnMora}</p>
@@ -133,6 +133,13 @@ export default function CarteraMora() {
           <div className="card p-4">
             <p className="section-label mb-1">Valor vencido</p>
             <p className="text-[20px] font-bold text-red-600 tabular-nums leading-tight mt-1">{formatCOP(resumen.totalMontoEnMora)}</p>
+          </div>
+          <div className="card p-4">
+            <p className="section-label mb-1">% vencido sobre lo esperado</p>
+            <p className="text-[28px] font-bold text-red-600 tabular-nums">
+              {resumen.pctMoraPortafolio != null ? `${resumen.pctMoraPortafolio.toFixed(1)}%` : '—'}
+            </p>
+            <p className="text-[12px] text-slate-400 mt-0.5">de {formatCOP(resumen.totalEsperadoAFecha)} que ya debía estar recaudado</p>
           </div>
         </div>
       )}
@@ -221,16 +228,18 @@ export default function CarteraMora() {
                 <th className="section-label px-3 py-2 text-left whitespace-nowrap">Referencia</th>
                 <th className="section-label px-3 py-2 text-left whitespace-nowrap">Comprador</th>
                 <th className="section-label px-3 py-2 text-left whitespace-nowrap">Estado</th>
+                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Valor apartamento</th>
                 <th className="section-label px-3 py-2 text-right whitespace-nowrap">Cuotas mora</th>
                 <th className="section-label px-3 py-2 text-right whitespace-nowrap">Días atraso</th>
                 <th className="section-label px-3 py-2 text-right whitespace-nowrap">Valor vencido</th>
+                <th className="section-label px-3 py-2 text-right whitespace-nowrap">% en mora</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-slate-400">Cargando…</td></tr>
+                <tr><td colSpan={12} className="px-4 py-12 text-center text-slate-400">Cargando…</td></tr>
               ) : filas.length === 0 ? (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-slate-400">Sin resultados.</td></tr>
+                <tr><td colSpan={12} className="px-4 py-12 text-center text-slate-400">Sin resultados.</td></tr>
               ) : (
                 filas.map((f) => (
                   <tr
@@ -249,9 +258,15 @@ export default function CarteraMora() {
                         <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${estadoBadgeClass(f.estado)}`}>{f.estado}</span>
                       ) : <span className="text-slate-300">—</span>}
                     </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px]">
+                      {f.valorInmueble != null ? formatCOP(f.valorInmueble) : <span className="text-slate-300">—</span>}
+                    </td>
                     <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px]">{f.cuotasEnMora}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px] text-amber-600">{f.maxDiasAtraso}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px] text-red-600">{formatCOP(f.montoEnMora)}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px] text-red-600">
+                      {f.pctEnMora != null ? `${f.pctEnMora.toFixed(1)}%` : <span className="text-slate-300">—</span>}
+                    </td>
                   </tr>
                 ))
               )}
