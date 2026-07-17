@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, memo, Fragment } from 'react';
 import { useReactTable, getCoreRowModel, flexRender, createColumnHelper } from '@tanstack/react-table';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Search, Layers, MapPin, Building, X, Download, History, CalendarRange, Briefcase, ExternalLink } from 'lucide-react';
+import { Search, Layers, MapPin, Building, X, Download, History, CalendarRange, Briefcase, ExternalLink, Warehouse } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { getDashboardRecaudo } from '../utils/api';
 import { formatCOP, formatDate } from '../utils/format';
@@ -775,6 +775,15 @@ export default function ReportePlanRecaudo() {
             className="w-full text-left px-3 py-1.5 text-[14px] text-slate-700 hover:bg-aed-base flex items-center gap-2"
           >
             <Briefcase size={13} className="text-brand" /> Ver negocio
+          </button>
+          <button
+            onClick={() => {
+              window.open(`/inventario?item=${menuContextual.fila.id}`, '_blank');
+              setMenuContextual(null);
+            }}
+            className="w-full text-left px-3 py-1.5 text-[14px] text-slate-700 hover:bg-aed-base flex items-center gap-2"
+          >
+            <Warehouse size={13} className="text-brand" /> Ver inmueble
           </button>
           <button
             onClick={() => {

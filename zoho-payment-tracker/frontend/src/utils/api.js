@@ -131,6 +131,11 @@ export async function getDashboardRecaudo(params = {}) {
   return data;
 }
 
+export async function getCarteraMora(params = {}) {
+  const { data } = await api.get('/negocios/cartera-mora', { params });
+  return data;
+}
+
 export async function getNegocio(referencia) {
   const { data } = await api.get(`/negocios/${encodeURIComponent(referencia)}`);
   return data;

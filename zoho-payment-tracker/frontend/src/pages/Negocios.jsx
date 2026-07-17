@@ -1096,16 +1096,6 @@ function cleanNombre(nombre) {
   return nombre.replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, '');
 }
 
-// Etiqueta de proyecto/fideicomiso para el resumen.
-// Conserva el código numérico para que dos proyectos con el mismo nombre
-// (p.ej. "14607-…BAIA KABO…" y "99203-…BAIA KABO…") no se vean idénticos.
-function formatProyectoLabel(f) {
-  const s = String(f ?? '');
-  const code = (s.match(/^\d+/) || [''])[0];
-  const name = s.replace(/^\d+[\s-]+/, '').replace(/^P\.?A\.?\s*/i, '').trim();
-  return code ? `${code} · ${name}` : name;
-}
-
 function NegocioItem({ negocio, selected, onClick }) {
   const compradorPrincipal = cleanNombre(negocio.compradores?.[0]?.nombre);
   const extraCompradores = (negocio.compradores?.length ?? 0) - 1;
@@ -1550,9 +1540,13 @@ export default function Negocios() {
             {stats ? (
               <>
                 {/* KPIs */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   <div className="card p-4">
-                    <p className="section-label mb-1">Total negocios</p>
+                    <p className="section-label mb-1">Total inmuebles</p>
+                    <p className="text-[28px] font-bold text-slate-800 tabular-nums">{stats.totalInmuebles}</p>
+                  </div>
+                  <div className="card p-4">
+                    <p className="section-label mb-1">Con negocio</p>
                     <p className="text-[28px] font-bold text-slate-800 tabular-nums">{stats.totalNegocios}</p>
                   </div>
                   <div className="card p-4">
@@ -1569,8 +1563,8 @@ export default function Negocios() {
                   </div>
                 </div>
 
-                {/* Por estado + Por proyecto */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* Por estado + Por etapa + Por frente */}
+                <div className="grid grid-cols-3 gap-3">
                   <div className="card p-4">
                     <p className="section-label mb-3">Por estado</p>
                     <div className="flex flex-col gap-2">
@@ -1593,13 +1587,32 @@ export default function Negocios() {
                   </div>
 
                   <div className="card p-4">
-                    <p className="section-label mb-3">Por proyecto</p>
+                    <p className="section-label mb-3">Por etapa</p>
                     <div className="flex flex-col gap-2">
-                      {stats.porFideicomiso.map((f) => (
-                        <div key={f.fideicomiso} className="flex items-center justify-between gap-2">
+                      {stats.porEtapa.map((e) => (
+                        <div key={e.etapa} className="flex items-center justify-between gap-2">
                           <span className="text-[13px] text-slate-600 truncate">
-                            {formatProyectoLabel(f.fideicomiso)}
+                            {e.etapa === 'Sin proyecto' ? e.etapa : `Etapa ${e.etapa}`}
                           </span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-[14px] font-semibold text-slate-700 tabular-nums">{e.count}</span>
+                            {e.saldo > 0 && (
+                              <span className="text-[12px] text-amber-600 tabular-nums">
+                                {formatCOP(e.saldo)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="card p-4">
+                    <p className="section-label mb-3">Por frente</p>
+                    <div className="flex flex-col gap-2">
+                      {stats.porFrente.map((f) => (
+                        <div key={f.frente} className="flex items-center justify-between gap-2">
+                          <span className="text-[13px] text-slate-600 truncate">{f.frente}</span>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-[14px] font-semibold text-slate-700 tabular-nums">{f.count}</span>
                             {f.saldo > 0 && (

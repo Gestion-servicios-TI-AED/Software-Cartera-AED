@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search, X, Warehouse, RefreshCw, Building2 } from 'lucide-react';
 import { getInventario, getInventarioItem, triggerInventarioSync, getInventarioSyncStatus } from '../utils/api';
 
@@ -217,7 +218,10 @@ export default function Inventario() {
   const [proyectoFilter, setProyectoFilter] = useState('');
   const [categoriaFilter, setCategoriaFilter] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
-  const [selected, setSelected] = useState(null);
+  // Deep link: ?item=<InventarioItem.id> (ej. desde el menú de clic derecho
+  // de Cartera en Gestión / Dashboard).
+  const [searchParams] = useSearchParams();
+  const [selected, setSelected] = useState(() => searchParams.get('item') || null);
 
   const debouncedSearch = useDebounce(search);
   const filtersRef = useRef({});

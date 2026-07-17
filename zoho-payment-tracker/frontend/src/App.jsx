@@ -6,6 +6,7 @@ import Negocios from './pages/Negocios';
 import Inventario from './pages/Inventario';
 import Dashboard from './pages/Dashboard';
 import ReportePlanRecaudo from './pages/ReportePlanRecaudo';
+import CarteraMora from './pages/CarteraMora';
 import OpportunityDetail from './pages/OpportunityDetail';
 import FiduciaModule from './pages/FiduciaModule';
 import FiduciaDetalle from './pages/FiduciaDetalle';
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/inventario" element={<Inventario />} />
             <Route path="/oportunidades" element={<Dashboard />} />
             <Route path="/dashboard" element={<ReportePlanRecaudo />} />
+            <Route path="/cartera-mora" element={<CarteraMora />} />
             <Route path="/opportunity/:id" element={<OpportunityDetail />} />
             <Route path="/fiducia" element={<FiduciaModule />} />
             <Route path="/fiducia/movimientos" element={<FiduciaMovimientos />} />

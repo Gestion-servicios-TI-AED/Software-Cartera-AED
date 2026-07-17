@@ -31,6 +31,71 @@ function obtenerEtapaTorre(proyectoTorreRaw) {
   return (info && ETAPA_POR_TORRE[`${info.proyecto.toUpperCase()} ${info.torre}`]) ?? '0';
 }
 
+// Project Code de Zoho ("The Plaza - Torre 1 103") no viene poblado en todos
+// los Products. Cuando falta, se arma el mismo formato a mano con
+// Proyecto_Torre ("The Plaza - Torre 1") + Product_Name ("103") — los datos
+// que sí trae Zoho para esos casos.
+function resolverProjectCode(datos) {
+  if (!datos) return null;
+  if (datos.Project_Code) return datos.Project_Code;
+  if (datos.Proyecto_Torre && datos.Product_Name) return `${datos.Proyecto_Torre} ${datos.Product_Name}`;
+  return null;
+}
+
+// Negocios agrupados por Etapa y por Frente (Kabo/Prive/Kala/Kaliza…), para
+// la pantalla de estadísticas — mismo criterio de cruce Negocio↔InventarioItem
+// que el resto del servicio (Referencia de Recaudo, con respaldo por
+// Nomenclatura↔Código de inmueble). Los negocios sin inmueble vinculado
+// ("huérfanos") caen en el balde "Sin proyecto".
+async function estadisticasPorEtapaYFrente() {
+  const rows = await prisma.$queryRaw`
+    SELECT n.estado, n."saldoActual", inv.datos->>'Proyecto_Torre' AS proyecto_torre
+    FROM "Negocio" n
+    LEFT JOIN LATERAL (
+      SELECT i.* FROM "InventarioItem" i
+      WHERE i."referenciaRecaudo" = n.referencia
+         OR (i.datos->>'C_digo_inmueble') = (n.datos->>'Nomenclatura')
+      ORDER BY (i."referenciaRecaudo" = n.referencia) DESC, i.id ASC
+      LIMIT 1
+    ) inv ON true
+  `;
+
+  const porEtapa = new Map();
+  const porFrente = new Map();
+  const SIN_PROYECTO = 'Sin proyecto';
+  for (const r of rows) {
+    const info = parseProyectoTorre(r.proyecto_torre);
+    const etapa = info ? obtenerEtapaTorre(r.proyecto_torre) : SIN_PROYECTO;
+    const frente = info ? info.proyecto : SIN_PROYECTO;
+    const saldo = Number(r.saldoActual || 0);
+
+    if (!porEtapa.has(etapa)) porEtapa.set(etapa, { count: 0, saldo: 0 });
+    const pe = porEtapa.get(etapa);
+    pe.count += 1;
+    pe.saldo += saldo;
+
+    if (!porFrente.has(frente)) porFrente.set(frente, { count: 0, saldo: 0 });
+    const pf = porFrente.get(frente);
+    pf.count += 1;
+    pf.saldo += saldo;
+  }
+
+  const ordenEtapa = (a, b) => {
+    if (a === SIN_PROYECTO) return 1;
+    if (b === SIN_PROYECTO) return -1;
+    return Number(a) - Number(b);
+  };
+
+  return {
+    porEtapa: [...porEtapa.entries()]
+      .sort((a, b) => ordenEtapa(a[0], b[0]))
+      .map(([etapa, v]) => ({ etapa, count: v.count, saldo: v.saldo })),
+    porFrente: [...porFrente.entries()]
+      .sort((a, b) => b[1].count - a[1].count)
+      .map(([frente, v]) => ({ frente, count: v.count, saldo: v.saldo })),
+  };
+}
+
 // Valores crudos de Proyecto_Torre en BD, agrupados de tres formas a partir
 // de una sola consulta (reemplaza a valoresProyectoTorrePorEtapa() y
 // valoresProyectoTorrePorFrente(), que hacían la misma consulta por
@@ -169,6 +234,7 @@ function construirFiltroCombinado({ search, estado, etapa, frente, torre, saldoP
       OR c.negocio_datos->>'Nomenclatura' ILIKE ${like}
       OR c.inventario_datos->>'Project_Code' ILIKE ${like}
       OR c.inventario_datos->>'Proyecto_Torre' ILIKE ${like}
+      OR c.inventario_datos->>'Product_Name' ILIKE ${like}
       OR EXISTS (
         SELECT 1 FROM "NegocioComprador" comp
         WHERE comp."negocioId" = c.negocio_id
@@ -235,7 +301,7 @@ async function listarNegociosInventario({ search, estado, etapa, frente, torre, 
       datos: f.negocio_datos,
       compradores: f.compradores,
       totalMovimientos: f.totalMovimientos,
-      projectCode: f.inventario_datos?.Project_Code ?? null,
+      projectCode: resolverProjectCode(f.inventario_datos),
       proyectoTorre: info ? formatearProyectoTorre(info) : null,
       etapa: info ? obtenerEtapaTorre(f.inventario_datos.Proyecto_Torre) : null,
     };
@@ -330,7 +396,7 @@ async function obtenerNegocioPorId(id) {
       totalMovimientos: negocio?._count?.movimientos ?? 0,
       oportunidad,
       codigoInmueble: inmueble.datos?.C_digo_inmueble ?? null,
-      projectCode: inmueble.datos?.Project_Code ?? null,
+      projectCode: resolverProjectCode(inmueble.datos),
       proyectoTorre: info ? formatearProyectoTorre(info) : null,
       etapa: info ? obtenerEtapaTorre(inmueble.datos.Proyecto_Torre) : null,
       inventarioDatos: inmueble.datos ?? null,
@@ -405,10 +471,12 @@ module.exports = {
   parseProyectoTorre,
   formatearProyectoTorre,
   obtenerEtapaTorre,
+  resolverProjectCode,
   valoresProyectoTorre,
   listarNegociosInventario,
   findOportunidadByReferencia,
   resolverNegocioIdDesdeInmueble,
   obtenerNegocioPorId,
   obtenerMovimientosPorId,
+  estadisticasPorEtapaYFrente,
 };

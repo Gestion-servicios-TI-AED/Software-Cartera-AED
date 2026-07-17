@@ -1,4 +1,4 @@
-const { prisma, parseProyectoTorre, obtenerEtapaTorre, valoresProyectoTorre } = require('./inventarioNegocioService');
+const { prisma, parseProyectoTorre, obtenerEtapaTorre, resolverProjectCode, valoresProyectoTorre } = require('./inventarioNegocioService');
 const { construirPlan, normalizarPagos, conciliar } = require('./conciliacionService');
 
 // ── Cache en memoria del cálculo pesado ─────────────────────────────────────
@@ -30,7 +30,10 @@ async function resolverNegociosYOportunidades(inmuebles) {
   // dos negocios comparten Nomenclatura, ese resolver se queda con el de
   // menor id -- el Map de abajo debe reproducir el mismo ganador.
   const negocios = await prisma.negocio.findMany({
-    select: { id: true, referencia: true, datos: true },
+    select: {
+      id: true, referencia: true, datos: true, estado: true,
+      compradores: { orderBy: { orden: 'asc' }, take: 1, select: { nombre: true } },
+    },
     orderBy: { id: 'asc' },
   });
   const negocioPorReferencia = new Map(negocios.map((n) => [n.referencia, n]));
@@ -125,6 +128,9 @@ async function construirFilasCompletas() {
     let fechaSaldoContraentrega = null;
     let valorSaldoContraentrega = null;
     let totalAbonado = null;
+    let cuotasEnMora = 0;
+    let montoEnMora = 0;
+    let maxDiasAtraso = 0;
     if (oportunidad) {
       const planRows = oportunidad.formaPago?.length ? oportunidad.formaPago : (oportunidad.propuestaPago || []);
       const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos);
@@ -141,6 +147,9 @@ async function construirFilasCompletas() {
       fechaSaldoContraentrega = resumen.saldoContraentrega?.fechaEstimada ?? null;
       valorSaldoContraentrega = resumen.saldoContraentrega?.valorPlan ?? null;
       totalAbonado = resumen.totalPagado;
+      cuotasEnMora = resumen.cuotasEnMora;
+      montoEnMora = resumen.montoEnMora;
+      maxDiasAtraso = resumen.maxDiasAtraso;
 
       // Esperado: por mes de cada cuota del plan.
       for (const c of cuotas) {
@@ -167,12 +176,23 @@ async function construirFilasCompletas() {
       etapa,
       frente: info ? info.proyecto : null,
       torre: info ? info.torre : null,
-      nomenclatura: inv.datos?.Project_Code ?? null,
+      nomenclatura: resolverProjectCode(inv.datos),
       valorInmueble,
       fechaSaldoContraentrega,
       valorSaldoContraentrega,
       totalAbonado,
       opportunityId: oportunidad?.id ?? null,
+      // Datos de mora -- mismo criterio que la Conciliación de Negocios.jsx
+      // (plan de pagos de Zoho vs. movimientos reales), agregado acá para el
+      // reporte de Cartera en Gestión.
+      cuotasEnMora,
+      montoEnMora,
+      maxDiasAtraso,
+      // Identidad del negocio -- para el listado de Cartera en Gestión.
+      negocioId: negocio?.id ?? null,
+      referencia: negocio?.referencia ?? null,
+      comprador: negocio?.compradores?.[0]?.nombre ?? null,
+      estado: negocio?.estado ?? null,
       // Campo interno, no se expone en la respuesta -- resuelve el filtro
       // "Solo con movimientos" sin tener que recorrer movimientos otra vez.
       _tieneMovimientos: !!negocio && (movimientosPorNegocioId.get(negocio.id)?.length ?? 0) > 0,
@@ -268,4 +288,83 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
   };
 }
 
-module.exports = { resolverNegociosYOportunidades, obtenerDashboardRecaudo, invalidarCacheDashboard };
+// Cartera en Gestión: negocios con al menos una cuota atrasada del plan de
+// pagos de Zoho -- mismo concepto que la hoja "CARTERA EN GESTIÓN" que trae
+// la fiduciaria (cuotas en mora, días de atraso, valor vencido), pero
+// calculado en vivo con nuestra propia conciliación en vez de importar un
+// Excel. Reutiliza el mismo cache que el reporte de recaudo (misma parte
+// cara: construirPlan+normalizarPagos+conciliar por inmueble).
+// Mismos rangos de antigüedad que traían las hojas por torre del Excel de
+// Bancolombia (6-30, 31-60, 61-90, más de 90 días), más un rango 1-5 que
+// separaba la hoja RESUMEN. Se agrupa por negocio usando su días de atraso
+// más alto (maxDiasAtraso) -- si un negocio debe varias cuotas en mora a la
+// vez, el monto completo va al rango de la más vencida, no repartido por
+// cuota individual (el Excel sí lo hacía cuota por cuota; acá no se guarda
+// el detalle de cada cuota en el cache, solo el agregado por negocio).
+const RANGOS_MORA = [
+  { key: '1-5', label: '1 a 5 días', min: 1, max: 5 },
+  { key: '6-30', label: '6 a 30 días', min: 6, max: 30 },
+  { key: '31-60', label: '31 a 60 días', min: 31, max: 60 },
+  { key: '61-90', label: '61 a 90 días', min: 61, max: 90 },
+  { key: '90+', label: 'Más de 90 días', min: 91, max: Infinity },
+];
+
+function claveRangoMora(dias) {
+  return (RANGOS_MORA.find((r) => dias >= r.min && dias <= r.max) ?? RANGOS_MORA[RANGOS_MORA.length - 1]).key;
+}
+
+async function obtenerCarteraMora({ search, etapa, frente, torre, rango, page, limit }) {
+  const { filas: todasLasFilas, valores } = await obtenerCache();
+
+  let filas = todasLasFilas.filter((f) => f.cuotasEnMora > 0);
+  if (search) {
+    const s = search.toLowerCase();
+    filas = filas.filter((f) =>
+      f.nomenclatura?.toLowerCase().includes(s) ||
+      f.comprador?.toLowerCase().includes(s) ||
+      f.referencia?.toLowerCase().includes(s) ||
+      `${f.frente ?? ''} ${f.torre ?? ''}`.toLowerCase().includes(s)
+    );
+  }
+  if (etapa) filas = filas.filter((f) => f.etapa === etapa);
+  if (frente && torre) filas = filas.filter((f) => f.frente === frente && f.torre === torre);
+  else if (frente) filas = filas.filter((f) => f.frente === frente);
+
+  // Rangos de antigüedad calculados sobre el conjunto YA filtrado por
+  // búsqueda/etapa/frente/torre, pero SIN aplicar todavía el filtro de rango
+  // -- así el usuario ve el tamaño de cada balde aunque ya haya elegido uno.
+  const porRangoMoraMap = new Map(RANGOS_MORA.map((r) => [r.key, { count: 0, monto: 0 }]));
+  for (const f of filas) {
+    const b = porRangoMoraMap.get(claveRangoMora(f.maxDiasAtraso));
+    b.count += 1;
+    b.monto += f.montoEnMora;
+  }
+  const porRangoMora = RANGOS_MORA.map((r) => ({ rango: r.key, label: r.label, ...porRangoMoraMap.get(r.key) }));
+
+  if (rango) filas = filas.filter((f) => claveRangoMora(f.maxDiasAtraso) === rango);
+  filas = [...filas].sort((a, b) => b.maxDiasAtraso - a.maxDiasAtraso);
+
+  const totalCuotasEnMora = filas.reduce((s, f) => s + f.cuotasEnMora, 0);
+  const totalMontoEnMora = filas.reduce((s, f) => s + f.montoEnMora, 0);
+
+  const total = filas.length;
+  const pageNum = Math.max(1, page);
+  const limitNum = Math.max(1, limit);
+  const data = filas
+    .slice((pageNum - 1) * limitNum, pageNum * limitNum)
+    .map(({ _tieneMovimientos, porMes, ...fila }) => fila);
+
+  return {
+    data,
+    resumen: { negociosEnMora: total, totalCuotasEnMora, totalMontoEnMora },
+    porRangoMora,
+    pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
+    etapasDisponibles: [...valores.porEtapa.keys()].sort((a, b) => Number(a) - Number(b)),
+    frentesDisponibles: [...valores.porFrente.keys()].sort(),
+    frentesPorEtapa: valores.frentesPorEtapa,
+    torresPorFrente: valores.torresPorFrente,
+    torresPorEtapaFrente: valores.torresPorEtapaFrente,
+  };
+}
+
+module.exports = { resolverNegociosYOportunidades, obtenerDashboardRecaudo, obtenerCarteraMora, invalidarCacheDashboard };

@@ -10,8 +10,9 @@ const {
   listarNegociosInventario,
   obtenerNegocioPorId,
   obtenerMovimientosPorId,
+  estadisticasPorEtapaYFrente,
 } = require('../services/inventarioNegocioService');
-const { obtenerDashboardRecaudo, invalidarCacheDashboard } = require('../services/dashboardRecaudoService');
+const { obtenerDashboardRecaudo, obtenerCarteraMora, invalidarCacheDashboard } = require('../services/dashboardRecaudoService');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -428,7 +429,8 @@ router.get('/movimientos', async (req, res) => {
 // GET /api/negocios/stats — resumen agregado para el dashboard
 router.get('/stats', async (_req, res) => {
   try {
-    const [total, conSaldo, saldoAgg, porEstado, porFideicomiso] = await Promise.all([
+    const [totalInmuebles, total, conSaldo, saldoAgg, porEstado, { porEtapa, porFrente }] = await Promise.all([
+      prisma.inventarioItem.count(),
       prisma.negocio.count(),
       prisma.negocio.count({ where: { saldoActual: { gt: 0 } } }),
       prisma.negocio.aggregate({ _sum: { saldoActual: true } }),
@@ -440,23 +442,17 @@ router.get('/stats', async (_req, res) => {
         GROUP BY estado
         ORDER BY COUNT(*) DESC
       `,
-      prisma.$queryRaw`
-        SELECT datos->>'Fideicomiso'                   AS fideicomiso,
-               COUNT(*)::int                           AS count,
-               COALESCE(SUM("saldoActual"), 0)::float  AS saldo
-        FROM "Negocio"
-        WHERE datos->>'Fideicomiso' IS NOT NULL AND datos->>'Fideicomiso' != ''
-        GROUP BY datos->>'Fideicomiso'
-        ORDER BY COUNT(*) DESC
-      `,
+      estadisticasPorEtapaYFrente(),
     ]);
 
     res.json({
+      totalInmuebles,
       totalNegocios: total,
       conSaldo,
       saldoTotal: saldoAgg._sum.saldoActual ?? 0,
       porEstado: porEstado.map((r) => ({ estado: r.estado, count: Number(r.count), saldo: Number(r.saldo) })),
-      porFideicomiso: porFideicomiso.map((r) => ({ fideicomiso: r.fideicomiso, count: Number(r.count), saldo: Number(r.saldo) })),
+      porEtapa,
+      porFrente,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -470,6 +466,19 @@ router.get('/dashboard-recaudo', async (req, res) => {
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
     const resultado = await obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimientos, page: pageNum, limit: limitNum });
+    res.json(resultado);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/negocios/cartera-mora?search=&etapa=&frente=&torre=&rango=&page=&limit=
+router.get('/cartera-mora', async (req, res) => {
+  try {
+    const { search, etapa, frente, torre, rango, page = '1', limit = '50' } = req.query;
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
+    const resultado = await obtenerCarteraMora({ search, etapa, frente, torre, rango, page: pageNum, limit: limitNum });
     res.json(resultado);
   } catch (err) {
     res.status(500).json({ error: err.message });

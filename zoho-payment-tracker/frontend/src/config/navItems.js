@@ -1,4 +1,4 @@
-import { LayoutDashboard, FolderOpen, ArrowLeftRight, Briefcase, BarChart3, Warehouse, CalendarRange } from 'lucide-react';
+import { LayoutDashboard, FolderOpen, ArrowLeftRight, Briefcase, BarChart3, Warehouse, CalendarRange, AlertTriangle } from 'lucide-react';
 
 // Ítems del menú lateral. Fuente única para Sidebar y Ajustes.
 // `key` es el identificador estable usado para guardar la preferencia de visibilidad.
@@ -11,4 +11,5 @@ export const NAV_ITEMS = [
   { key: 'movimientos',   to: '/fiducia/movimientos', Icon: ArrowLeftRight,  label: 'Movimientos',   color: '#d97706' },
   { key: 'resumen',       to: '/resumen',             Icon: BarChart3,       label: 'Resumen',       color: '#059669', exact: true },
   { key: 'dashboard',     to: '/dashboard',           Icon: CalendarRange,   label: 'Dashboard',     color: '#0369a1', exact: true },
+  { key: 'cartera-mora',  to: '/cartera-mora',        Icon: AlertTriangle,   label: 'Cartera',       color: '#dc2626', exact: true },
 ];
