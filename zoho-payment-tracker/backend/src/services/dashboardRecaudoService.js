@@ -1,5 +1,5 @@
 const { prisma, parseProyectoTorre, obtenerEtapaTorre, resolverProjectCode, valoresProyectoTorre } = require('./inventarioNegocioService');
-const { construirPlan, normalizarPagos, conciliar } = require('./conciliacionService');
+const { construirPlan, normalizarPagos, conciliar, parseMonto } = require('./conciliacionService');
 
 // ── Cache en memoria del cálculo pesado ─────────────────────────────────────
 // obtenerDashboardRecaudo recibe filtros distintos en cada llamada (Etapa,
@@ -135,6 +135,21 @@ async function construirFilasCompletas() {
     if (oportunidad) {
       const planRows = oportunidad.formaPago?.length ? oportunidad.formaPago : (oportunidad.propuestaPago || []);
       const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos);
+
+      // Ajustar la última cuota (Saldo Contraentrega) para que el total del
+      // plan cuadre con Valor Venta del Excel -- mismo ajuste que ya hacía
+      // ConciliacionSection en Negocios.jsx (frontend) pero que este cálculo
+      // de portafolio nunca replicaba, causando que Cartera en Gestión y el
+      // Dashboard mostraran cuotas/mora distintas a la Conciliación real de
+      // cada negocio (la última cuota es justo la que casi siempre está en
+      // mora en los casos más viejos, así que la diferencia era grande ahí).
+      const valorVentaKey = Object.keys(negocio.datos || {}).find((k) => k.toLowerCase() === 'valor venta');
+      const valorVenta = valorVentaKey ? parseMonto(negocio.datos[valorVentaKey]) : null;
+      if (valorVenta != null && !isNaN(valorVenta) && cuotasPlan.length >= 2) {
+        const sumaResto = cuotasPlan.slice(0, -1).reduce((s, c) => s + c.valorPlan, 0);
+        cuotasPlan[cuotasPlan.length - 1].valorPlan = valorVenta - sumaResto;
+      }
+
       const pagos = normalizarPagos(movimientosPorNegocioId.get(negocio.id) || []);
       const { cuotas, resumen } = conciliar(cuotasPlan, pagos);
       // Valor del inmueble = total del plan de pagos (suma de todas las
