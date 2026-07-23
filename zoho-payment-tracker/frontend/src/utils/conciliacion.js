@@ -20,10 +20,28 @@ export function parseMonto(v) {
   if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(s)) return NaN; // es una fecha
   const plano = Number(s);
   if (!isNaN(plano)) return plano;
-  return parseFloat(s.replace(/[^0-9-]/g, ''));
+  // Formato colombiano ("$110.499.735,00"): "." separador de miles, ","
+  // separador decimal. Quitar todo lo que no fuera dígito/"-" concatenaba
+  // la parte decimal con la entera (110.499.735,00 -> 11049973500, x100 de
+  // más) -- confirmado en producción en 16 oportunidades (ej. Kala Torre 1
+  // 2-J: Separación se leía como $11.000M en vez de $110M).
+  const negativo = s.includes('-');
+  const soloNumeros = s.replace(/[^0-9.,]/g, '');
+  const ultimaComa = soloNumeros.lastIndexOf(',');
+  const resultado = ultimaComa !== -1
+    ? parseFloat(`${soloNumeros.slice(0, ultimaComa).replace(/\./g, '')}.${soloNumeros.slice(ultimaComa + 1)}`)
+    : parseFloat(soloNumeros.replace(/\./g, ''));
+  return negativo ? -Math.abs(resultado) : resultado;
 }
 
 const SKIP_KEYS = ['id', 'Created_Time', 'Modified_Time', '$line_tax', '$permissions', 'Owner'];
+
+// "Saldo Contraentrega" (formaPago) / "SALDO CONTRA ENTREGA" (propuestaPago)
+// -- misma cuota, distinto espaciado. Normaliza quitando espacios para
+// detectarla igual en ambos subforms.
+function esSaldoContraentrega(etiqueta) {
+  return String(etiqueta ?? '').toLowerCase().replace(/\s+/g, '').includes('saldocontraentrega');
+}
 
 // Construye las cuotas del plan desde las filas del subform. Se excluyen las
 // filas sin monto positivo (mismo espíritu que el filtrado de PlanSubTable).
@@ -31,18 +49,46 @@ export function construirPlan(rows, fechaBase) {
   if (!rows?.length) return [];
   const keys = [...new Set(rows.flatMap(Object.keys))].filter((k) => !SKIP_KEYS.includes(k));
   const cuotaKey = detectarCuotaKey(rows);
-  // Columnas monetarias: alguna fila con valor >= 1000 (en COP todo monto real supera eso).
-  const moneyKeys = keys.filter(
-    (k) => k !== cuotaKey && rows.some((r) => { const n = parseMonto(r[k]); return !isNaN(n) && n >= 1000; })
-  );
+  // Propuesta de Pago trae dos columnas de plata en paralelo por fila:
+  // Pago_Cliente (lo que ese cliente concretamente acordó pagar en esa
+  // cuota -- puede ser $0 en cuotas legítimamente sin cobro porque adelantó
+  // plata en otra) y Pago_Standard (la plantilla genérica del plan, sin
+  // negociar). Si existe Pago_Cliente, se usa ESA columna exclusivamente
+  // en todas las filas -- nunca se cae a Pago_Standard fila por fila
+  // cuando Pago_Cliente da $0, porque eso mezclaba las dos columnas según
+  // cuál diera cero, inflando el total del plan y dejando la cuota Saldo
+  // Contraentrega en negativo al ajustarla contra Valor Venta.
+  const moneyKeys = keys.includes('Pago_Cliente')
+    ? ['Pago_Cliente']
+    : keys.filter(
+        (k) => k !== cuotaKey && rows.some((r) => { const n = parseMonto(r[k]); return !isNaN(n) && n >= 1000; })
+      );
   const plan = [];
   rows.forEach((row, i) => {
+    // Filas de subtotal (ej. "TOTAL CUOTA INICIAL" en Propuesta de Pago,
+    // presente en el 100% de las 1649 propuestas) no son una cuota real --
+    // son la suma de Separación + las cuotas anteriores, ya contadas. Sin
+    // este filtro se duplicaba ese monto en el plan, lo que podía dejar la
+    // última cuota (Saldo Contraentrega) en negativo al ajustarla contra
+    // Valor Venta, y disparaba falsos positivos de mora en las cuotas
+    // reales (el pago se consumía cubriendo esta fila fantasma).
+    if (cuotaKey && String(row[cuotaKey] ?? '').toLowerCase().includes('total')) return;
     let valorPlan = NaN;
     for (const k of moneyKeys) {
       const n = parseMonto(row[k]);
       if (!isNaN(n) && n !== 0) { valorPlan = n; break; }
     }
-    if (isNaN(valorPlan) || valorPlan <= 0) return; // fila sin monto → no es cuota
+    if (isNaN(valorPlan) || valorPlan <= 0) {
+      // La cuota Saldo Contraentrega SIEMPRE se incluye en el plan aunque
+      // venga en $0 (el cliente ya pagó todo por adelantado en cuotas
+      // anteriores) -- es el ancla que cierra el plan. Si se descarta como
+      // cualquier otra fila sin monto, la última cuota REAL que quede (ej.
+      // "Cuota 2") termina mostrándose como si fuera el Saldo Contraentrega,
+      // con su fecha y su valor -- confirmado en 90 de 1868 negocios
+      // (ej. Isla Laguna Torre 1 545, pagado 100% en 2 cuotas).
+      if (!(cuotaKey && esSaldoContraentrega(row[cuotaKey]))) return; // fila sin monto → no es cuota
+      valorPlan = 0;
+    }
     const etiqueta = cuotaKey ? String(row[cuotaKey] ?? `Fila ${i + 1}`) : `Fila ${i + 1}`;
     plan.push({
       etiqueta,

@@ -2,6 +2,7 @@ import React from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
+import { etiquetaEtapa, compararEtapas } from '../../utils/etapas';
 
 function formatYAxis(value) {
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
@@ -22,7 +23,7 @@ function CustomTooltip({ active, payload, label }) {
   const pct = esperado > 0 ? Math.round((recaudado / esperado) * 1000) / 10 : 0;
   return (
     <div className="bg-white border border-aed-border rounded-lg px-3 py-2 shadow-sm text-[14px]">
-      <p className="font-medium text-slate-700 mb-1">Etapa {label}</p>
+      <p className="font-medium text-slate-700 mb-1">{etiquetaEtapa(label)}</p>
       <p className="text-slate-500">Esperado: <b className="text-slate-700">{formatCOPCompleto(esperado)}</b></p>
       <p className="text-brand">Recaudado: <b>{formatCOPCompleto(recaudado)}</b></p>
       <p className="text-[13px] text-slate-400 mt-0.5">{pct}% avance</p>
@@ -34,7 +35,7 @@ function CustomTooltip({ active, payload, label }) {
 // de Zoho (ver PipelineBars), esta es la etapa constructiva usada en
 // Negocios/Inmuebles/Dashboard.
 export default function EtapaRecaudoBars({ totalesPorEtapa = {} }) {
-  const etapas = Object.keys(totalesPorEtapa).sort((a, b) => Number(a) - Number(b));
+  const etapas = Object.keys(totalesPorEtapa).sort(compararEtapas);
 
   if (!etapas.length) {
     return (
@@ -56,7 +57,7 @@ export default function EtapaRecaudoBars({ totalesPorEtapa = {} }) {
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
         <XAxis
           dataKey="etapa"
-          tickFormatter={(v) => `Etapa ${v}`}
+          tickFormatter={etiquetaEtapa}
           tick={{ fontSize: 11, fill: '#64748b' }}
           axisLine={false}
           tickLine={false}

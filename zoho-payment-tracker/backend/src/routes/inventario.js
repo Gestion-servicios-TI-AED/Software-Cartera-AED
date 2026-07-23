@@ -1,6 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { syncInventario, getSyncStatus } = require('../services/inventarioSync');
+const { detectarProjectCodeInconsistentes } = require('../services/inventarioNegocioService');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -14,6 +15,18 @@ router.post('/sync', (req, res) => {
 // GET /api/inventario/sync/status
 router.get('/sync/status', (req, res) => {
   res.json(getSyncStatus());
+});
+
+// GET /api/inventario/verificar-project-code — detecta inmuebles con
+// Project_Code copiado por error de otro inmueble del mismo frente
+// (problema de datos en Zoho, no del sync).
+router.get('/verificar-project-code', async (req, res) => {
+  try {
+    const reporte = await detectarProjectCodeInconsistentes();
+    res.json(reporte);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/inventario?search=&proyecto=&categoria=&estado=&page=&limit=

@@ -8,39 +8,39 @@ datasource db {
 }
 
 model Opportunity {
-  id                 String    @id @default(uuid())
-  zohoId             String    @unique
-  dealName           String
-  stage              String?
-  contactName        String?
-  contactEmail       String?
-  contactPhone       String?
-  contactId          String?
-  accountName        String?
-  referenciaRecaudo  String?
-  pagoSeparacion     DateTime?
+  id                   String    @id @default(uuid())
+  zohoId               String    @unique
+  dealName             String
+  stage                String?
+  contactName          String?
+  contactEmail         String?
+  contactPhone         String?
+  contactId            String?
+  accountName          String?
+  referenciaRecaudo    String?
+  pagoSeparacion       DateTime?
   fechaInicioPlanPagos DateTime?
 
   // Campos financieros dinámicos (todos los currency fields de Zoho)
-  camposFinancieros  Json?
+  camposFinancieros Json?
 
   // Secciones completas del CRM
-  seccionInmueble    Json?
-  seccionCotizacion  Json?
+  seccionInmueble   Json?
+  seccionCotizacion Json?
 
   // Subforms de Zoho (array de filas)
-  formaPago          Json?
-  propuestaPago      Json?
+  formaPago     Json?
+  propuestaPago Json?
 
   // Control de sincronización
-  lastSyncedAt       DateTime  @default(now())
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  lastSyncedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model InventarioItem {
-  id                String    @id @default(uuid())
-  zohoId            String    @unique
+  id                String  @id @default(uuid())
+  zohoId            String  @unique
   nombre            String?
   proyecto          String?
   torre             String?
@@ -51,11 +51,11 @@ model InventarioItem {
 
   // Todos los demás campos del Product de Zoho, tal cual (sin metadatos
   // internos $ de Zoho, que se filtran antes de guardar).
-  datos             Json?
+  datos Json?
 
-  lastSyncedAt      DateTime  @default(now())
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  lastSyncedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([proyecto])
   @@index([categoria])
@@ -79,15 +79,15 @@ model EncargFiduciario {
 }
 
 model HojaFiduciaria {
-  id           String                 @id @default(uuid())
-  encargId     String
-  encargo      EncargFiduciario       @relation(fields: [encargId], references: [id], onDelete: Cascade)
-  nombreHoja   String
-  columnas     Json                   // string[]
-  filas        Json                   // any[][]
-  totalFilas   Int                    @default(0)
-  movimientos  MovimientoFiduciario[]
-  createdAt    DateTime               @default(now())
+  id          String                 @id @default(uuid())
+  encargId    String
+  encargo     EncargFiduciario       @relation(fields: [encargId], references: [id], onDelete: Cascade)
+  nombreHoja  String
+  columnas    Json // string[]
+  filas       Json // any[][]
+  totalFilas  Int                    @default(0)
+  movimientos MovimientoFiduciario[]
+  createdAt   DateTime               @default(now())
 
   @@index([encargId])
 }
@@ -98,9 +98,9 @@ model MovimientoFiduciario {
   encargo     EncargFiduciario @relation(fields: [encargId], references: [id], onDelete: Cascade)
   hojaId      String
   hoja        HojaFiduciaria   @relation(fields: [hojaId], references: [id], onDelete: Cascade)
-  nombreHoja  String           // desnormalizado para queries rápidas
-  propietario String?          // nombre del cliente/propietario detectado
-  datos       Json             // fila como { columna: valor }
+  nombreHoja  String // desnormalizado para queries rápidas
+  propietario String? // nombre del cliente/propietario detectado
+  datos       Json // fila como { columna: valor }
   createdAt   DateTime         @default(now())
 
   @@index([encargId])
@@ -109,15 +109,15 @@ model MovimientoFiduciario {
 }
 
 model Negocio {
-  id          String             @id @default(uuid())
-  referencia  String             @unique
+  id          String              @id @default(uuid())
+  referencia  String              @unique
   estado      String?
   datos       Json?
   saldoActual Float?
   compradores NegocioComprador[]
   movimientos NegocioMovimiento[]
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 
   @@index([estado])
   @@index([saldoActual])
@@ -165,7 +165,26 @@ model SyncLog {
   id          String    @id @default(uuid())
   startedAt   DateTime  @default(now())
   finishedAt  DateTime?
-  status      String    // 'success' | 'error' | 'running'
+  status      String // 'success' | 'error' | 'running'
   recordsSync Int       @default(0)
   errorMsg    String?
+}
+
+// Fecha de entrega real por Frente + Torre + Piso (ej. "Kala" + "1" + "3"),
+// para reemplazar la fecha estimada de la cuota Saldo Contraentrega -- por
+// defecto esa fecha se infiere (mes siguiente a la penúltima cuota), pero
+// cuando se conoce la fecha real de entrega, esta configuración la
+// reemplaza en todos los cálculos de conciliación de los negocios
+// correspondientes. Se puede configurar a tres niveles, mutuamente
+// excluyentes entre sí: todo el proyecto, una torre completa, o un piso
+// específico de una torre -- ver configuracionFrenteService.js.
+model ConfiguracionFrente {
+  id           String    @id @default(uuid())
+  frente       String
+  torre        String
+  piso         String
+  fechaEntrega DateTime?
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([frente, torre, piso])
 }

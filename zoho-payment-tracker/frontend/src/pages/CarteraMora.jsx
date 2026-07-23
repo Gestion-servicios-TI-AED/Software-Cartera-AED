@@ -1,8 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Layers, MapPin, Building, X, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, ExternalLink, Warehouse } from 'lucide-react';
+import { Search, Layers, MapPin, Building, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, AlertTriangle, Briefcase, ExternalLink, Warehouse } from 'lucide-react';
 import { getCarteraMora } from '../utils/api';
 import { formatCOP } from '../utils/format';
 import { estadoBadgeClass } from '../utils/estados';
+import { etiquetaEtapa } from '../utils/etapas';
+
+// Encabezados ordenables -- 3 clics por columna: ascendente → descendente →
+// sin ordenar. `key` es el campo que el backend usa para ordenar todo el
+// conjunto filtrado (no solo la página visible).
+const COLUMNAS = [
+  { key: 'etapa', label: 'Etapa', align: 'left' },
+  { key: 'frente', label: 'Frente', align: 'left' },
+  { key: 'torre', label: 'Torre', align: 'left' },
+  { key: 'unidad', label: 'Nomenclatura', align: 'left' },
+  { key: 'referencia', label: 'Referencia', align: 'left' },
+  { key: 'comprador', label: 'Comprador', align: 'left' },
+  { key: 'estado', label: 'Estado', align: 'left' },
+  { key: 'valorInmueble', label: 'Valor apartamento', align: 'right' },
+  { key: 'cuotasEnMora', label: 'Cuotas mora', align: 'right' },
+  { key: 'maxDiasAtraso', label: 'Días atraso', align: 'right' },
+  { key: 'montoEnMora', label: 'Valor vencido', align: 'right' },
+  { key: 'pctEnMora', label: '% en mora', align: 'right' },
+];
 
 function useDebounce(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
@@ -32,8 +51,19 @@ export default function CarteraMora() {
   const [torresPorEtapaFrente, setTorresPorEtapaFrente] = useState({});
   const [porRangoMora, setPorRangoMora] = useState([]);
   const [menuContextual, setMenuContextual] = useState(null); // { x, y, fila } | null
+  const [sortBy, setSortBy] = useState(null);
+  const [sortDir, setSortDir] = useState(null); // 'asc' | 'desc' | null
 
   const debouncedSearch = useDebounce(search);
+
+  // Clic en un encabezado: 1er clic ordena ascendente, 2do descendente, 3ro
+  // quita el orden -- se resuelve en el backend sobre todo el conjunto
+  // filtrado, no solo la página que se ve.
+  const handleSort = (campo) => {
+    if (sortBy !== campo) { setSortBy(campo); setSortDir('asc'); }
+    else if (sortDir === 'asc') { setSortDir('desc'); }
+    else { setSortBy(null); setSortDir(null); }
+  };
 
   const load = useCallback(async (p) => {
     setLoading(true);
@@ -44,6 +74,8 @@ export default function CarteraMora() {
         frente: frenteFilter || undefined,
         torre: torreFilter || undefined,
         rango: rangoFilter || undefined,
+        sortBy: sortBy || undefined,
+        sortDir: sortDir || undefined,
         page: p,
         limit: 50,
       });
@@ -62,7 +94,7 @@ export default function CarteraMora() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter, rangoFilter]);
+  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter, rangoFilter, sortBy, sortDir]);
 
   useEffect(() => { load(1); }, [load]);
 
@@ -183,7 +215,7 @@ export default function CarteraMora() {
             <label className="field-label"><Layers size={13} className="text-[#7c3aed]" />Etapa</label>
             <select value={etapaFilter} onChange={(e) => handleEtapaChange(e.target.value)} className="input text-[14px] h-8 py-0 pr-2 leading-none">
               <option value="">Todas las etapas</option>
-              {etapas.map((et) => <option key={et} value={et}>Etapa {et}</option>)}
+              {etapas.map((et) => <option key={et} value={et}>{etiquetaEtapa(et)}</option>)}
             </select>
           </div>
         )}
@@ -221,18 +253,24 @@ export default function CarteraMora() {
           <table className="text-[14px] w-full">
             <thead>
               <tr className="border-b border-aed-border bg-aed-base sticky top-0">
-                <th className="section-label px-3 py-2 text-left whitespace-nowrap">Etapa</th>
-                <th className="section-label px-3 py-2 text-left whitespace-nowrap">Frente</th>
-                <th className="section-label px-3 py-2 text-left whitespace-nowrap">Torre</th>
-                <th className="section-label px-3 py-2 text-left whitespace-nowrap">Nomenclatura</th>
-                <th className="section-label px-3 py-2 text-left whitespace-nowrap">Referencia</th>
-                <th className="section-label px-3 py-2 text-left whitespace-nowrap">Comprador</th>
-                <th className="section-label px-3 py-2 text-left whitespace-nowrap">Estado</th>
-                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Valor apartamento</th>
-                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Cuotas mora</th>
-                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Días atraso</th>
-                <th className="section-label px-3 py-2 text-right whitespace-nowrap">Valor vencido</th>
-                <th className="section-label px-3 py-2 text-right whitespace-nowrap">% en mora</th>
+                {COLUMNAS.map((col) => {
+                  const activa = sortBy === col.key;
+                  const Icono = activa ? (sortDir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
+                  return (
+                    <th
+                      key={col.key}
+                      onClick={() => handleSort(col.key)}
+                      className={`section-label px-3 py-2 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 ${
+                        col.align === 'right' ? 'text-right' : 'text-left'
+                      } ${activa ? 'text-brand' : ''}`}
+                    >
+                      <span className={`inline-flex items-center gap-1 ${col.align === 'right' ? 'flex-row-reverse' : ''}`}>
+                        {col.label}
+                        <Icono size={12} className={activa ? 'text-brand' : 'text-slate-300'} />
+                      </span>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -249,8 +287,8 @@ export default function CarteraMora() {
                   >
                     <td className="px-3 py-2 whitespace-nowrap">{f.etapa ?? <span className="text-slate-300">—</span>}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{f.frente ?? <span className="text-slate-300">—</span>}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{f.torre ?? <span className="text-slate-300">—</span>}</td>
-                    <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px]">{f.nomenclatura ?? '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{f.torre != null ? `Torre ${f.torre}` : <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px]">{f.unidad ?? '—'}</td>
                     <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-slate-500">{f.referencia ?? <span className="text-slate-300">—</span>}</td>
                     <td className="px-3 py-2 whitespace-nowrap max-w-[220px] truncate" title={f.comprador ?? ''}>{f.comprador ?? <span className="text-slate-300">—</span>}</td>
                     <td className="px-3 py-2 whitespace-nowrap">

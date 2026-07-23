@@ -166,6 +166,11 @@ export async function getInventarioSyncStatus() {
   return data;
 }
 
+export async function getInconsistenciasProjectCode() {
+  const { data } = await api.get('/inventario/verificar-project-code');
+  return data;
+}
+
 export async function getAllNegocioMovimientos(params = {}) {
   const { data } = await api.get('/negocios/movimientos', { params });
   return data;
@@ -224,5 +229,32 @@ export async function getStatsSync(limit = 5) {
 
 export async function getStatsCartera() {
   const { data } = await api.get('/stats/cartera');
+  return data;
+}
+
+// ── Configuraciones ────────────────────────────────────────
+export async function getConfiguracionesFrentes() {
+  const { data } = await api.get('/configuraciones/frentes');
+  return data;
+}
+
+export async function actualizarFechaEntregaTorre(frente, torre, fechaEntrega) {
+  const { data } = await api.put(
+    `/configuraciones/frentes/${encodeURIComponent(frente)}/torres/${encodeURIComponent(torre)}`,
+    { fechaEntrega }
+  );
+  return data;
+}
+
+export async function actualizarFechaEntregaPiso(frente, torre, piso, fechaEntrega) {
+  const { data } = await api.put(
+    `/configuraciones/frentes/${encodeURIComponent(frente)}/torres/${encodeURIComponent(torre)}/pisos/${encodeURIComponent(piso)}`,
+    { fechaEntrega }
+  );
+  return data;
+}
+
+export async function actualizarFechaEntregaProyecto(frente, fechaEntrega) {
+  const { data } = await api.put(`/configuraciones/frentes/${encodeURIComponent(frente)}`, { fechaEntrega });
   return data;
 }

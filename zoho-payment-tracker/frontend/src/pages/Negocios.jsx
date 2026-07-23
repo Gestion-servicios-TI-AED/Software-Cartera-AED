@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, X, ChevronDown, ChevronRight, User, Building2, Layers, BarChart3, History, RefreshCw, Download, CircleDot, Wallet, ClipboardList, Scale, MapPin, Building } from 'lucide-react';
-import { getNegocios, getNegocio, getNegocioMovimientos, triggerNegociosBackfill, getNegociosBackfillStatus, getNegociosStats, getSubforms } from '../utils/api';
+import { getNegocios, getNegocio, getNegocioMovimientos, triggerNegociosBackfill, getNegociosBackfillStatus, getNegociosStats, getSubforms, getConfiguracionesFrentes } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
 import { filtrarDatosResumen, filtrarKeysMovimiento } from '../utils/columnasExcluidas';
+import { etiquetaEtapa } from '../utils/etapas';
 import ConceptoHint from '../components/ConceptoHint';
 import HelpTip from '../components/HelpTip';
 import { ListaInfo, ListaFinanciera } from '../components/DatosFinancieros';
@@ -585,7 +586,10 @@ function ConciliacionSection({ negocio }) {
     let alive = true;
     (async () => {
       try {
-        const subs = await getSubforms(oportunidad.id);
+        const [subs, configFrentes] = await Promise.all([
+          getSubforms(oportunidad.id),
+          getConfiguracionesFrentes().catch(() => ({ data: [] })),
+        ]);
         // Todos los movimientos del negocio (loop defensivo si total > 200)
         const movs = [];
         let page = 1, totalPages = 1;
@@ -595,7 +599,7 @@ function ConciliacionSection({ negocio }) {
           totalPages = res.pagination?.totalPages ?? 1;
           page += 1;
         } while (page <= totalPages);
-        if (alive) setDatos({ subforms: subs || { formaPago: [], propuestaPago: [] }, movimientos: movs });
+        if (alive) setDatos({ subforms: subs || { formaPago: [], propuestaPago: [] }, movimientos: movs, configFrentes: configFrentes?.data || [] });
       } catch (err) {
         if (alive) setError(err.message);
       } finally {
@@ -623,7 +627,11 @@ function ConciliacionSection({ negocio }) {
     return <p className="px-4 py-4 text-[14px] text-red-500">Error cargando la conciliación: {error}</p>;
   }
 
-  const planRows = datos.subforms.formaPago?.length ? datos.subforms.formaPago : (datos.subforms.propuestaPago || []);
+  // Propuesta de Pago primero (es con la que se hace la conciliación real
+  // del negocio), Forma de Pago como respaldo solo si no hay propuesta.
+  // Mismo criterio que dashboardRecaudoService.js (Dashboard / Cartera en
+  // Gestión) para que no diverjan entre sí.
+  const planRows = datos.subforms.propuestaPago?.length ? datos.subforms.propuestaPago : (datos.subforms.formaPago || []);
   const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos);
   if (cuotasPlan.length === 0) {
     return <p className="px-4 py-4 text-[14px] text-slate-500 italic">La oportunidad vinculada no tiene plan de pagos registrado.</p>;
@@ -638,6 +646,21 @@ function ConciliacionSection({ negocio }) {
     const sumaResto = cuotasPlan.slice(0, -1).reduce((s, c) => s + c.valorPlan, 0);
     const lastCuota = cuotasPlan[cuotasPlan.length - 1];
     lastCuota.valorPlan = valorVenta - sumaResto;
+  }
+
+  // Fecha de entrega configurada en Ajustes -- reemplaza la fecha estimada
+  // (inferida) de Saldo Contraentrega. Prioridad: piso específico primero,
+  // si no hay, toda la torre, si no hay, todo el proyecto -- son mutuamente
+  // excluyentes en Ajustes, pero se resuelve en ese orden igual. Mismo
+  // criterio que dashboardRecaudoService.js (Dashboard / Cartera en
+  // Gestión) para que no diverjan entre sí.
+  const configFrente = negocio.frente
+    ? datos.configFrentes.find((c) => c.frente === negocio.frente && c.torre === negocio.torre && c.piso === negocio.piso) ??
+      datos.configFrentes.find((c) => c.frente === negocio.frente && c.torre === negocio.torre && c.piso === null) ??
+      datos.configFrentes.find((c) => c.frente === negocio.frente && c.torre === null && c.piso === null)
+    : null;
+  if (configFrente?.fechaEntrega && cuotasPlan.length > 0) {
+    cuotasPlan[cuotasPlan.length - 1].fechaEstimada = new Date(configFrente.fechaEntrega);
   }
 
   const { cuotas, resumen } = conciliar(cuotasPlan, normalizarPagos(datos.movimientos));
@@ -1121,7 +1144,7 @@ function NegocioItem({ negocio, selected, onClick }) {
           </p>
           {negocio.proyectoTorre && (
             <p className="text-[13px] text-slate-500 truncate mt-0.5">
-              {negocio.proyectoTorre} - Etapa {negocio.etapa}
+              {negocio.proyectoTorre} - {etiquetaEtapa(negocio.etapa)}
             </p>
           )}
           {compradorPrincipal && (
@@ -1388,7 +1411,7 @@ export default function Negocios() {
                   >
                     <option value="">Todas las etapas</option>
                     {etapas.map((et) => (
-                      <option key={et} value={et}>Etapa {et}</option>
+                      <option key={et} value={et}>{etiquetaEtapa(et)}</option>
                     ))}
                   </select>
                 </div>
@@ -1592,7 +1615,7 @@ export default function Negocios() {
                       {stats.porEtapa.map((e) => (
                         <div key={e.etapa} className="flex items-center justify-between gap-2">
                           <span className="text-[13px] text-slate-600 truncate">
-                            {e.etapa === 'Sin proyecto' ? e.etapa : `Etapa ${e.etapa}`}
+                            {etiquetaEtapa(e.etapa)}
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-[14px] font-semibold text-slate-700 tabular-nums">{e.count}</span>

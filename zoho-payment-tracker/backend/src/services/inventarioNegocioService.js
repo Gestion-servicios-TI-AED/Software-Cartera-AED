@@ -2,15 +2,37 @@ const { PrismaClient, Prisma } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
-// Etapa de cada Torre, según la tabla que definió AED (proyecto + número de
-// torre → etapa). Lo que no aparezca acá (Isla Laguna, Vela Village, The
-// Plaza, Laguna y Ambiental, Urbanismo, o negocios sin inmueble) cae en "0".
+// Etapa constructiva de cada Torre, según la tabla que definió AED (proyecto
+// + número de torre → etapa 1-4), solo para Kabo/Prive/Kala/Kaliza -- esos
+// frentes reparten sus torres entre varias etapas numeradas. Isla Laguna,
+// The Plaza y Vela Village NO tienen ese reparto por etapas numeradas: cada
+// uno de esos frentes ES su propia etapa (no existe una "Etapa 0" real,
+// aunque el código viejo la usaba como cajón de sastre). Ver
+// obtenerEtapaTorre().
 const ETAPA_POR_TORRE = {
   'KABO 1': '1', 'KABO 2': '1', 'PRIVE 2': '1', 'PRIVE 3': '1',
   'KABO 3': '2', 'KABO 4': '2', 'PRIVE 1': '2', 'PRIVE 4': '2',
   'KALA 1': '3', 'KALA 2': '3', 'KALIZA 1': '3', 'KALIZA 2': '3',
   'KALA 3': '4', 'KALA 4': '4', 'KALIZA 3': '4',
 };
+
+// Etiqueta para negocios sin ningún inmueble vinculado en Zoho (huérfanos) --
+// distinta de las etapas numeradas y de los frentes-etapa, siempre al final
+// de los filtros.
+const SIN_PROYECTO = 'Sin proyecto';
+
+// Frentes que reparten sus torres en etapas numeradas (Kabo, Prive, Kala,
+// Kaliza) -- los únicos que tiene sentido listar también en el selector de
+// Frente. Isla Laguna, The Plaza y Vela Village son su propia Etapa (ver
+// obtenerEtapaTorre) y ya no deben aparecer duplicados como Frente -- se
+// filtran de las opciones del selector, aunque el filtro real por esos
+// frentes se sigue resolviendo igual (a través de Etapa; frentesPorEtapa
+// no cambia).
+const FRENTES_CON_ETAPA_NUMERICA = new Set(Object.keys(ETAPA_POR_TORRE).map((k) => k.split(' ')[0]));
+
+function esFrenteSeleccionable(frente) {
+  return FRENTES_CON_ETAPA_NUMERICA.has(String(frente).toUpperCase());
+}
 
 // Parsea el campo Proyecto_Torre del Product de Zoho ("Kabo - Torre 3",
 // "Kala Golf - Torre  4") en { proyecto: "Kabo", torre: "3" }.
@@ -26,9 +48,34 @@ function formatearProyectoTorre(info) {
   return `${info.proyecto} Torre ${info.torre}`;
 }
 
+// InventarioItem.piso viene como "Piso N" -- extrae el número solo.
+function parsePisoNumero(piso) {
+  if (!piso) return null;
+  const m = String(piso).match(/\d+/);
+  return m ? m[0] : null;
+}
+
+// Etapa de una Torre: la numerada (1-4) si el frente reparte sus torres por
+// etapas (Kabo/Prive/Kala/Kaliza); si no, el frente ES la etapa (Isla
+// Laguna, The Plaza, Vela Village) -- ya no existe una "Etapa 0" genérica.
 function obtenerEtapaTorre(proyectoTorreRaw) {
   const info = parseProyectoTorre(proyectoTorreRaw);
-  return (info && ETAPA_POR_TORRE[`${info.proyecto.toUpperCase()} ${info.torre}`]) ?? '0';
+  if (!info) return null;
+  return ETAPA_POR_TORRE[`${info.proyecto.toUpperCase()} ${info.torre}`] ?? info.proyecto;
+}
+
+// Orden para listas de etapas: numéricas (1-4) primero en orden ascendente,
+// luego los frentes-etapa en orden alfabético, y "Sin proyecto" siempre al
+// final (es un cajón aparte, no una etapa constructiva real).
+function compararEtapas(a, b) {
+  if (a === SIN_PROYECTO) return b === SIN_PROYECTO ? 0 : 1;
+  if (b === SIN_PROYECTO) return -1;
+  const aNum = /^\d+$/.test(a);
+  const bNum = /^\d+$/.test(b);
+  if (aNum && bNum) return Number(a) - Number(b);
+  if (aNum) return -1;
+  if (bNum) return 1;
+  return a.localeCompare(b);
 }
 
 // Project Code de Zoho ("The Plaza - Torre 1 103") no viene poblado en todos
@@ -40,6 +87,61 @@ function resolverProjectCode(datos) {
   if (datos.Project_Code) return datos.Project_Code;
   if (datos.Proyecto_Torre && datos.Product_Name) return `${datos.Proyecto_Torre} ${datos.Product_Name}`;
   return null;
+}
+
+// Detecta inmuebles cuyo Project_Code de Zoho no termina en su propio
+// Product_Name -- señal de que el código fue copiado por error de OTRO
+// inmueble del mismo frente (mismo texto, apto distinto). Es un problema de
+// datos en Zoho, no del sync: esta función solo lo reporta para que se
+// corrija en el origen, no intenta corregirlo acá.
+async function detectarProjectCodeInconsistentes() {
+  const rows = await prisma.$queryRaw`
+    SELECT
+      id,
+      "zohoId",
+      "referenciaRecaudo",
+      datos->>'Proyecto_Torre' AS proyecto_torre,
+      datos->>'Product_Name' AS product_name,
+      datos->>'Project_Code' AS project_code,
+      datos->>'Estado_del_Inmueble' AS estado
+    FROM "InventarioItem"
+    WHERE datos->>'Project_Code' IS NOT NULL AND datos->>'Product_Name' IS NOT NULL
+  `;
+
+  const inconsistencias = [];
+  for (const r of rows) {
+    const productName = String(r.product_name).trim();
+    const projectCode = String(r.project_code).trim();
+    if (projectCode.endsWith(productName)) continue;
+
+    const info = parseProyectoTorre(r.proyecto_torre);
+    inconsistencias.push({
+      inventarioItemId: r.id,
+      zohoId: r.zohoId,
+      frente: info?.proyecto ?? null,
+      torre: info?.torre ?? null,
+      proyectoTorre: r.proyecto_torre,
+      productName,
+      projectCodeActual: projectCode,
+      estado: r.estado,
+      referenciaRecaudo: r.referenciaRecaudo,
+    });
+  }
+
+  inconsistencias.sort(
+    (a, b) => (a.proyectoTorre ?? '').localeCompare(b.proyectoTorre ?? '') || a.productName.localeCompare(b.productName)
+  );
+
+  const porTorreMap = new Map();
+  for (const inc of inconsistencias) {
+    const key = inc.proyectoTorre ?? 'Sin torre';
+    porTorreMap.set(key, (porTorreMap.get(key) ?? 0) + 1);
+  }
+  const porTorre = [...porTorreMap.entries()]
+    .map(([torre, count]) => ({ torre, count }))
+    .sort((a, b) => b.count - a.count);
+
+  return { total: inconsistencias.length, porTorre, inconsistencias };
 }
 
 // Negocios agrupados por Etapa y por Frente (Kabo/Prive/Kala/Kaliza…), para
@@ -62,7 +164,6 @@ async function estadisticasPorEtapaYFrente() {
 
   const porEtapa = new Map();
   const porFrente = new Map();
-  const SIN_PROYECTO = 'Sin proyecto';
   for (const r of rows) {
     const info = parseProyectoTorre(r.proyecto_torre);
     const etapa = info ? obtenerEtapaTorre(r.proyecto_torre) : SIN_PROYECTO;
@@ -80,15 +181,9 @@ async function estadisticasPorEtapaYFrente() {
     pf.saldo += saldo;
   }
 
-  const ordenEtapa = (a, b) => {
-    if (a === SIN_PROYECTO) return 1;
-    if (b === SIN_PROYECTO) return -1;
-    return Number(a) - Number(b);
-  };
-
   return {
     porEtapa: [...porEtapa.entries()]
-      .sort((a, b) => ordenEtapa(a[0], b[0]))
+      .sort((a, b) => compararEtapas(a[0], b[0]))
       .map(([etapa, v]) => ({ etapa, count: v.count, saldo: v.saldo })),
     porFrente: [...porFrente.entries()]
       .sort((a, b) => b[1].count - a[1].count)
@@ -160,6 +255,39 @@ async function valoresProyectoTorre() {
   for (const [key, set] of torresPorEtapaFrenteSet) torresPorEtapaFrente[key] = [...set].sort((a, b) => Number(a) - Number(b));
 
   return { porEtapa, porFrente, porFrenteTorre, frentesPorEtapa, torresPorFrente, torresPorEtapaFrente };
+}
+
+// Pisos por Frente + Torre (ej. Kala Torre 3 -> ["1","2","3","4","5"]), para
+// la configuración de fecha de entrega granular por piso en Ajustes.
+// Consulta aparte de valoresProyectoTorre() (que no trae Piso) para no
+// tocar esa función, ya usada tal cual por varias pantallas.
+async function pisosPorFrenteTorre() {
+  const rows = await prisma.$queryRaw`
+    SELECT DISTINCT datos->>'Proyecto_Torre' AS proyecto_torre, piso
+    FROM "InventarioItem"
+    WHERE datos->>'Proyecto_Torre' IS NOT NULL AND piso IS NOT NULL`;
+
+  const pisosSet = new Map(); // { [frente]: { [torre]: Set(pisos) } }
+  for (const { proyecto_torre, piso } of rows) {
+    const info = parseProyectoTorre(proyecto_torre);
+    if (!info) continue;
+    const numeroPiso = parsePisoNumero(piso);
+    if (!numeroPiso) continue;
+
+    if (!pisosSet.has(info.proyecto)) pisosSet.set(info.proyecto, new Map());
+    const porTorre = pisosSet.get(info.proyecto);
+    if (!porTorre.has(info.torre)) porTorre.set(info.torre, new Set());
+    porTorre.get(info.torre).add(numeroPiso);
+  }
+
+  const resultado = {};
+  for (const [frente, porTorre] of pisosSet) {
+    resultado[frente] = {};
+    for (const [torre, set] of porTorre) {
+      resultado[frente][torre] = [...set].sort((a, b) => Number(a) - Number(b));
+    }
+  }
+  return resultado;
 }
 
 // CTE compartida entre la consulta de datos y la de conteo: une todos los
@@ -243,10 +371,13 @@ function construirFiltroCombinado({ search, estado, etapa, frente, torre, saldoP
     )`);
   }
   if (etapa) {
-    const lista = valores.porEtapa.get(etapa) || [];
-    if (etapa === '0') {
-      condiciones.push(Prisma.sql`(c.inventario_datos->>'Proyecto_Torre' = ANY(${lista}::text[]) OR c.inventario_datos IS NULL)`);
+    if (etapa === SIN_PROYECTO) {
+      // Huérfanos: negocios sin ningún inmueble vinculado en Zoho -- ya no
+      // se mezclan con Isla Laguna/The Plaza/Vela Village (antes, los tres
+      // caían junto con esto en la "Etapa 0").
+      condiciones.push(Prisma.sql`c.inventario_datos IS NULL`);
     } else {
+      const lista = valores.porEtapa.get(etapa) || [];
       condiciones.push(Prisma.sql`c.inventario_datos->>'Proyecto_Torre' = ANY(${lista}::text[])`);
     }
   }
@@ -303,15 +434,17 @@ async function listarNegociosInventario({ search, estado, etapa, frente, torre, 
       totalMovimientos: f.totalMovimientos,
       projectCode: resolverProjectCode(f.inventario_datos),
       proyectoTorre: info ? formatearProyectoTorre(info) : null,
-      etapa: info ? obtenerEtapaTorre(f.inventario_datos.Proyecto_Torre) : null,
+      etapa: info ? obtenerEtapaTorre(f.inventario_datos.Proyecto_Torre) : SIN_PROYECTO,
     };
   });
 
   return {
     data,
     total,
-    etapasDisponibles: [...valores.porEtapa.keys()].sort((a, b) => Number(a) - Number(b)),
-    frentesDisponibles: [...valores.porFrente.keys()].sort(),
+    // "Sin proyecto" (huérfanos) se agrega a mano -- valoresProyectoTorre()
+    // solo recorre InventarioItem, así que nunca lo trae él solo.
+    etapasDisponibles: [...valores.porEtapa.keys(), SIN_PROYECTO].sort(compararEtapas),
+    frentesDisponibles: [...valores.porFrente.keys()].filter(esFrenteSeleccionable).sort(),
     frentesPorEtapa: valores.frentesPorEtapa,
     torresPorFrente: valores.torresPorFrente,
     torresPorEtapaFrente: valores.torresPorEtapaFrente,
@@ -398,6 +531,9 @@ async function obtenerNegocioPorId(id) {
       codigoInmueble: inmueble.datos?.C_digo_inmueble ?? null,
       projectCode: resolverProjectCode(inmueble.datos),
       proyectoTorre: info ? formatearProyectoTorre(info) : null,
+      frente: info ? info.proyecto : null,
+      torre: info ? info.torre : null,
+      piso: parsePisoNumero(inmueble.piso),
       etapa: info ? obtenerEtapaTorre(inmueble.datos.Proyecto_Torre) : null,
       inventarioDatos: inmueble.datos ?? null,
       negocioId: negocio?.id ?? null,
@@ -422,6 +558,9 @@ async function obtenerNegocioPorId(id) {
       codigoInmueble: null,
       projectCode: null,
       proyectoTorre: null,
+      frente: null,
+      torre: null,
+      piso: null,
       etapa: null,
       inventarioDatos: null,
       negocioId: negocio.id,
@@ -468,11 +607,17 @@ async function obtenerMovimientosPorId(id, { page, limit }) {
 module.exports = {
   prisma,
   ETAPA_POR_TORRE,
+  SIN_PROYECTO,
+  compararEtapas,
+  esFrenteSeleccionable,
   parseProyectoTorre,
   formatearProyectoTorre,
+  parsePisoNumero,
   obtenerEtapaTorre,
   resolverProjectCode,
+  detectarProjectCodeInconsistentes,
   valoresProyectoTorre,
+  pisosPorFrenteTorre,
   listarNegociosInventario,
   findOportunidadByReferencia,
   resolverNegocioIdDesdeInmueble,

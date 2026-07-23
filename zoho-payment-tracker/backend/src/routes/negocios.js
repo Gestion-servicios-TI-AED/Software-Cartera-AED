@@ -89,6 +89,17 @@ function findHeaderInStoredFilas(filas, knownCol, knownIdx) {
   return null;
 }
 
+// Corre `fn` sobre `items` en lotes concurrentes en vez de uno-por-uno
+// secuencial -- contra una base de datos remota, el cuello de botella es la
+// latencia de ida y vuelta de cada query, no el trabajo en si, asi que
+// paralelizar dentro de cada lote da una mejora de velocidad enorme.
+async function runBatched(items, batchSize, fn) {
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    await Promise.all(batch.map(fn));
+  }
+}
+
 async function runBackfill() {
   if (backfillRunning) return;
   backfillRunning = true;
@@ -101,14 +112,32 @@ async function runBackfill() {
     await prisma.negocioComprador.deleteMany({});
     await prisma.negocio.deleteMany({});
 
-    const hojas = await prisma.hojaFiduciaria.findMany({
+    // Traer solo los IDs livianos primero -- cargar columnas+filas (JSON grande)
+    // hoja por hoja evita mantener las 630K+ filas de las 285 hojas en memoria
+    // a la vez, que parecia estar colgando el proceso sin avisar (sin query
+    // activa ni uso de CPU visible, posiblemente por presion de memoria en el
+    // motor nativo de Prisma).
+    const hojaIds = await prisma.hojaFiduciaria.findMany({
       where: { nombreHoja: { in: ['Movimientos', 'Mov_Por_Propietario'] } },
-      select: { nombreHoja: true, columnas: true, filas: true },
+      select: { id: true, nombreHoja: true },
       orderBy: { createdAt: 'asc' },
     });
 
     // ── Phase 1: Resumen sheet → upsert Negocio.datos + estado ────────────
-    for (const hoja of hojas.filter((h) => h.nombreHoja === 'Movimientos')) {
+    // Primero se acumula en memoria (deduplicado por referencia, ultima hoja
+    // gana para estado/datos/saldo, primera hoja con Propietarios gana para
+    // el seed de compradores -- mismo criterio que antes) y solo AL FINAL se
+    // escribe a la base de datos, en lotes concurrentes en vez de una fila a
+    // la vez. Con overlap de referencias entre hojas (confirmado: el conteo
+    // de Negocio se estancaba mientras seguian llegando filas) esto tambien
+    // reduce muchisimo el numero total de escrituras.
+    const __hojasFase1 = hojaIds.filter((h) => h.nombreHoja === 'Movimientos');
+    const resumenMap = new Map();
+    for (const hojaRef of __hojasFase1) {
+      const hoja = await prisma.hojaFiduciaria.findUnique({
+        where: { id: hojaRef.id },
+        select: { columnas: true, filas: true },
+      });
       const filas = Array.isArray(hoja.filas) ? hoja.filas : [];
       const storedCols = Array.isArray(hoja.columnas) ? hoja.columnas : [];
       // Two file shapes must both resolve to a header + data rows:
@@ -125,7 +154,6 @@ async function runBackfill() {
         console.warn('[backfill] Resumen: header row not found'); continue;
       }
       const estadoIdx = headers.findIndex((h) => h.toLowerCase() === 'estado');
-
       const propietariosIdx = headers.findIndex((h) => h.toLowerCase() === 'propietarios');
 
       for (const row of dataRows) {
@@ -139,33 +167,53 @@ async function runBackfill() {
           if (v !== null) datos[col] = v;
         });
         const saldoActual = extractSaldoActual(datos);
-        const negocio = await prisma.negocio.upsert({
-          where: { referencia },
-          create: { referencia, estado, datos, saldoActual },
-          update: { estado, datos, saldoActual },
-        });
+        const propietariosRaw = propietariosIdx !== -1 ? row[propietariosIdx] : null;
 
-        // Seed compradores from Propietarios column (only if Mov_Por_Propietario hasn't already set them)
-        if (propietariosIdx !== -1) {
-          const comps = parseCompradoresCell(row[propietariosIdx], null, null);
-          if (comps.length > 0) {
-            const existing = await prisma.negocioComprador.count({ where: { negocioId: negocio.id } });
-            if (existing === 0) {
-              await prisma.negocioComprador.createMany({
-                data: comps.map((c, i) => ({
-                  negocioId: negocio.id, nombre: c.nombre, nroId: c.nroId,
-                  porcentaje: c.porcentaje, orden: i,
-                })),
-              });
-              await applyNroIdRaw(negocio.id, comps);
-            }
-          }
+        const existing = resumenMap.get(referencia);
+        if (!existing) {
+          resumenMap.set(referencia, { estado, datos, saldoActual, propietariosRaw });
+        } else {
+          existing.estado = estado;
+          existing.datos = datos;
+          existing.saldoActual = saldoActual;
+          if (!existing.propietariosRaw && propietariosRaw) existing.propietariosRaw = propietariosRaw;
         }
       }
     }
 
+    const resumenEntries = [...resumenMap.entries()];
+    await runBatched(resumenEntries, 20, async ([referencia, data]) => {
+      const negocio = await prisma.negocio.upsert({
+        where: { referencia },
+        create: { referencia, estado: data.estado, datos: data.datos, saldoActual: data.saldoActual },
+        update: { estado: data.estado, datos: data.datos, saldoActual: data.saldoActual },
+      });
+
+      // Seed compradores from Propietarios column (only if Mov_Por_Propietario hasn't already set them)
+      if (data.propietariosRaw) {
+        const comps = parseCompradoresCell(data.propietariosRaw, null, null);
+        if (comps.length > 0) {
+          const existingComps = await prisma.negocioComprador.count({ where: { negocioId: negocio.id } });
+          if (existingComps === 0) {
+            await prisma.negocioComprador.createMany({
+              data: comps.map((c, i) => ({
+                negocioId: negocio.id, nombre: c.nombre, nroId: c.nroId,
+                porcentaje: c.porcentaje, orden: i,
+              })),
+            });
+            await applyNroIdRaw(negocio.id, comps);
+          }
+        }
+      }
+    });
+
     // ── Phase 2: Mov_Por_Propietario → compradores + movements ────────────
-    for (const hoja of hojas.filter((h) => h.nombreHoja === 'Mov_Por_Propietario')) {
+    const __hojasFase2 = hojaIds.filter((h) => h.nombreHoja === 'Mov_Por_Propietario');
+    for (const hojaRef of __hojasFase2) {
+      const hoja = await prisma.hojaFiduciaria.findUnique({
+        where: { id: hojaRef.id },
+        select: { columnas: true, filas: true },
+      });
       const filas = Array.isArray(hoja.filas) ? hoja.filas : [];
       // Stored columnas are correct for this sheet (auto-detection picked the right row)
       const storedCols = Array.isArray(hoja.columnas) ? hoja.columnas : [];
@@ -201,10 +249,32 @@ async function runBackfill() {
         if (mov) entry.movimientos.push({ ...mov, referencia });
       }
 
+      const negMapEntries = [...negMap.entries()];
+
+      // Una sola consulta para saber que negocios y que idMovimiento ya
+      // existen, en vez de una consulta de cada tipo por cada uno de los
+      // ~300 negocios de la hoja -- muchas hojas son reexportaciones
+      // acumuladas con enorme solapamiento (confirmado: varias hojas
+      // seguidas agregaban 0-6 movimientos nuevos sobre miles de filas), asi
+      // que la mayoria de estas consultas serian redundantes de todas formas.
+      const referenciasHoja = negMapEntries.map(([r]) => r);
+      const idsMovHoja = negMapEntries.flatMap(([, entry]) => entry.movimientos.map((m) => m.idMovimiento));
+      const [existingNegocios, existingMovIds] = await Promise.all([
+        prisma.negocio.findMany({ where: { referencia: { in: referenciasHoja } }, select: { id: true, referencia: true } }),
+        idsMovHoja.length > 0
+          ? prisma.negocioMovimiento.findMany({ where: { idMovimiento: { in: idsMovHoja } }, select: { idMovimiento: true } })
+          : [],
+      ]);
+      const negocioByRef = new Map(existingNegocios.map((n) => [n.referencia, n]));
+      const existingMovSet = new Set(existingMovIds.map((m) => m.idMovimiento));
+
       let compCount = 0, movCount = 0;
-      for (const [referencia, entry] of negMap.entries()) {
-        let neg = await prisma.negocio.findUnique({ where: { referencia } });
-        if (!neg) neg = await prisma.negocio.create({ data: { referencia } });
+      await runBatched(negMapEntries, 20, async ([referencia, entry]) => {
+        let neg = negocioByRef.get(referencia);
+        if (!neg) {
+          neg = await prisma.negocio.create({ data: { referencia } });
+          negocioByRef.set(referencia, neg);
+        }
 
         const list = [...entry.compradores.values()];
         if (list.length > 0) {
@@ -216,10 +286,7 @@ async function runBackfill() {
           compCount += list.length;
         }
 
-        const ids = entry.movimientos.map((m) => m.idMovimiento);
-        const existing = await prisma.negocioMovimiento.findMany({ where: { idMovimiento: { in: ids } }, select: { idMovimiento: true } });
-        const existingSet = new Set(existing.map((m) => m.idMovimiento));
-        const toInsert = entry.movimientos.filter((m) => !existingSet.has(m.idMovimiento));
+        const toInsert = entry.movimientos.filter((m) => !existingMovSet.has(m.idMovimiento));
         if (toInsert.length > 0) {
           const BATCH = 100;
           for (let i = 0; i < toInsert.length; i += BATCH) {
@@ -232,7 +299,7 @@ async function runBackfill() {
           }
           movCount += toInsert.length;
         }
-      }
+      });
       console.log(`[backfill] Mov_Por_Propietario: ${compCount} compradores, ${movCount} movimientos`);
     }
 
@@ -459,26 +526,26 @@ router.get('/stats', async (_req, res) => {
   }
 });
 
-// GET /api/negocios/dashboard-recaudo?search=&etapa=&frente=&torre=&conMovimientos=&page=&limit=
+// GET /api/negocios/dashboard-recaudo?search=&etapa=&frente=&torre=&conMovimientos=&sortBy=&sortDir=&page=&limit=
 router.get('/dashboard-recaudo', async (req, res) => {
   try {
-    const { search, etapa, frente, torre, conMovimientos, page = '1', limit = '50' } = req.query;
+    const { search, etapa, frente, torre, conMovimientos, sortBy, sortDir, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
-    const resultado = await obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimientos, page: pageNum, limit: limitNum });
+    const resultado = await obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimientos, sortBy, sortDir, page: pageNum, limit: limitNum });
     res.json(resultado);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/negocios/cartera-mora?search=&etapa=&frente=&torre=&rango=&page=&limit=
+// GET /api/negocios/cartera-mora?search=&etapa=&frente=&torre=&rango=&sortBy=&sortDir=&page=&limit=
 router.get('/cartera-mora', async (req, res) => {
   try {
-    const { search, etapa, frente, torre, rango, page = '1', limit = '50' } = req.query;
+    const { search, etapa, frente, torre, rango, sortBy, sortDir, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
-    const resultado = await obtenerCarteraMora({ search, etapa, frente, torre, rango, page: pageNum, limit: limitNum });
+    const resultado = await obtenerCarteraMora({ search, etapa, frente, torre, rango, sortBy, sortDir, page: pageNum, limit: limitNum });
     res.json(resultado);
   } catch (err) {
     res.status(500).json({ error: err.message });

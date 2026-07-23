@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, memo, Fragment } from 'react';
 import { useReactTable, getCoreRowModel, flexRender, createColumnHelper } from '@tanstack/react-table';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { Search, Layers, MapPin, Building, X, Download, History, CalendarRange, Briefcase, ExternalLink, Warehouse } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { getDashboardRecaudo } from '../utils/api';
 import { formatCOP, formatDate } from '../utils/format';
+import { etiquetaEtapa } from '../utils/etapas';
 
 function useDebounce(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
@@ -51,6 +52,8 @@ const COLOR_EXCEL = {
   resaltadaBg: 'FFFEF3C7', // amber-100
   bordeSuave: 'FFE2E8F0', // slate-200
   textoRecaudado: 'FF047857', // emerald-700
+  textoPendiente: 'FFB45309', // amber-700
+  textoVencido: 'FFDC2626', // red-600
   textoTotalLabel: 'FF475569', // slate-600
 };
 
@@ -65,9 +68,12 @@ const COLUMNAS_FIJAS = [
   }),
   columnHelper.accessor('torre', {
     header: 'Torre',
-    cell: (info) => info.getValue() ?? <span className="text-slate-300">—</span>,
+    cell: (info) => {
+      const v = info.getValue();
+      return v == null ? <span className="text-slate-300">—</span> : `Torre ${v}`;
+    },
   }),
-  columnHelper.accessor('nomenclatura', {
+  columnHelper.accessor('unidad', {
     header: 'Nomenclatura',
     cell: (info) => <span className="font-mono text-[13px]">{info.getValue() ?? '—'}</span>,
   }),
@@ -78,8 +84,22 @@ const COLUMNAS_FIJAS = [
       return v == null ? <span className="text-slate-300">—</span> : <span className="font-mono text-[13px]">{formatCOP(v)}</span>;
     },
   }),
+  columnHelper.accessor('valorCuotaInicial', {
+    header: 'Valor cuota inicial',
+    cell: (info) => {
+      const v = info.getValue();
+      return v == null ? <span className="text-slate-300">—</span> : <span className="font-mono text-[13px]">{formatCOP(v)}</span>;
+    },
+  }),
+  columnHelper.accessor('abonadoCuotaInicial', {
+    header: 'Abonado cuota inicial',
+    cell: (info) => {
+      const v = info.getValue();
+      return v == null ? <span className="text-slate-300">—</span> : <span className="font-mono text-[13px] text-emerald-700">{formatCOP(v)}</span>;
+    },
+  }),
   columnHelper.accessor('fechaSaldoContraentrega', {
-    header: 'Fecha saldo contraentrega',
+    header: 'Fecha de terminación de obra',
     cell: (info) => {
       const v = info.getValue();
       return v == null ? <span className="text-slate-300">—</span> : <span className="text-[13px]">{formatDate(v)}</span>;
@@ -99,14 +119,40 @@ const COLUMNAS_FIJAS = [
       return v == null ? <span className="text-slate-300">—</span> : <span className="font-mono text-[13px] text-emerald-700">{formatCOP(v)}</span>;
     },
   }),
+  columnHelper.accessor(
+    (row) => (row.valorInmueble != null && row.totalAbonado != null ? Math.max(0, row.valorInmueble - row.totalAbonado) : null),
+    {
+      id: 'pendienteRecaudar',
+      header: 'Pendiente por recaudar',
+      cell: (info) => {
+        const v = info.getValue();
+        return v == null ? <span className="text-slate-300">—</span> : <span className="font-mono text-[13px] text-amber-700">{formatCOP(v)}</span>;
+      },
+    }
+  ),
+  columnHelper.accessor('cuotasEnMora', {
+    header: 'Cuotas vencidas',
+    cell: (info) => {
+      const v = info.getValue();
+      return !v ? <span className="text-slate-300">—</span> : <span className="font-mono text-[13px] text-red-600">{v}</span>;
+    },
+  }),
+  columnHelper.accessor('montoEnMora', {
+    header: 'Valor cuotas vencidas',
+    cell: (info) => {
+      const v = info.getValue();
+      return !v ? <span className="text-slate-300">—</span> : <span className="font-mono text-[13px] text-red-600">{formatCOP(v)}</span>;
+    },
+  }),
 ];
 
 // Ids de las columnas fijas (todo lo que no es un mes) -- se pintan de un
 // color distinto en el encabezado y en las celdas para diferenciarlas de
 // un vistazo de las columnas de Esperado/Recaudado por mes.
 const COLUMNAS_FIJAS_IDS = new Set([
-  'etapa', 'frente', 'torre', 'nomenclatura', 'valorInmueble',
-  'fechaSaldoContraentrega', 'valorSaldoContraentrega', 'totalAbonado',
+  'etapa', 'frente', 'torre', 'unidad', 'valorInmueble', 'valorCuotaInicial', 'abonadoCuotaInicial',
+  'fechaSaldoContraentrega', 'valorSaldoContraentrega', 'totalAbonado', 'pendienteRecaudar',
+  'cuotasEnMora', 'montoEnMora',
 ]);
 
 // Anchos fijos en px para table-layout:fixed (ver TablaDashboard) -- con
@@ -119,28 +165,49 @@ const ANCHOS_FIJOS = {
   etapa: 70,
   frente: 120,
   torre: 70,
-  nomenclatura: 210,
+  unidad: 210,
   valorInmueble: 150,
+  valorCuotaInicial: 170,
+  abonadoCuotaInicial: 190,
   fechaSaldoContraentrega: 180,
   valorSaldoContraentrega: 180,
   totalAbonado: 210,
+  pendienteRecaudar: 190,
+  cuotasEnMora: 130,
+  montoEnMora: 190,
 };
 function anchoColumna(id) {
   return ANCHOS_FIJOS[id] ?? 120;
+}
+
+// Solo se deja la celda vacía cuando Esperado Y Recaudado del mes son
+// AMBOS $0 -- con cientos de columnas de mes, un "$0" repetido en casi
+// todas las celdas es puro ruido visual. Si cualquiera de los dos tiene
+// movimiento real, el otro sigue mostrando "$0" (no puede quedar vacío al
+// lado de un valor real, se vería como que falta un dato).
+function ambosEnCero(row, mes) {
+  const m = row.porMes[mes];
+  return (m?.esperado ?? 0) === 0 && (m?.recaudado ?? 0) === 0;
 }
 
 const COLUMNA_ESPERADO = (mes) =>
   columnHelper.accessor((row) => row.porMes[mes]?.esperado ?? 0, {
     id: `${mes}-esperado`,
     header: 'Esperado',
-    cell: (info) => <span className="font-mono text-[13px]">{formatCOP(info.getValue())}</span>,
+    cell: (info) => {
+      if (ambosEnCero(info.row.original, mes)) return null;
+      return <span className="font-mono text-[13px]">{formatCOP(info.getValue())}</span>;
+    },
   });
 
 const COLUMNA_RECAUDADO = (mes) =>
   columnHelper.accessor((row) => row.porMes[mes]?.recaudado ?? 0, {
     id: `${mes}-recaudado`,
     header: 'Recaudado',
-    cell: (info) => <span className="font-mono text-[13px] text-emerald-700">{formatCOP(info.getValue())}</span>,
+    cell: (info) => {
+      if (ambosEnCero(info.row.original, mes)) return null;
+      return <span className="font-mono text-[13px] text-emerald-700">{formatCOP(info.getValue())}</span>;
+    },
   });
 
 // `vista` decide qué sub-columnas de cada mes se arman: ambas (por defecto),
@@ -168,6 +235,7 @@ function construirColumnasMeses(meses, vista = 'ambos') {
 const TablaDashboard = memo(function TablaDashboard({
   filas, columns, pagination, loading, mesesFiltrados, mesIndexPorColumna,
   primeraColMes, filasResaltadas, toggleResaltado, abrirMenuContextual, vistaMeses, totales,
+  totalesColumnasFijas, sortBy, sortDir, onSort,
 }) {
   const table = useReactTable({
     data: filas,
@@ -187,7 +255,7 @@ const TablaDashboard = memo(function TablaDashboard({
             <col key={col.id} style={{ width: anchoColumna(col.id) }} />
           ))}
         </colgroup>
-        <thead>
+        <thead className="sticky top-0 z-20">
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id} className="border-b border-aed-border bg-aed-base">
               {headerGroup.headers.map((header) => {
@@ -195,23 +263,79 @@ const TablaDashboard = memo(function TablaDashboard({
                 const mesIdx = mesIndexPorColumna[header.column.id];
                 const esImpar = mesIdx !== undefined && mesIdx % 2 === 1;
                 const esInicioMes = header.column.id.startsWith('mes-') || header.column.id.endsWith(`-${primeraColMes}`);
+                const ordenActivo = esFija && sortBy === header.column.id;
+                const Icono = ordenActivo ? (sortDir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
                 return (
                   <th
                     key={header.id}
                     colSpan={header.colSpan}
+                    onClick={esFija ? () => onSort(header.column.id) : undefined}
                     className={`section-label px-3 py-2 text-left whitespace-nowrap ${
-                      esFija ? 'bg-teal-600 text-white' : esImpar ? 'bg-slate-100' : ''
+                      esFija ? 'bg-teal-600 text-white cursor-pointer select-none hover:bg-teal-700' : esImpar ? 'bg-slate-100' : ''
                     } ${
-                      header.column.id === 'totalAbonado' ? 'border-r-4 border-teal-700' : ''
+                      header.column.id === 'montoEnMora' ? 'border-r-4 border-teal-700' : ''
                     } ${esInicioMes && mesIdx > 0 ? 'border-l border-aed-border' : ''}`}
                   >
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.isPlaceholder ? null : esFija ? (
+                      <span className="inline-flex items-center gap-1">
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        <Icono size={12} className={ordenActivo ? 'text-white' : 'text-teal-100'} />
+                      </span>
+                    ) : (
+                      flexRender(header.column.columnDef.header, header.getContext())
+                    )}
                   </th>
                 );
               })}
             </tr>
           ))}
         </thead>
+        {mesesFiltrados.length > 0 && (
+          <tfoot className="sticky bottom-0 z-20">
+            <tr className="border-t-2 border-aed-border bg-aed-base font-semibold shadow-[0_-2px_4px_rgba(0,0,0,0.06)]">
+              <td colSpan={4} className="px-3 py-2 text-[13px] text-slate-600 bg-aed-base">Total del portafolio filtrado</td>
+              <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] bg-aed-base">
+                {formatCOP(totalesColumnasFijas?.valorInmueble ?? 0)}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] bg-aed-base">
+                {formatCOP(totalesColumnasFijas?.valorCuotaInicial ?? 0)}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-emerald-700 bg-aed-base">
+                {formatCOP(totalesColumnasFijas?.abonadoCuotaInicial ?? 0)}
+              </td>
+              <td className="px-3 py-2 bg-aed-base" />
+              <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] bg-aed-base">
+                {formatCOP(totalesColumnasFijas?.valorSaldoContraentrega ?? 0)}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-emerald-700 bg-aed-base">
+                {formatCOP(totalesColumnasFijas?.totalAbonado ?? 0)}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-amber-700 bg-aed-base">
+                {formatCOP(totalesColumnasFijas?.pendienteRecaudar ?? 0)}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-red-600 bg-aed-base">
+                {totalesColumnasFijas?.cuotasEnMora ?? 0}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-red-600 bg-aed-base">
+                {formatCOP(totalesColumnasFijas?.montoEnMora ?? 0)}
+              </td>
+              {mesesFiltrados.map((mes) => (
+                <Fragment key={mes}>
+                  {vistaMeses !== 'recaudado' && (
+                    <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] bg-aed-base">
+                      {formatCOP(totales[mes]?.esperado ?? 0)}
+                    </td>
+                  )}
+                  {vistaMeses !== 'esperado' && (
+                    <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-emerald-700 bg-aed-base">
+                      {formatCOP(totales[mes]?.recaudado ?? 0)}
+                    </td>
+                  )}
+                </Fragment>
+              ))}
+            </tr>
+          </tfoot>
+        )}
         <tbody>
           {loading ? (
             <tr>
@@ -246,7 +370,7 @@ const TablaDashboard = memo(function TablaDashboard({
                           resaltada
                             ? ''
                             : esFija ? 'bg-teal-100' : esImpar ? 'bg-slate-50' : ''
-                        } ${cell.column.id === 'totalAbonado' ? 'border-r-4 border-teal-700' : ''} ${
+                        } ${cell.column.id === 'montoEnMora' ? 'border-r-4 border-teal-700' : ''} ${
                           esInicioMes && mesIdx > 0 ? 'border-l border-aed-border' : ''
                         }`}
                       >
@@ -259,27 +383,6 @@ const TablaDashboard = memo(function TablaDashboard({
             })
           )}
         </tbody>
-        {mesesFiltrados.length > 0 && (
-          <tfoot>
-            <tr className="border-t-2 border-aed-border bg-aed-base font-semibold">
-              <td colSpan={COLUMNAS_FIJAS.length} className="px-3 py-2 text-[13px] text-slate-600">Total del portafolio filtrado</td>
-              {mesesFiltrados.map((mes) => (
-                <Fragment key={mes}>
-                  {vistaMeses !== 'recaudado' && (
-                    <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px]">
-                      {formatCOP(totales[mes]?.esperado ?? 0)}
-                    </td>
-                  )}
-                  {vistaMeses !== 'esperado' && (
-                    <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-emerald-700">
-                      {formatCOP(totales[mes]?.recaudado ?? 0)}
-                    </td>
-                  )}
-                </Fragment>
-              ))}
-            </tr>
-          </tfoot>
-        )}
       </table>
     </div>
   );
@@ -305,8 +408,15 @@ export default function ReportePlanRecaudo() {
   const [torresPorFrente, setTorresPorFrente] = useState({});
   const [torresPorEtapaFrente, setTorresPorEtapaFrente] = useState({});
   const [totales, setTotales] = useState({});
+  const [totalesColumnasFijas, setTotalesColumnasFijas] = useState(null);
   const [filasResaltadas, setFilasResaltadas] = useState(() => new Set());
   const [menuContextual, setMenuContextual] = useState(null); // { x, y, fila } | null
+  // Un solo estado para los dos campos -- así el ciclo de 3 clics se resuelve
+  // en una sola actualización funcional (lee el valor previo), sin depender
+  // de leer sortBy/sortDir del closure -- necesario para que handleSort
+  // pueda ir en un useCallback con deps vacías (TablaDashboard está memoizado).
+  const [sort, setSort] = useState({ by: null, dir: null });
+  const { by: sortBy, dir: sortDir } = sort;
 
   const debouncedSearch = useDebounce(search);
 
@@ -326,6 +436,17 @@ export default function ReportePlanRecaudo() {
   const abrirMenuContextual = useCallback((e, fila) => {
     e.preventDefault();
     setMenuContextual({ x: e.clientX, y: e.clientY, fila });
+  }, []);
+
+  // Clic en un encabezado: 1er clic ordena ascendente, 2do descendente, 3ro
+  // quita el orden -- se resuelve en el backend sobre todo el conjunto
+  // filtrado, no solo la página que se ve (mismo criterio que Cartera en Gestión).
+  const handleSort = useCallback((campo) => {
+    setSort((prev) => {
+      if (prev.by !== campo) return { by: campo, dir: 'asc' };
+      if (prev.dir === 'asc') return { by: campo, dir: 'desc' };
+      return { by: null, dir: null };
+    });
   }, []);
 
   // Cerrar el menú contextual al hacer clic afuera, con Escape, o al scrollear.
@@ -352,6 +473,8 @@ export default function ReportePlanRecaudo() {
         frente: frenteFilter || undefined,
         torre: torreFilter || undefined,
         conMovimientos: conMovimientos || undefined,
+        sortBy: sortBy || undefined,
+        sortDir: sortDir || undefined,
         page: p,
         limit: 50,
       });
@@ -364,13 +487,14 @@ export default function ReportePlanRecaudo() {
       setTorresPorFrente(res.torresPorFrente);
       setTorresPorEtapaFrente(res.torresPorEtapaFrente);
       setTotales(res.totales);
+      setTotalesColumnasFijas(res.totalesColumnasFijas);
       setPage(p);
     } catch (err) {
       console.error('Error cargando dashboard:', err);
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter, conMovimientos]);
+  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter, conMovimientos, sortBy, sortDir]);
 
   // Cargar página 1 cuando cambian los filtros (busqueda ya con debounce).
   // load ya no depende de `page` en su lista de dependencias -- por eso
@@ -439,6 +563,8 @@ export default function ReportePlanRecaudo() {
         frente: frenteFilter || undefined,
         torre: torreFilter || undefined,
         conMovimientos: conMovimientos || undefined,
+        sortBy: sortBy || undefined,
+        sortDir: sortDir || undefined,
         page: 1,
         limit: 9999,
       });
@@ -456,11 +582,16 @@ export default function ReportePlanRecaudo() {
         { header: 'Etapa', key: 'etapa', width: 8 },
         { header: 'Frente', key: 'frente', width: 14 },
         { header: 'Torre', key: 'torre', width: 8 },
-        { header: 'Nomenclatura', key: 'nomenclatura', width: 26 },
+        { header: 'Nomenclatura', key: 'unidad', width: 26 },
         { header: 'Valor del inmueble', key: 'valorInmueble', width: 18 },
-        { header: 'Fecha saldo contraentrega', key: 'fechaSaldoContraentrega', width: 18 },
+        { header: 'Valor cuota inicial', key: 'valorCuotaInicial', width: 18 },
+        { header: 'Abonado cuota inicial', key: 'abonadoCuotaInicial', width: 20 },
+        { header: 'Fecha de terminación de obra', key: 'fechaSaldoContraentrega', width: 18 },
         { header: 'Valor saldo contraentrega', key: 'valorSaldoContraentrega', width: 18 },
         { header: 'Total abonado del inmueble', key: 'totalAbonado', width: 22 },
+        { header: 'Pendiente por recaudar', key: 'pendienteRecaudar', width: 20 },
+        { header: 'Cuotas vencidas', key: 'cuotasEnMora', width: 14 },
+        { header: 'Valor cuotas vencidas', key: 'montoEnMora', width: 20 },
       ];
 
       const wb = new ExcelJS.Workbook();
@@ -486,7 +617,7 @@ export default function ReportePlanRecaudo() {
         cell.fill = fillSolida(COLOR_EXCEL.headerFijaBg);
         cell.font = { bold: true, color: { argb: COLOR_EXCEL.headerTexto }, size: 11 };
         cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-        if (f.key === 'totalAbonado') cell.border = bordeDerFuerte;
+        if (f.key === 'montoEnMora') cell.border = bordeDerFuerte;
       });
 
       let cursor = FIJAS.length + 1;
@@ -533,22 +664,46 @@ export default function ReportePlanRecaudo() {
           if (f.key === 'fechaSaldoContraentrega') {
             cell.value = n[f.key] ? new Date(n[f.key]) : null;
             cell.numFmt = 'dd/mm/yyyy';
-          } else if (f.key === 'valorInmueble' || f.key === 'valorSaldoContraentrega' || f.key === 'totalAbonado') {
+          } else if (f.key === 'torre') {
+            cell.value = n.torre != null ? `Torre ${n.torre}` : '';
+          } else if (f.key === 'pendienteRecaudar') {
+            cell.value = n.valorInmueble != null && n.totalAbonado != null ? Math.max(0, n.valorInmueble - n.totalAbonado) : 0;
+            cell.numFmt = '#,##0';
+            cell.font = { color: { argb: COLOR_EXCEL.textoPendiente } };
+          } else if (f.key === 'cuotasEnMora') {
+            cell.value = n.cuotasEnMora ?? 0;
+            cell.font = { color: { argb: COLOR_EXCEL.textoVencido } };
+          } else if (f.key === 'montoEnMora') {
+            cell.value = n.montoEnMora ?? 0;
+            cell.numFmt = '#,##0';
+            cell.font = { color: { argb: COLOR_EXCEL.textoVencido } };
+          } else if (
+            f.key === 'valorInmueble' || f.key === 'valorSaldoContraentrega' || f.key === 'totalAbonado' ||
+            f.key === 'valorCuotaInicial' || f.key === 'abonadoCuotaInicial'
+          ) {
             cell.value = n[f.key] ?? 0;
             cell.numFmt = '#,##0';
-            if (f.key === 'totalAbonado') cell.font = { color: { argb: COLOR_EXCEL.textoRecaudado } };
+            if (f.key === 'totalAbonado' || f.key === 'abonadoCuotaInicial') cell.font = { color: { argb: COLOR_EXCEL.textoRecaudado } };
           } else {
             cell.value = n[f.key] ?? '';
           }
           cell.fill = fillSolida(bgFija);
-          if (f.key === 'totalAbonado') cell.border = bordeDerFuerte;
+          if (f.key === 'montoEnMora') cell.border = bordeDerFuerte;
         });
 
         colsMeses.forEach((c, j) => {
           const col = FIJAS.length + j + 1;
           const cell = row.getCell(col);
-          cell.value = n.porMes[c.mes]?.[c.tipo] ?? 0;
-          cell.numFmt = '#,##0';
+          const valorMes = n.porMes[c.mes]?.[c.tipo] ?? 0;
+          const esperadoMes = n.porMes[c.mes]?.esperado ?? 0;
+          const recaudadoMes = n.porMes[c.mes]?.recaudado ?? 0;
+          // Igual que en pantalla: solo se deja vacía cuando Esperado Y
+          // Recaudado del mes son ambos $0 -- si cualquiera de los dos tiene
+          // movimiento real, el otro igual muestra "$0".
+          if (esperadoMes !== 0 || recaudadoMes !== 0) {
+            cell.value = valorMes;
+            cell.numFmt = '#,##0';
+          }
           if (c.tipo === 'recaudado') cell.font = { color: { argb: COLOR_EXCEL.textoRecaudado } };
           const esImpar = c.mesIdx % 2 === 1;
           cell.fill = fillSolida(resaltada ? COLOR_EXCEL.resaltadaBg : (esImpar ? COLOR_EXCEL.celdaMesImparBg : COLOR_EXCEL.celdaMesParBg));
@@ -561,7 +716,7 @@ export default function ReportePlanRecaudo() {
       // Fila de totales del portafolio filtrado, igual que el <tfoot> en pantalla.
       if (mesesExport.length > 0) {
         const totalRow = ws.getRow(rowNum);
-        ws.mergeCells(rowNum, 1, rowNum, FIJAS.length);
+        ws.mergeCells(rowNum, 1, rowNum, 4);
         const bordeArriba = { top: { style: 'medium', color: { argb: COLOR_EXCEL.bordeSuave } } };
 
         const labelCell = totalRow.getCell(1);
@@ -569,6 +724,25 @@ export default function ReportePlanRecaudo() {
         labelCell.font = { bold: true, color: { argb: COLOR_EXCEL.textoTotalLabel } };
         labelCell.fill = fillSolida(COLOR_EXCEL.celdaMesImparBg);
         labelCell.border = bordeArriba;
+
+        const totalesFijos = res.totalesColumnasFijas || {};
+        const colorPorClave = {
+          totalAbonado: COLOR_EXCEL.textoRecaudado,
+          abonadoCuotaInicial: COLOR_EXCEL.textoRecaudado,
+          pendienteRecaudar: COLOR_EXCEL.textoPendiente,
+          cuotasEnMora: COLOR_EXCEL.textoVencido,
+          montoEnMora: COLOR_EXCEL.textoVencido,
+        };
+        FIJAS.forEach((f, i) => {
+          if (i < 4) return; // ya cubiertas por la celda fusionada del label
+          const cell = totalRow.getCell(i + 1);
+          cell.fill = fillSolida(COLOR_EXCEL.celdaMesImparBg);
+          cell.border = bordeArriba;
+          if (f.key === 'fechaSaldoContraentrega') return; // no aplica un total de fechas
+          cell.value = totalesFijos[f.key] ?? 0;
+          cell.numFmt = '#,##0';
+          cell.font = { bold: true, color: { argb: colorPorClave[f.key] ?? COLOR_EXCEL.textoTotalLabel } };
+        });
 
         colsMeses.forEach((c, j) => {
           const col = FIJAS.length + j + 1;
@@ -596,7 +770,7 @@ export default function ReportePlanRecaudo() {
     } finally {
       setExporting(false);
     }
-  }, [search, etapaFilter, frenteFilter, torreFilter, conMovimientos, mesDesde, mesHasta, vistaMeses, filasResaltadas]);
+  }, [search, etapaFilter, frenteFilter, torreFilter, conMovimientos, sortBy, sortDir, mesDesde, mesHasta, vistaMeses, filasResaltadas]);
 
   return (
     <div className="h-full flex flex-col gap-3 p-5 overflow-hidden">
@@ -635,7 +809,7 @@ export default function ReportePlanRecaudo() {
             <label className="field-label"><Layers size={13} className="text-[#7c3aed]" />Etapa</label>
             <select value={etapaFilter} onChange={(e) => handleEtapaChange(e.target.value)} className="input text-[14px] h-8 py-0 pr-2 leading-none">
               <option value="">Todas las etapas</option>
-              {etapas.map((et) => <option key={et} value={et}>Etapa {et}</option>)}
+              {etapas.map((et) => <option key={et} value={et}>{etiquetaEtapa(et)}</option>)}
             </select>
           </div>
         )}
@@ -742,6 +916,10 @@ export default function ReportePlanRecaudo() {
           abrirMenuContextual={abrirMenuContextual}
           vistaMeses={vistaMeses}
           totales={totales}
+          totalesColumnasFijas={totalesColumnasFijas}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSort={handleSort}
         />
 
         {pagination.totalPages > 1 && (

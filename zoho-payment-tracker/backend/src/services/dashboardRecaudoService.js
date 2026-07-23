@@ -1,5 +1,6 @@
-const { prisma, parseProyectoTorre, obtenerEtapaTorre, resolverProjectCode, valoresProyectoTorre } = require('./inventarioNegocioService');
+const { prisma, parseProyectoTorre, formatearProyectoTorre, parsePisoNumero, obtenerEtapaTorre, resolverProjectCode, valoresProyectoTorre, compararEtapas, esFrenteSeleccionable } = require('./inventarioNegocioService');
 const { construirPlan, normalizarPagos, conciliar, parseMonto } = require('./conciliacionService');
+const { obtenerFechasEntregaConfiguradas, CLAVE_TODAS } = require('./configuracionFrenteService');
 
 // ── Cache en memoria del cálculo pesado ─────────────────────────────────────
 // obtenerDashboardRecaudo recibe filtros distintos en cada llamada (Etapa,
@@ -98,11 +99,17 @@ function mesKey(fecha) {
 // cachea en vez de correrla en cada request.
 async function construirFilasCompletas() {
   const valores = await valoresProyectoTorre();
+  const fechasEntregaConfiguradas = await obtenerFechasEntregaConfiguradas();
 
+  // Orden por Product_Name (no Project_Code): el mismo problema de datos que
+  // rompe la nomenclatura (Project_Code copiado de otro inmueble, ver botón
+  // "Verificar Project Code" en Ajustes) también rompía este orden -- una
+  // unidad como "246" se colaba entre las "204" porque su Project_Code decía
+  // "204", en vez de aparecer cerca de "245"/"247".
   const inmuebles = await prisma.$queryRaw`
-    SELECT id, datos, "referenciaRecaudo"
+    SELECT id, datos, piso, "referenciaRecaudo"
     FROM "InventarioItem"
-    ORDER BY datos->>'Proyecto_Torre' ASC NULLS LAST, datos->>'Project_Code' ASC NULLS LAST
+    ORDER BY datos->>'Proyecto_Torre' ASC NULLS LAST, datos->>'Product_Name' ASC NULLS LAST
   `;
 
   const { negocioPorInmuebleId, oportunidadPorReferencia } = await resolverNegociosYOportunidades(inmuebles);
@@ -125,6 +132,8 @@ async function construirFilasCompletas() {
 
     const porMes = {};
     let valorInmueble = null;
+    let valorCuotaInicial = null;
+    let abonadoCuotaInicial = null;
     let fechaSaldoContraentrega = null;
     let valorSaldoContraentrega = null;
     let totalAbonado = null;
@@ -132,8 +141,29 @@ async function construirFilasCompletas() {
     let montoEnMora = 0;
     let maxDiasAtraso = 0;
     let esperadoAFecha = null;
+
+    // Fecha de entrega configurada en Ajustes para este inmueble -- se
+    // calcula acá afuera (solo depende de Frente/Torre/Piso, no del
+    // negocio) para poder usarla también cuando NO hay conciliación posible
+    // (sin negocio, sin oportunidad, o sin plan de pagos en Zoho): antes
+    // solo se veía en inmuebles con plan de pagos, dejando "vacíos" los
+    // demás de un mismo Frente/Torre/Piso aunque la fecha SÍ estuviera
+    // configurada. Prioridad: piso específico primero, si no hay, toda la
+    // torre, si no hay, todo el proyecto -- son mutuamente excluyentes en
+    // Ajustes, así que en la práctica nunca hay dos a la vez, pero igual se
+    // resuelve en ese orden.
+    const pisoNumero = parsePisoNumero(inv.piso);
+    const fechaConfigurada = info
+      ? (pisoNumero && fechasEntregaConfiguradas.get(`${info.proyecto}||${info.torre}||${pisoNumero}`)) ??
+        fechasEntregaConfiguradas.get(`${info.proyecto}||${info.torre}||${CLAVE_TODAS}`) ??
+        fechasEntregaConfiguradas.get(`${info.proyecto}||${CLAVE_TODAS}||${CLAVE_TODAS}`) ??
+        null
+      : null;
+
     if (oportunidad) {
-      const planRows = oportunidad.formaPago?.length ? oportunidad.formaPago : (oportunidad.propuestaPago || []);
+      // Propuesta de Pago primero (es con la que se hace la conciliación real
+      // del negocio), Forma de Pago como respaldo solo si no hay propuesta.
+      const planRows = oportunidad.propuestaPago?.length ? oportunidad.propuestaPago : (oportunidad.formaPago || []);
       const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos);
 
       // Ajustar la última cuota (Saldo Contraentrega) para que el total del
@@ -150,6 +180,13 @@ async function construirFilasCompletas() {
         cuotasPlan[cuotasPlan.length - 1].valorPlan = valorVenta - sumaResto;
       }
 
+      // Reemplaza la fecha estimada (inferida) de la cuota Saldo
+      // Contraentrega cuando se conoce la fecha real de entrega. Mismo
+      // criterio que debe aplicar ConciliacionSection en Negocios.jsx.
+      if (cuotasPlan.length > 0 && fechaConfigurada) {
+        cuotasPlan[cuotasPlan.length - 1].fechaEstimada = fechaConfigurada;
+      }
+
       const pagos = normalizarPagos(movimientosPorNegocioId.get(negocio.id) || []);
       const { cuotas, resumen } = conciliar(cuotasPlan, pagos);
       // Valor del inmueble = total del plan de pagos (suma de todas las
@@ -162,6 +199,18 @@ async function construirFilasCompletas() {
       // ConciliacionSection en Negocios.jsx / resumen.saldoContraentrega).
       fechaSaldoContraentrega = resumen.saldoContraentrega?.fechaEstimada ?? null;
       valorSaldoContraentrega = resumen.saldoContraentrega?.valorPlan ?? null;
+      // Cuota inicial = todo el plan MENOS la última cuota (Saldo
+      // Contraentrega) -- la parte que se paga antes de la entrega
+      // (comercialmente ronda el 30% del valor del inmueble, pero el % real
+      // depende de cómo se negoció ese plan puntual). Se deriva de la
+      // conciliación real de cada negocio, no se hardcodea un 30%.
+      const cuotasCuotaInicial = cuotas.slice(0, -1);
+      valorCuotaInicial = cuotasCuotaInicial.length > 0
+        ? cuotasCuotaInicial.reduce((s, c) => s + c.valorPlan, 0)
+        : null;
+      abonadoCuotaInicial = cuotasCuotaInicial.length > 0
+        ? cuotasCuotaInicial.reduce((s, c) => s + c.cubierto, 0)
+        : null;
       totalAbonado = resumen.totalPagado;
       cuotasEnMora = resumen.cuotasEnMora;
       montoEnMora = resumen.montoEnMora;
@@ -195,13 +244,52 @@ async function construirFilasCompletas() {
       }
     }
 
+    // Respaldo cuando no hay conciliación posible (sin negocio, sin
+    // oportunidad vinculada, o la oportunidad no tiene plan de pagos en
+    // Zoho): usar el precio de lista del inmueble (Unit_Price de Zoho) en
+    // vez de dejarlo vacío. Cubre 1924 de 1936 inmuebles -- no reemplaza el
+    // valor de la conciliación cuando SÍ existe, solo llena el hueco.
+    if (valorInmueble == null) {
+      const precio = Number(inv.datos?.Unit_Price);
+      if (!isNaN(precio) && precio > 0) valorInmueble = precio;
+    }
+
+    // Igual para la fecha de entrega: si no hay conciliación (por eso sigue
+    // en null acá) pero SÍ hay una fecha configurada en Ajustes para este
+    // Frente/Torre/Piso, mostrarla igual -- así un Frente completo se ve
+    // con la misma fecha sin importar si cada inmueble tiene o no plan de
+    // pagos en Zoho.
+    if (fechaSaldoContraentrega == null && fechaConfigurada) {
+      fechaSaldoContraentrega = fechaConfigurada;
+    }
+
     return {
       id: inv.id,
       etapa,
       frente: info ? info.proyecto : null,
       torre: info ? info.torre : null,
-      nomenclatura: resolverProjectCode(inv.datos),
+      // nomenclatura: string completo "Frente Torre N unidad" -- se sigue
+      // armando desde Product_Name (siempre propio del registro, nunca
+      // duplicado dentro de la misma torre) en vez de confiar en
+      // Project_Code -- Zoho trae Project_Code copiado por error de otro
+      // inmueble en 244 casos (ver botón "Verificar Project Code" en
+      // Ajustes), lo que hacía que dos unidades distintas se mostraran con
+      // la misma nomenclatura acá. resolverProjectCode() sigue siendo el
+      // respaldo para los pocos casos sin Product_Name o Proyecto_Torre.
+      // Se mantiene completo (no solo la unidad) para que la búsqueda por
+      // texto siga encontrando "Isla Laguna Torre 1 101" -- la tabla
+      // muestra por separado solo la unidad (Product_Name) en su propia
+      // columna, ver `unidad` abajo.
+      nomenclatura: (info && inv.datos?.Product_Name)
+        ? `${formatearProyectoTorre(info)} ${inv.datos.Product_Name}`
+        : resolverProjectCode(inv.datos),
+      // Solo la unidad (ej. "101"), para la columna Nomenclatura en pantalla
+      // -- Frente/Torre ya tienen sus propias columnas, repetirlos ahí era
+      // redundante.
+      unidad: inv.datos?.Product_Name ?? null,
       valorInmueble,
+      valorCuotaInicial,
+      abonadoCuotaInicial,
       fechaSaldoContraentrega,
       valorSaldoContraentrega,
       totalAbonado,
@@ -245,12 +333,50 @@ async function obtenerCache() {
   return cacheEnConstruccion;
 }
 
+// Ordenamiento de 3 estados por encabezado (asc → desc → sin ordenar) para
+// el Dashboard -- mismo criterio que ordenarCarteraMora(). Sin orden
+// explícito, se deja el orden que ya trae la consulta (Product_Name).
+const CAMPOS_ORDENABLES_DASHBOARD = new Set([
+  'etapa', 'frente', 'torre', 'unidad', 'valorInmueble', 'valorCuotaInicial', 'abonadoCuotaInicial',
+  'totalAbonado', 'pendienteRecaudar', 'cuotasEnMora', 'montoEnMora',
+  'fechaSaldoContraentrega', 'valorSaldoContraentrega',
+]);
+const CAMPOS_NUMERICOS_DASHBOARD = new Set([
+  'valorInmueble', 'valorCuotaInicial', 'abonadoCuotaInicial', 'totalAbonado', 'pendienteRecaudar',
+  'cuotasEnMora', 'montoEnMora', 'valorSaldoContraentrega',
+]);
+
+function ordenarDashboard(filas, sortBy, sortDir) {
+  if (!CAMPOS_ORDENABLES_DASHBOARD.has(sortBy) || (sortDir !== 'asc' && sortDir !== 'desc')) {
+    return filas;
+  }
+  const dir = sortDir === 'asc' ? 1 : -1;
+  return [...filas].sort((a, b) => {
+    let va = a[sortBy];
+    let vb = b[sortBy];
+    // No es un campo directo -- se calcula igual que en la columna en pantalla.
+    if (sortBy === 'pendienteRecaudar') {
+      va = (a.valorInmueble != null && a.totalAbonado != null) ? Math.max(0, a.valorInmueble - a.totalAbonado) : null;
+      vb = (b.valorInmueble != null && b.totalAbonado != null) ? Math.max(0, b.valorInmueble - b.totalAbonado) : null;
+    }
+    // Nulos siempre al final, sin importar la dirección.
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+
+    if (sortBy === 'etapa') return dir * compararEtapas(va, vb);
+    if (sortBy === 'fechaSaldoContraentrega') return dir * (new Date(va) - new Date(vb));
+    if (CAMPOS_NUMERICOS_DASHBOARD.has(sortBy)) return dir * (va - vb);
+    return dir * String(va).localeCompare(String(vb), 'es', { numeric: true, sensitivity: 'base' });
+  });
+}
+
 // Reporte Dashboard: plan de pagos vs. recaudado, por mes, para todo el
 // inventario que cumple los filtros (no solo la página actual -- los totales
 // necesitan el conjunto filtrado completo, sin importar la paginación). El
 // cálculo pesado por inmueble sale del cache (ver arriba); aquí solo se
 // filtra, pagina y reagregan totales en memoria.
-async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimientos, page, limit }) {
+async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimientos, sortBy, sortDir, page, limit }) {
   const { filas: todasLasFilas, valores } = await obtenerCache();
 
   let filas = todasLasFilas;
@@ -265,13 +391,32 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
   if (frente && torre) filas = filas.filter((f) => f.frente === frente && f.torre === torre);
   else if (frente) filas = filas.filter((f) => f.frente === frente);
   if (conMovimientos === 'true') filas = filas.filter((f) => f._tieneMovimientos);
+  filas = ordenarDashboard(filas, sortBy, sortDir);
 
   // Totales del subconjunto filtrado -- reagregar es barato (solo sumar lo
   // que ya está calculado en cada fila, no volver a correr conciliar()).
   const mesesSet = new Set();
   const totalesPorMes = new Map();
   const totalesPorEtapa = new Map();
+  // Totales de las columnas fijas monetarias (para la fila de totales del
+  // <tfoot>, igual que ya se hace por mes) -- mismo criterio de "pendiente
+  // por recaudar" que la columna en pantalla (Math.max(0, valor - abonado)).
+  const totalesColumnasFijas = {
+    valorInmueble: 0, valorCuotaInicial: 0, abonadoCuotaInicial: 0,
+    valorSaldoContraentrega: 0, totalAbonado: 0, pendienteRecaudar: 0,
+    cuotasEnMora: 0, montoEnMora: 0,
+  };
   for (const f of filas) {
+    if (f.valorInmueble != null) totalesColumnasFijas.valorInmueble += f.valorInmueble;
+    if (f.valorCuotaInicial != null) totalesColumnasFijas.valorCuotaInicial += f.valorCuotaInicial;
+    if (f.abonadoCuotaInicial != null) totalesColumnasFijas.abonadoCuotaInicial += f.abonadoCuotaInicial;
+    if (f.valorSaldoContraentrega != null) totalesColumnasFijas.valorSaldoContraentrega += f.valorSaldoContraentrega;
+    if (f.totalAbonado != null) totalesColumnasFijas.totalAbonado += f.totalAbonado;
+    if (f.valorInmueble != null && f.totalAbonado != null) {
+      totalesColumnasFijas.pendienteRecaudar += Math.max(0, f.valorInmueble - f.totalAbonado);
+    }
+    totalesColumnasFijas.cuotasEnMora += f.cuotasEnMora ?? 0;
+    totalesColumnasFijas.montoEnMora += f.montoEnMora ?? 0;
     for (const [mes, v] of Object.entries(f.porMes)) {
       mesesSet.add(mes);
       if (!totalesPorMes.has(mes)) totalesPorMes.set(mes, { esperado: 0, recaudado: 0 });
@@ -289,7 +434,7 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
   }
   const meses = [...mesesSet].sort();
   const totales = Object.fromEntries(meses.map((m) => [m, totalesPorMes.get(m)]));
-  const etapasOrdenadas = [...totalesPorEtapa.keys()].sort((a, b) => Number(a) - Number(b));
+  const etapasOrdenadas = [...totalesPorEtapa.keys()].sort(compararEtapas);
   const totalesEtapa = Object.fromEntries(etapasOrdenadas.map((e) => [e, totalesPorEtapa.get(e)]));
 
   const total = filas.length;
@@ -303,10 +448,11 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
     data,
     meses,
     totales,
+    totalesColumnasFijas,
     totalesPorEtapa: totalesEtapa,
     pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
-    etapasDisponibles: [...valores.porEtapa.keys()].sort((a, b) => Number(a) - Number(b)),
-    frentesDisponibles: [...valores.porFrente.keys()].sort(),
+    etapasDisponibles: [...valores.porEtapa.keys()].sort(compararEtapas),
+    frentesDisponibles: [...valores.porFrente.keys()].filter(esFrenteSeleccionable).sort(),
     frentesPorEtapa: valores.frentesPorEtapa,
     torresPorFrente: valores.torresPorFrente,
     torresPorEtapaFrente: valores.torresPorEtapaFrente,
@@ -338,7 +484,40 @@ function claveRangoMora(dias) {
   return (RANGOS_MORA.find((r) => dias >= r.min && dias <= r.max) ?? RANGOS_MORA[RANGOS_MORA.length - 1]).key;
 }
 
-async function obtenerCarteraMora({ search, etapa, frente, torre, rango, page, limit }) {
+// Ordenamiento de 3 estados por encabezado (asc → desc → sin ordenar) para
+// la tabla de Cartera en Gestión. `etapa` usa compararEtapas (mismo criterio
+// que el resto del archivo para ese campo); el resto de campos de texto usa
+// localeCompare con `numeric: true` para que columnas como Torre/Nomenclatura
+// ordenen "2" antes que "10" en vez de alfabéticamente puro.
+const CAMPOS_ORDENABLES_MORA = new Set([
+  'etapa', 'frente', 'torre', 'unidad', 'referencia', 'comprador', 'estado',
+  'valorInmueble', 'cuotasEnMora', 'maxDiasAtraso', 'montoEnMora', 'pctEnMora',
+]);
+const CAMPOS_NUMERICOS_MORA = new Set(['valorInmueble', 'cuotasEnMora', 'maxDiasAtraso', 'montoEnMora', 'pctEnMora']);
+
+function ordenarCarteraMora(filas, sortBy, sortDir) {
+  if (!CAMPOS_ORDENABLES_MORA.has(sortBy) || (sortDir !== 'asc' && sortDir !== 'desc')) {
+    // Sin orden explícito: días de atraso descendente (el más urgente
+    // primero) -- comportamiento por defecto de siempre.
+    return [...filas].sort((a, b) => b.maxDiasAtraso - a.maxDiasAtraso);
+  }
+  const dir = sortDir === 'asc' ? 1 : -1;
+  return [...filas].sort((a, b) => {
+    const va = a[sortBy];
+    const vb = b[sortBy];
+    // Nulos siempre al final, sin importar la dirección -- "sin dato" no es
+    // ni el mayor ni el menor valor real.
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+
+    if (sortBy === 'etapa') return dir * compararEtapas(va, vb);
+    if (CAMPOS_NUMERICOS_MORA.has(sortBy)) return dir * (va - vb);
+    return dir * String(va).localeCompare(String(vb), 'es', { numeric: true, sensitivity: 'base' });
+  });
+}
+
+async function obtenerCarteraMora({ search, etapa, frente, torre, rango, sortBy, sortDir, page, limit }) {
   const { filas: todasLasFilas, valores } = await obtenerCache();
 
   let filas = todasLasFilas.filter((f) => f.cuotasEnMora > 0);
@@ -367,7 +546,6 @@ async function obtenerCarteraMora({ search, etapa, frente, torre, rango, page, l
   const porRangoMora = RANGOS_MORA.map((r) => ({ rango: r.key, label: r.label, ...porRangoMoraMap.get(r.key) }));
 
   if (rango) filas = filas.filter((f) => claveRangoMora(f.maxDiasAtraso) === rango);
-  filas = [...filas].sort((a, b) => b.maxDiasAtraso - a.maxDiasAtraso);
 
   const totalCuotasEnMora = filas.reduce((s, f) => s + f.cuotasEnMora, 0);
   const totalMontoEnMora = filas.reduce((s, f) => s + f.montoEnMora, 0);
@@ -377,23 +555,28 @@ async function obtenerCarteraMora({ search, etapa, frente, torre, rango, page, l
   const totalEsperadoAFecha = filas.reduce((s, f) => s + (f.esperadoAFecha ?? 0), 0);
   const pctMoraPortafolio = totalEsperadoAFecha > 0 ? (totalMontoEnMora / totalEsperadoAFecha) * 100 : null;
 
+  // pctEnMora se calcula antes de ordenar (no solo en la página final) para
+  // que se pueda ordenar por esa columna igual que las demás.
+  filas = filas.map((f) => ({
+    ...f,
+    pctEnMora: f.esperadoAFecha > 0 ? (f.montoEnMora / f.esperadoAFecha) * 100 : null,
+  }));
+  filas = ordenarCarteraMora(filas, sortBy, sortDir);
+
   const total = filas.length;
   const pageNum = Math.max(1, page);
   const limitNum = Math.max(1, limit);
   const data = filas
     .slice((pageNum - 1) * limitNum, pageNum * limitNum)
-    .map(({ _tieneMovimientos, porMes, esperadoAFecha, ...fila }) => ({
-      ...fila,
-      pctEnMora: esperadoAFecha > 0 ? (fila.montoEnMora / esperadoAFecha) * 100 : null,
-    }));
+    .map(({ _tieneMovimientos, porMes, esperadoAFecha, ...fila }) => fila);
 
   return {
     data,
     resumen: { negociosEnMora: total, totalCuotasEnMora, totalMontoEnMora, totalEsperadoAFecha, pctMoraPortafolio },
     porRangoMora,
     pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
-    etapasDisponibles: [...valores.porEtapa.keys()].sort((a, b) => Number(a) - Number(b)),
-    frentesDisponibles: [...valores.porFrente.keys()].sort(),
+    etapasDisponibles: [...valores.porEtapa.keys()].sort(compararEtapas),
+    frentesDisponibles: [...valores.porFrente.keys()].filter(esFrenteSeleccionable).sort(),
     frentesPorEtapa: valores.frentesPorEtapa,
     torresPorFrente: valores.torresPorFrente,
     torresPorEtapaFrente: valores.torresPorEtapaFrente,

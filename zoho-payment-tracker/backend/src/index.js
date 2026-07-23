@@ -13,6 +13,7 @@ const fiduciaRouter = require('./routes/fiducia');
 const negociosRouter = require('./routes/negocios');
 const statsRouter = require('./routes/stats');
 const inventarioRouter = require('./routes/inventario');
+const configuracionesRouter = require('./routes/configuraciones');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -37,6 +38,7 @@ app.use('/api/fiducia', fiduciaRouter);
 app.use('/api/negocios', negociosRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/inventario', inventarioRouter);
+app.use('/api/configuraciones', configuracionesRouter);
 
 // GET /api/sync/status — ruta directa (también está en opportunities router)
 app.get('/api/sync/status', async (req, res) => {
