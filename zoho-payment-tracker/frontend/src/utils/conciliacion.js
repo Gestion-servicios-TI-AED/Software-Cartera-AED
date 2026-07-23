@@ -64,6 +64,19 @@ export function construirPlan(rows, fechaBase) {
         (k) => k !== cuotaKey && rows.some((r) => { const n = parseMonto(r[k]); return !isNaN(n) && n >= 1000; })
       );
   const plan = [];
+  // Fecha de la última cuota real vista en el cronograma (Separación o cuota
+  // numerada, TENGA O NO monto) -- se necesita para inferirle una fecha a
+  // Saldo Contraentrega cuando no trae la suya. Antes ese "prev" se leía del
+  // propio array `plan` YA FILTRADO (sin las cuotas en $0), así que si el
+  // cliente tenía muchas cuotas intermedias legítimamente en $0 (pagó todo
+  // en la primera y el resto contraentrega), el fallback anclaba la fecha a
+  // la última cuota CON MONTO en vez de la última cuota del cronograma,
+  // adelantando la fecha de vencimiento años -- confirmado con un caso real
+  // donde Saldo Contraentrega vencía real en 09/10/2026 (después de 19
+  // cuotas mensuales en $0) pero la conciliación la mostraba vencida desde
+  // 09/04/2025 (justo después de la única cuota con monto), marcándola con
+  // 470 días de atraso que no eran reales.
+  let ultimaFechaReal = null;
   rows.forEach((row, i) => {
     // Filas de subtotal (ej. "TOTAL CUOTA INICIAL" en Propuesta de Pago,
     // presente en el 100% de las 1649 propuestas) no son una cuota real --
@@ -78,6 +91,8 @@ export function construirPlan(rows, fechaBase) {
       const n = parseMonto(row[k]);
       if (!isNaN(n) && n !== 0) { valorPlan = n; break; }
     }
+    const fechaPropia = cuotaKey ? fechaEstimadaCuota(fechaBase, row[cuotaKey]) : null;
+    if (fechaPropia) ultimaFechaReal = fechaPropia;
     if (isNaN(valorPlan) || valorPlan <= 0) {
       // La cuota Saldo Contraentrega SIEMPRE se incluye en el plan aunque
       // venga en $0 (el cliente ya pagó todo por adelantado en cuotas
@@ -90,24 +105,14 @@ export function construirPlan(rows, fechaBase) {
       valorPlan = 0;
     }
     const etiqueta = cuotaKey ? String(row[cuotaKey] ?? `Fila ${i + 1}`) : `Fila ${i + 1}`;
-    plan.push({
-      etiqueta,
-      valorPlan,
-      fechaEstimada: cuotaKey ? fechaEstimadaCuota(fechaBase, row[cuotaKey]) : null,
-    });
-  });
-
-  // Si la última cuota no tiene fecha (ej. "Saldo Contraentrega"), asignarle
-  // un mes después de la fecha estimada de la cuota anterior.
-  if (plan.length >= 2) {
-    const last = plan[plan.length - 1];
-    const prev = plan[plan.length - 2];
-    if (!last.fechaEstimada && prev.fechaEstimada) {
-      const d = new Date(prev.fechaEstimada);
+    let fechaEstimada = fechaPropia;
+    if (!fechaEstimada && cuotaKey && esSaldoContraentrega(row[cuotaKey]) && ultimaFechaReal) {
+      const d = new Date(ultimaFechaReal);
       d.setUTCMonth(d.getUTCMonth() + 1);
-      last.fechaEstimada = d;
+      fechaEstimada = d;
     }
-  }
+    plan.push({ etiqueta, valorPlan, fechaEstimada });
+  });
 
   return plan;
 }

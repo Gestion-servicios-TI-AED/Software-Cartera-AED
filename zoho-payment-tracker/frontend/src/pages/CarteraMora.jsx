@@ -23,6 +23,68 @@ const COLUMNAS = [
   { key: 'pctEnMora', label: '% en mora', align: 'right' },
 ];
 
+// Vista "Saldo Contraentrega vencido": a propósito mucho más simple que la
+// tabla de mora de arriba -- el pedido fue algo demostrativo para que
+// cartera vea rápido cuáles inmuebles tienen el plan de pagos desactualizado
+// y cuánto suman, no un tablero analítico con antigüedad/porcentajes.
+const COLUMNAS_CONTRAENTREGA = [
+  { key: 'frente', label: 'Frente', align: 'left' },
+  { key: 'torre', label: 'Torre', align: 'left' },
+  { key: 'unidad', label: 'Nomenclatura', align: 'left' },
+  { key: 'referencia', label: 'Referencia', align: 'left' },
+  { key: 'comprador', label: 'Comprador', align: 'left' },
+  { key: 'fechaSaldoContraentrega', label: 'Fecha vencida', align: 'right' },
+  { key: 'montoEnMora', label: 'Valor pendiente', align: 'right' },
+];
+
+function formatFechaCorta(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+}
+
+// Color del chip de ranking según posición -- mismo criterio visual que el
+// Top 10 morosos que ya existía en el Resumen Gerencial.
+function rankColor(i) {
+  if (i === 0) return 'bg-red-600 text-white';
+  if (i === 1) return 'bg-red-500 text-white';
+  if (i === 2) return 'bg-amber-500 text-white';
+  return 'bg-slate-100 text-slate-600';
+}
+
+// Top 10 de la Cuota Inicial en mora: mismos filtros que la tabla de abajo
+// (search/etapa/frente/torre/rango), pero SIEMPRE ordenado por urgencia
+// (días de atraso descendente, el orden por defecto del backend) sin
+// importar qué columna haya ordenado el usuario en la tabla completa --
+// es un ranking ejecutivo fijo, no una vista más de la tabla.
+function TopCarteraInicial({ filas }) {
+  if (filas.length === 0) {
+    return <p className="text-[14px] text-slate-500 px-1">Sin negocios en mora con los filtros actuales 🎉</p>;
+  }
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6">
+      {filas.map((f, i) => (
+        <div key={f.id} className="flex items-center gap-2 py-1 border-b border-slate-50">
+          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${rankColor(i)}`}>
+            {i + 1}
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] text-slate-700 truncate" title={f.comprador ?? ''}>{f.comprador ?? '—'}</p>
+            <p className="text-[11px] text-slate-500 truncate">
+              {f.frente}{f.torre != null ? ` Torre ${f.torre}` : ''}{f.unidad ? ` ${f.unidad}` : ''}
+            </p>
+          </div>
+          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap bg-amber-50 text-amber-700">
+            {f.maxDiasAtraso}d
+          </span>
+          <span className="text-[13px] font-semibold text-slate-800 tabular-nums whitespace-nowrap flex-shrink-0 w-24 text-right">
+            {formatCOP(f.montoEnMora)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function useDebounce(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -53,6 +115,10 @@ export default function CarteraMora() {
   const [menuContextual, setMenuContextual] = useState(null); // { x, y, fila } | null
   const [sortBy, setSortBy] = useState(null);
   const [sortDir, setSortDir] = useState(null); // 'asc' | 'desc' | null
+  const [vista, setVista] = useState('inicial'); // 'inicial' | 'contraentrega'
+  const [conteos, setConteos] = useState({ inicial: 0, contraentrega: 0 });
+  const [topFilas, setTopFilas] = useState([]);
+  const [topAbierto, setTopAbierto] = useState(false); // escondido por defecto
 
   const debouncedSearch = useDebounce(search);
 
@@ -74,6 +140,7 @@ export default function CarteraMora() {
         frente: frenteFilter || undefined,
         torre: torreFilter || undefined,
         rango: rangoFilter || undefined,
+        vista,
         sortBy: sortBy || undefined,
         sortDir: sortDir || undefined,
         page: p,
@@ -88,15 +155,39 @@ export default function CarteraMora() {
       setTorresPorFrente(res.torresPorFrente);
       setTorresPorEtapaFrente(res.torresPorEtapaFrente);
       setPorRangoMora(res.porRangoMora);
+      setConteos(res.conteos);
       setPage(p);
     } catch (err) {
       console.error('Error cargando cartera en gestión:', err);
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter, rangoFilter, sortBy, sortDir]);
+  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter, rangoFilter, vista, sortBy, sortDir]);
 
   useEffect(() => { load(1); }, [load]);
+
+  // Top 10 de la pestaña Cuota Inicial -- se adapta a los mismos filtros de
+  // arriba (búsqueda/etapa/frente/torre/rango), pero es una carga aparte de
+  // `load()`: SIEMPRE en orden de urgencia (sin sortBy, el default del
+  // backend), sin importar qué columna haya ordenado el usuario en la tabla
+  // completa, y sin paginar (limit=10).
+  useEffect(() => {
+    if (vista !== 'inicial') return;
+    let vigente = true;
+    getCarteraMora({
+      search: debouncedSearch || undefined,
+      etapa: etapaFilter || undefined,
+      frente: frenteFilter || undefined,
+      torre: torreFilter || undefined,
+      rango: rangoFilter || undefined,
+      vista: 'inicial',
+      page: 1,
+      limit: 10,
+    })
+      .then((res) => { if (vigente) setTopFilas(res.data); })
+      .catch((err) => console.error('Error cargando top 10:', err));
+    return () => { vigente = false; };
+  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter, rangoFilter, vista]);
 
   useEffect(() => {
     if (!menuContextual) return;
@@ -141,19 +232,58 @@ export default function CarteraMora() {
   const clearFilters = () => { setSearch(''); setEtapaFilter(''); setFrenteFilter(''); setTorreFilter(''); setRangoFilter(''); };
 
   return (
-    <div className="h-full flex flex-col gap-3 p-5 overflow-hidden">
-      <div className="flex items-center gap-2 flex-shrink-0">
+    <div className="min-h-screen flex flex-col gap-3 p-5">
+      <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
         <h1 className="text-[19px] font-bold text-slate-800 flex items-center gap-2">
           <AlertTriangle size={18} className="text-red-500" />
           Cartera en Gestión
         </h1>
         <span className="text-[13px] text-slate-500">
-          Negocios con cuotas atrasadas del plan de pagos — calculado en vivo contra los movimientos reales.
+          {vista === 'contraentrega'
+            ? 'Inmuebles cuyo Saldo Contraentrega ya venció — puede reflejar que aún no se ha escriturado, no necesariamente mora activa de cobranza.'
+            : 'Negocios con cuotas atrasadas de la Cuota Inicial — no incluye Saldo Contraentrega, calculado en vivo contra los movimientos reales.'}
         </span>
       </div>
 
-      {resumen && (
-        <div className="grid grid-cols-4 gap-3 flex-shrink-0">
+      <div className="flex gap-1 flex-shrink-0">
+        {[
+          { key: 'inicial', label: 'Cuota Inicial (mora activa)' },
+          { key: 'contraentrega', label: 'Saldo Contraentrega vencido' },
+        ].map((t) => (
+          <button
+            key={t.key}
+            onClick={() => { setVista(t.key); setRangoFilter(''); }}
+            className={`text-[13px] font-medium px-3 py-1.5 rounded-md border transition-colors inline-flex items-center gap-1.5 ${
+              vista === t.key
+                ? 'bg-brand border-brand text-white'
+                : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
+            }`}
+          >
+            {t.label}
+            <span
+              className={`text-[12px] font-bold px-1.5 py-0.5 rounded-full tabular-nums ${
+                vista === t.key ? 'bg-white/25 text-white' : 'bg-red-100 text-red-600'
+              }`}
+            >
+              {conteos[t.key] ?? 0}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {resumen && vista === 'contraentrega' && (
+        <div className="card p-4 flex-shrink-0 flex items-center gap-4 bg-red-50 border-red-200">
+          <AlertTriangle size={28} className="text-red-500 flex-shrink-0" />
+          <p className="text-[15px] text-slate-700">
+            <b className="text-[20px] text-red-600 tabular-nums">{resumen.negociosEnMora}</b> inmuebles con Saldo Contraentrega vencido —
+            suman <b className="text-[20px] text-red-600 tabular-nums">{formatCOP(resumen.totalMontoEnMora)}</b> pendientes.
+            Hay que actualizar el plan de pagos de cada uno en Zoho.
+          </p>
+        </div>
+      )}
+
+      {resumen && vista !== 'contraentrega' && (
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 flex-shrink-0">
           <div className="card p-4">
             <p className="section-label mb-1">Negocios en mora</p>
             <p className="text-[28px] font-bold text-slate-800 tabular-nums">{resumen.negociosEnMora}</p>
@@ -176,10 +306,10 @@ export default function CarteraMora() {
         </div>
       )}
 
-      {porRangoMora.length > 0 && (
+      {vista !== 'contraentrega' && porRangoMora.length > 0 && (
         <div className="card p-3 flex-shrink-0">
           <p className="section-label mb-2 px-1">Antigüedad de la mora — mismo criterio que las hojas de la fiduciaria</p>
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
             {porRangoMora.map((r) => (
               <button
                 key={r.rango}
@@ -244,16 +374,29 @@ export default function CarteraMora() {
         )}
       </div>
 
-      <p className="text-[12px] text-slate-500 flex-shrink-0 italic">
-        Días de atraso muy altos (años) suelen ser el Saldo Contra Entrega — la última cuota del plan, pendiente hasta la escrituración — no necesariamente mora activa de cobranza.
-      </p>
+      {vista === 'inicial' && (
+        <div className="card p-3 flex-shrink-0">
+          <button
+            onClick={() => setTopAbierto((v) => !v)}
+            className="w-full flex items-center justify-between px-1 py-0.5"
+          >
+            <p className="section-label">Top 10 — prioridad de gestión (se adapta a los filtros de arriba)</p>
+            {topAbierto ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
+          </button>
+          {topAbierto && (
+            <div className="mt-1.5">
+              <TopCarteraInicial filas={topFilas} />
+            </div>
+          )}
+        </div>
+      )}
 
-      <div className="card overflow-hidden flex flex-col flex-1 min-h-0">
-        <div className="overflow-auto flex-1 min-h-0">
+      <div className="card overflow-hidden flex flex-col flex-shrink-0">
+        <div className="overflow-x-auto">
           <table className="text-[14px] w-full">
             <thead>
-              <tr className="border-b border-aed-border bg-aed-base sticky top-0">
-                {COLUMNAS.map((col) => {
+              <tr className="border-b border-aed-border bg-aed-base">
+                {(vista === 'contraentrega' ? COLUMNAS_CONTRAENTREGA : COLUMNAS).map((col) => {
                   const activa = sortBy === col.key;
                   const Icono = activa ? (sortDir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
                   return (
@@ -275,9 +418,25 @@ export default function CarteraMora() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={12} className="px-4 py-12 text-center text-slate-400">Cargando…</td></tr>
+                <tr><td colSpan={vista === 'contraentrega' ? 7 : 12} className="px-4 py-12 text-center text-slate-400">Cargando…</td></tr>
               ) : filas.length === 0 ? (
-                <tr><td colSpan={12} className="px-4 py-12 text-center text-slate-400">Sin resultados.</td></tr>
+                <tr><td colSpan={vista === 'contraentrega' ? 7 : 12} className="px-4 py-12 text-center text-slate-400">Sin resultados.</td></tr>
+              ) : vista === 'contraentrega' ? (
+                filas.map((f) => (
+                  <tr
+                    key={f.id}
+                    onContextMenu={(e) => abrirMenuContextual(e, f)}
+                    className="border-b border-aed-border hover:bg-slate-50 cursor-context-menu"
+                  >
+                    <td className="px-3 py-2 whitespace-nowrap">{f.frente ?? <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{f.torre != null ? `Torre ${f.torre}` : <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px]">{f.unidad ?? '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-slate-500">{f.referencia ?? <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-2 whitespace-nowrap max-w-[220px] truncate" title={f.comprador ?? ''}>{f.comprador ?? <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px] text-amber-600">{formatFechaCorta(f.fechaSaldoContraentrega)}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px] text-red-600">{formatCOP(f.montoEnMora)}</td>
+                  </tr>
+                ))
               ) : (
                 filas.map((f) => (
                   <tr

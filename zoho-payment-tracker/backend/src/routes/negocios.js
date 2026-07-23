@@ -539,13 +539,13 @@ router.get('/dashboard-recaudo', async (req, res) => {
   }
 });
 
-// GET /api/negocios/cartera-mora?search=&etapa=&frente=&torre=&rango=&sortBy=&sortDir=&page=&limit=
+// GET /api/negocios/cartera-mora?search=&etapa=&frente=&torre=&rango=&vista=&sortBy=&sortDir=&page=&limit=
 router.get('/cartera-mora', async (req, res) => {
   try {
-    const { search, etapa, frente, torre, rango, sortBy, sortDir, page = '1', limit = '50' } = req.query;
+    const { search, etapa, frente, torre, rango, vista, sortBy, sortDir, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
-    const resultado = await obtenerCarteraMora({ search, etapa, frente, torre, rango, sortBy, sortDir, page: pageNum, limit: limitNum });
+    const resultado = await obtenerCarteraMora({ search, etapa, frente, torre, rango, vista, sortBy, sortDir, page: pageNum, limit: limitNum });
     res.json(resultado);
   } catch (err) {
     res.status(500).json({ error: err.message });

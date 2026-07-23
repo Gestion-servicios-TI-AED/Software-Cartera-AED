@@ -1,5 +1,5 @@
 // Columnas del informe de fiducia que NO deben guardarse ni mostrarse, según el
-// concepto provisto por Cartera (ver DICCIONARIO-COLUMNAS-FIDUCIA.md en la raíz).
+// concepto provisto por Cartera (ver docs/proyecto/DICCIONARIO-COLUMNAS-FIDUCIA.md).
 //
 // Dos motivos de exclusión:
 //   - "no aplica" / "en este momento no aplica"

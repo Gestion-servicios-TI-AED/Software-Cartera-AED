@@ -6,3 +6,9 @@
 
 # Superpowers subagent-driven-development scratch (progress ledger, etc.)
 .superpowers/
+
+# Dev server logs (backend/frontend redirected here during local runs)
+*.log
+
+# Stray artifact from a Windows shell redirect gone wrong (`> nul`)
+nul

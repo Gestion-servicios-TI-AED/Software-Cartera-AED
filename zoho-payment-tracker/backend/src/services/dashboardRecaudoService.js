@@ -93,6 +93,83 @@ function mesKey(fecha) {
   return `${fecha.getUTCFullYear()}-${String(fecha.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+// Mismo criterio que mesKey pero a nivel de día -- usado por el rango
+// "Último mes" de la tendencia (Resumen Gerencial), que con granularidad
+// mensual solo tenía un punto para graficar.
+function diaKey(fecha) {
+  return `${fecha.getUTCFullYear()}-${String(fecha.getUTCMonth() + 1).padStart(2, '0')}-${String(fecha.getUTCDate()).padStart(2, '0')}`;
+}
+
+// Acumula Esperado/Recaudado por período (mes o día, según keyFn) en los tres
+// desgloses de siempre (total, Cuota Inicial, Saldo Contraentrega) -- misma
+// lógica exacta para ambas granularidades, factorizada para no duplicar el
+// cálculo financiero (cascada, saldo a favor, etc.) en dos sitios que se
+// puedan desincronizar.
+function acumularPorPeriodo({ cuotas, cuotasCuotaInicial, ultimaCuota, pagos, resumen, keyFn, porPeriodo, porPeriodoInicial, porPeriodoContraentrega }) {
+  for (const c of cuotas) {
+    if (!c.fechaEstimada) continue;
+    const k = keyFn(c.fechaEstimada);
+    if (!porPeriodo[k]) porPeriodo[k] = { esperado: 0, recaudado: 0 };
+    porPeriodo[k].esperado += c.valorPlan;
+  }
+  for (const p of pagos) {
+    if (!p.fecha) continue;
+    const k = keyFn(p.fecha);
+    if (!porPeriodo[k]) porPeriodo[k] = { esperado: 0, recaudado: 0 };
+    porPeriodo[k].recaudado += p.valor;
+  }
+  for (const c of cuotasCuotaInicial) {
+    if (c.fechaEstimada) {
+      const k = keyFn(c.fechaEstimada);
+      if (!porPeriodoInicial[k]) porPeriodoInicial[k] = { esperado: 0, recaudado: 0 };
+      porPeriodoInicial[k].esperado += c.valorPlan;
+    }
+    for (const p of c.pagosAplicados) {
+      if (!p.fecha) continue;
+      const k = keyFn(p.fecha);
+      if (!porPeriodoInicial[k]) porPeriodoInicial[k] = { esperado: 0, recaudado: 0 };
+      porPeriodoInicial[k].recaudado += p.destinado;
+    }
+  }
+  if (ultimaCuota) {
+    if (ultimaCuota.fechaEstimada) {
+      const k = keyFn(ultimaCuota.fechaEstimada);
+      if (!porPeriodoContraentrega[k]) porPeriodoContraentrega[k] = { esperado: 0, recaudado: 0 };
+      porPeriodoContraentrega[k].esperado += ultimaCuota.valorPlan;
+    }
+    for (const p of ultimaCuota.pagosAplicados) {
+      if (!p.fecha) continue;
+      const k = keyFn(p.fecha);
+      if (!porPeriodoContraentrega[k]) porPeriodoContraentrega[k] = { esperado: 0, recaudado: 0 };
+      porPeriodoContraentrega[k].recaudado += p.destinado;
+    }
+  }
+  // Saldo a favor (pagó de más sobre el total del plan): esa porción no la
+  // cubre pagosAplicados de ninguna cuota (la cascada de conciliar() solo
+  // reparte hasta completar el plan), así que sin esto Inicial + Contraentrega
+  // sumaba menos que "Recaudado" (ambos) en los negocios con sobrepago. Se
+  // atribuye a Contraentrega (es la plata que entra después de cubrir todo el
+  // plan, incluida la última cuota).
+  if (resumen.saldoAFavor > 0) {
+    let acumulado = 0;
+    for (const p of pagos) {
+      const antes = acumulado;
+      acumulado += p.valor;
+      const lo = Math.min(antes, acumulado);
+      const hi = Math.max(antes, acumulado);
+      if (hi > resumen.totalPlan) {
+        const solape = hi - Math.max(lo, resumen.totalPlan);
+        const destinado = p.valor >= 0 ? solape : -solape;
+        if (destinado !== 0 && p.fecha) {
+          const k = keyFn(p.fecha);
+          if (!porPeriodoContraentrega[k]) porPeriodoContraentrega[k] = { esperado: 0, recaudado: 0 };
+          porPeriodoContraentrega[k].recaudado += destinado;
+        }
+      }
+    }
+  }
+}
+
 // Calcula, para TODO el inventario (sin filtrar), la fila completa de cada
 // inmueble -- construirPlan+normalizarPagos+conciliar por cada uno con
 // oportunidad vinculada. Es la parte cara del reporte Dashboard, por eso se
@@ -107,7 +184,7 @@ async function construirFilasCompletas() {
   // unidad como "246" se colaba entre las "204" porque su Project_Code decía
   // "204", en vez de aparecer cerca de "245"/"247".
   const inmuebles = await prisma.$queryRaw`
-    SELECT id, datos, piso, "referenciaRecaudo"
+    SELECT id, datos, piso, "referenciaRecaudo", estado
     FROM "InventarioItem"
     ORDER BY datos->>'Proyecto_Torre' ASC NULLS LAST, datos->>'Product_Name' ASC NULLS LAST
   `;
@@ -131,6 +208,18 @@ async function construirFilasCompletas() {
     const oportunidad = negocio ? oportunidadPorReferencia.get(negocio.referencia) ?? null : null;
 
     const porMes = {};
+    // Mismo "por mes" de arriba, pero separado en Cuota Inicial (todo el plan
+    // MENOS Saldo Contraentrega, ~30%) y Saldo Contraentrega (última cuota,
+    // ~70%) -- para el filtro 30%/70%/ambos de la tendencia mensual del
+    // Resumen Gerencial. Se llenan más abajo, junto con porMes.
+    const porMesInicial = {};
+    const porMesContraentrega = {};
+    // Mismos tres desgloses de arriba, pero por día -- solo se usa para el
+    // rango "Último mes" de la tendencia (con granularidad mensual ese rango
+    // queda con un solo punto para graficar).
+    const porDia = {};
+    const porDiaInicial = {};
+    const porDiaContraentrega = {};
     let valorInmueble = null;
     let valorCuotaInicial = null;
     let abonadoCuotaInicial = null;
@@ -140,7 +229,22 @@ async function construirFilasCompletas() {
     let cuotasEnMora = 0;
     let montoEnMora = 0;
     let maxDiasAtraso = 0;
+    // Mora contada SOLO sobre la Cuota Inicial (todo el plan MENOS Saldo
+    // Contraentrega) -- usada por Cartera en Gestión, que no debe considerar
+    // atrasada la última cuota (pendiente hasta escrituración, no cobranza
+    // activa). Ver uso en obtenerCarteraMora().
+    let cuotasEnMoraInicial = 0;
+    let montoEnMoraInicial = 0;
+    let maxDiasAtrasoInicial = 0;
+    let esperadoAFechaInicial = null;
     let esperadoAFecha = null;
+    // Saldo Contraentrega vencido -- separado de la mora de arriba porque NO
+    // es cobranza activa (ver nota en cuotasEnMoraInicial): un apartado
+    // propio en Cartera en Gestión para que el equipo revise, sin mezclarlo
+    // con la mora real de la Cuota Inicial.
+    let saldoContraentregaVencido = false;
+    let pendienteSaldoContraentrega = null;
+    let diasAtrasoSaldoContraentrega = null;
 
     // Fecha de entrega configurada en Ajustes para este inmueble -- se
     // calcula acá afuera (solo depende de Frente/Torre/Piso, no del
@@ -224,24 +328,42 @@ async function construirFilasCompletas() {
         .filter((c) => c.fechaEstimada && c.fechaEstimada <= hoy)
         .reduce((s, c) => s + c.valorPlan, 0);
 
-      // Esperado: por mes de cada cuota del plan.
-      for (const c of cuotas) {
-        if (!c.fechaEstimada) continue;
-        const mes = mesKey(c.fechaEstimada);
-        if (!porMes[mes]) porMes[mes] = { esperado: 0, recaudado: 0 };
-        porMes[mes].esperado += c.valorPlan;
+      // Mismo cálculo de mora de arriba, pero excluyendo la última cuota
+      // (Saldo Contraentrega) -- esa cuota queda pendiente hasta la
+      // escrituración del inmueble, así que aunque su fecha estimada ya haya
+      // pasado no representa mora de cobranza activa (a veces "atrasada" por
+      // años). Cartera en Gestión usa estos campos en vez de los de arriba.
+      const enMoraInicial = cuotasCuotaInicial.filter((c) => c.atrasada);
+      cuotasEnMoraInicial = enMoraInicial.length;
+      montoEnMoraInicial = enMoraInicial.reduce((s, c) => s + (c.valorPlan - c.cubierto), 0);
+      maxDiasAtrasoInicial = enMoraInicial.length > 0 ? Math.max(...enMoraInicial.map((c) => c.diasAtraso ?? 0)) : 0;
+      esperadoAFechaInicial = cuotasCuotaInicial
+        .filter((c) => c.fechaEstimada && c.fechaEstimada <= hoy)
+        .reduce((s, c) => s + c.valorPlan, 0);
+
+      // Saldo Contraentrega vencido: fecha estimada ya pasada y todavía con
+      // saldo real por cubrir (> $1.000, para no contar como "vencido" un
+      // negocio que ya pagó todo salvo un residuo de redondeo de centavos).
+      const sce = resumen.saldoContraentrega;
+      if (sce?.atrasada) {
+        const pendiente = Math.max(0, sce.valorPlan - sce.cubierto);
+        if (pendiente > 1000) {
+          saldoContraentregaVencido = true;
+          pendienteSaldoContraentrega = pendiente;
+          diasAtrasoSaldoContraentrega = sce.diasAtraso;
+        }
       }
 
-      // Recaudado: por mes real de cada movimiento -- a diferencia de la
-      // cascada de conciliar() (donde el sobrante de un pago se corre a la
-      // siguiente cuota), aquí lo que entró en un mes se cuenta completo en
-      // ese mes, sin repartirlo hacia el mes de la cuota que termine cubriendo.
-      for (const p of pagos) {
-        if (!p.fecha) continue;
-        const mes = mesKey(p.fecha);
-        if (!porMes[mes]) porMes[mes] = { esperado: 0, recaudado: 0 };
-        porMes[mes].recaudado += p.valor;
-      }
+      const ultimaCuota = cuotas[cuotas.length - 1];
+      const paramsAcumular = { cuotas, cuotasCuotaInicial, ultimaCuota, pagos, resumen };
+      acumularPorPeriodo({
+        ...paramsAcumular, keyFn: mesKey,
+        porPeriodo: porMes, porPeriodoInicial: porMesInicial, porPeriodoContraentrega: porMesContraentrega,
+      });
+      acumularPorPeriodo({
+        ...paramsAcumular, keyFn: diaKey,
+        porPeriodo: porDia, porPeriodoInicial: porDiaInicial, porPeriodoContraentrega: porDiaContraentrega,
+      });
     }
 
     // Respaldo cuando no hay conciliación posible (sin negocio, sin
@@ -301,15 +423,32 @@ async function construirFilasCompletas() {
       montoEnMora,
       maxDiasAtraso,
       esperadoAFecha,
+      cuotasEnMoraInicial,
+      montoEnMoraInicial,
+      maxDiasAtrasoInicial,
+      esperadoAFechaInicial,
+      saldoContraentregaVencido,
+      pendienteSaldoContraentrega,
+      diasAtrasoSaldoContraentrega,
       // Identidad del negocio -- para el listado de Cartera en Gestión.
       negocioId: negocio?.id ?? null,
       referencia: negocio?.referencia ?? null,
       comprador: negocio?.compradores?.[0]?.nombre ?? null,
       estado: negocio?.estado ?? null,
+      // Estado propio del inmueble en Inventario (InventarioItem.estado,
+      // sincronizado del Producto de Zoho) -- vocabulario distinto al estado
+      // del Negocio/oportunidad de arriba. Se usa SOLO para las tarjetas
+      // Inmuebles disponibles/vendidos de Resumen Gerencial.
+      estadoInventario: inv.estado ?? null,
       // Campo interno, no se expone en la respuesta -- resuelve el filtro
       // "Solo con movimientos" sin tener que recorrer movimientos otra vez.
       _tieneMovimientos: !!negocio && (movimientosPorNegocioId.get(negocio.id)?.length ?? 0) > 0,
       porMes,
+      porMesInicial,
+      porMesContraentrega,
+      porDia,
+      porDiaInicial,
+      porDiaContraentrega,
     };
   });
 
@@ -397,7 +536,15 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
   // que ya está calculado en cada fila, no volver a correr conciliar()).
   const mesesSet = new Set();
   const totalesPorMes = new Map();
+  const totalesPorMesInicial = new Map();
+  const totalesPorMesContraentrega = new Map();
   const totalesPorEtapa = new Map();
+  // Mismo desglose de arriba pero por día -- solo lo consume el rango
+  // "Último mes" de la tendencia (Resumen Gerencial).
+  const diasSet = new Set();
+  const totalesPorDia = new Map();
+  const totalesPorDiaInicial = new Map();
+  const totalesPorDiaContraentrega = new Map();
   // Totales de las columnas fijas monetarias (para la fila de totales del
   // <tfoot>, igual que ya se hace por mes) -- mismo criterio de "pendiente
   // por recaudar" que la columna en pantalla (Math.max(0, valor - abonado)).
@@ -405,6 +552,17 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
     valorInmueble: 0, valorCuotaInicial: 0, abonadoCuotaInicial: 0,
     valorSaldoContraentrega: 0, totalAbonado: 0, pendienteRecaudar: 0,
     cuotasEnMora: 0, montoEnMora: 0,
+    // KPIs de gerencial: mismo criterio de "flotar en 0 por fila antes de
+    // sumar" que pendienteRecaudar de arriba, para no dejar que un negocio
+    // sobrepagado (saldo a favor) esconda la deuda real de otro negocio.
+    pendienteContraentrega: 0, recaudadoContraentrega: 0,
+    cuotasEnMoraInicial: 0, montoEnMoraInicial: 0,
+    // "Disponible" = sin negocio vinculado o con estado LIBRE (aún no
+    // vendido) -- valor de lista (valorInmueble/Unit_Price) de lo que queda
+    // por vender. "Vendidos" = estado exactamente VENDIDO (no incluye
+    // etapas posteriores como escrituración, a propósito).
+    valorDisponible: 0, cantidadDisponible: 0,
+    valorVendidos: 0, cantidadVendidos: 0,
   };
   for (const f of filas) {
     if (f.valorInmueble != null) totalesColumnasFijas.valorInmueble += f.valorInmueble;
@@ -417,6 +575,36 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
     }
     totalesColumnasFijas.cuotasEnMora += f.cuotasEnMora ?? 0;
     totalesColumnasFijas.montoEnMora += f.montoEnMora ?? 0;
+    totalesColumnasFijas.cuotasEnMoraInicial += f.cuotasEnMoraInicial ?? 0;
+    totalesColumnasFijas.montoEnMoraInicial += f.montoEnMoraInicial ?? 0;
+
+    // Saldo Pendiente Contraentrega: lo que aún falta de la última cuota,
+    // usando lo abonado hacia esa parte (lo que sobra después de cubrir la
+    // Cuota Inicial) -- consistente con la cascada de conciliar(). Cuando el
+    // plan tiene una sola cuota (todo es Saldo Contraentrega, sin Cuota
+    // Inicial separada) abonadoCuotaInicial es null -- tratarlo como 0, no
+    // saltar la fila, porque en ese caso el 100% de lo abonado va hacia acá.
+    if (f.valorSaldoContraentrega != null && f.totalAbonado != null) {
+      const abonadoHaciaContraentrega = f.totalAbonado - (f.abonadoCuotaInicial ?? 0);
+      totalesColumnasFijas.pendienteContraentrega += Math.max(0, f.valorSaldoContraentrega - abonadoHaciaContraentrega);
+      // Recaudado real hacia el 70%, tope en el valor de esa cuota (lo que
+      // sobrepasa el plan es saldo a favor, no "recaudado contraentrega").
+      totalesColumnasFijas.recaudadoContraentrega += Math.min(Math.max(0, abonadoHaciaContraentrega), f.valorSaldoContraentrega);
+    }
+
+    // Disponible vs. Vendidos -- según el estado propio del inmueble en
+    // Inventario (Vendido/Reservado/Disponible/Separado/Stand-By/Pend
+    // Revision/VIP), NO el estado del Negocio/oportunidad. Vendido y VIP
+    // cuentan como vendidos; el resto (incluye null, por si acaso) como
+    // disponible -- confirmado con el usuario, cubre el 100% del inventario.
+    if (f.estadoInventario === 'Vendido' || f.estadoInventario === 'VIP') {
+      if (f.valorInmueble != null) totalesColumnasFijas.valorVendidos += f.valorInmueble;
+      totalesColumnasFijas.cantidadVendidos += 1;
+    } else {
+      if (f.valorInmueble != null) totalesColumnasFijas.valorDisponible += f.valorInmueble;
+      totalesColumnasFijas.cantidadDisponible += 1;
+    }
+
     for (const [mes, v] of Object.entries(f.porMes)) {
       mesesSet.add(mes);
       if (!totalesPorMes.has(mes)) totalesPorMes.set(mes, { esperado: 0, recaudado: 0 });
@@ -431,23 +619,75 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
         te.recaudado += v.recaudado;
       }
     }
+    // Mismo desglose de arriba, pero para Cuota Inicial y Saldo Contraentrega
+    // por separado -- filtro 30%/70%/ambos de la tendencia mensual.
+    for (const [mes, v] of Object.entries(f.porMesInicial)) {
+      mesesSet.add(mes);
+      if (!totalesPorMesInicial.has(mes)) totalesPorMesInicial.set(mes, { esperado: 0, recaudado: 0 });
+      const t = totalesPorMesInicial.get(mes);
+      t.esperado += v.esperado;
+      t.recaudado += v.recaudado;
+    }
+    for (const [mes, v] of Object.entries(f.porMesContraentrega)) {
+      mesesSet.add(mes);
+      if (!totalesPorMesContraentrega.has(mes)) totalesPorMesContraentrega.set(mes, { esperado: 0, recaudado: 0 });
+      const t = totalesPorMesContraentrega.get(mes);
+      t.esperado += v.esperado;
+      t.recaudado += v.recaudado;
+    }
+
+    // Mismos tres desgloses de arriba, pero por día (rango "Último mes").
+    for (const [dia, v] of Object.entries(f.porDia)) {
+      diasSet.add(dia);
+      if (!totalesPorDia.has(dia)) totalesPorDia.set(dia, { esperado: 0, recaudado: 0 });
+      const t = totalesPorDia.get(dia);
+      t.esperado += v.esperado;
+      t.recaudado += v.recaudado;
+    }
+    for (const [dia, v] of Object.entries(f.porDiaInicial)) {
+      diasSet.add(dia);
+      if (!totalesPorDiaInicial.has(dia)) totalesPorDiaInicial.set(dia, { esperado: 0, recaudado: 0 });
+      const t = totalesPorDiaInicial.get(dia);
+      t.esperado += v.esperado;
+      t.recaudado += v.recaudado;
+    }
+    for (const [dia, v] of Object.entries(f.porDiaContraentrega)) {
+      diasSet.add(dia);
+      if (!totalesPorDiaContraentrega.has(dia)) totalesPorDiaContraentrega.set(dia, { esperado: 0, recaudado: 0 });
+      const t = totalesPorDiaContraentrega.get(dia);
+      t.esperado += v.esperado;
+      t.recaudado += v.recaudado;
+    }
   }
   const meses = [...mesesSet].sort();
   const totales = Object.fromEntries(meses.map((m) => [m, totalesPorMes.get(m)]));
+  const totalesInicial = Object.fromEntries(meses.map((m) => [m, totalesPorMesInicial.get(m) ?? { esperado: 0, recaudado: 0 }]));
+  const totalesContraentrega = Object.fromEntries(meses.map((m) => [m, totalesPorMesContraentrega.get(m) ?? { esperado: 0, recaudado: 0 }]));
   const etapasOrdenadas = [...totalesPorEtapa.keys()].sort(compararEtapas);
   const totalesEtapa = Object.fromEntries(etapasOrdenadas.map((e) => [e, totalesPorEtapa.get(e)]));
+
+  const dias = [...diasSet].sort();
+  const totalesDia = Object.fromEntries(dias.map((d) => [d, totalesPorDia.get(d)]));
+  const totalesDiaInicial = Object.fromEntries(dias.map((d) => [d, totalesPorDiaInicial.get(d) ?? { esperado: 0, recaudado: 0 }]));
+  const totalesDiaContraentrega = Object.fromEntries(dias.map((d) => [d, totalesPorDiaContraentrega.get(d) ?? { esperado: 0, recaudado: 0 }]));
 
   const total = filas.length;
   const pageNum = Math.max(1, page);
   const limitNum = Math.max(1, limit);
   const data = filas
     .slice((pageNum - 1) * limitNum, pageNum * limitNum)
-    .map(({ _tieneMovimientos, ...fila }) => fila);
+    .map(({ _tieneMovimientos, porMesInicial, porMesContraentrega, porDia, porDiaInicial, porDiaContraentrega, ...fila }) => fila);
 
   return {
     data,
     meses,
     totales,
+    totalesInicial,
+    totalesContraentrega,
+    dias,
+    totalesDia,
+    totalesDiaInicial,
+    totalesDiaContraentrega,
     totalesColumnasFijas,
     totalesPorEtapa: totalesEtapa,
     pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
@@ -492,6 +732,7 @@ function claveRangoMora(dias) {
 const CAMPOS_ORDENABLES_MORA = new Set([
   'etapa', 'frente', 'torre', 'unidad', 'referencia', 'comprador', 'estado',
   'valorInmueble', 'cuotasEnMora', 'maxDiasAtraso', 'montoEnMora', 'pctEnMora',
+  'fechaSaldoContraentrega',
 ]);
 const CAMPOS_NUMERICOS_MORA = new Set(['valorInmueble', 'cuotasEnMora', 'maxDiasAtraso', 'montoEnMora', 'pctEnMora']);
 
@@ -512,15 +753,54 @@ function ordenarCarteraMora(filas, sortBy, sortDir) {
     if (vb == null) return -1;
 
     if (sortBy === 'etapa') return dir * compararEtapas(va, vb);
+    if (sortBy === 'fechaSaldoContraentrega') return dir * (new Date(va) - new Date(vb));
     if (CAMPOS_NUMERICOS_MORA.has(sortBy)) return dir * (va - vb);
     return dir * String(va).localeCompare(String(vb), 'es', { numeric: true, sensitivity: 'base' });
   });
 }
 
-async function obtenerCarteraMora({ search, etapa, frente, torre, rango, sortBy, sortDir, page, limit }) {
+async function obtenerCarteraMora({ search, etapa, frente, torre, rango, vista, sortBy, sortDir, page, limit }) {
   const { filas: todasLasFilas, valores } = await obtenerCache();
 
-  let filas = todasLasFilas.filter((f) => f.cuotasEnMora > 0);
+  // Conteo de cada vista sobre TODO el portafolio (sin los filtros de
+  // búsqueda/etapa/frente/torre de abajo) -- se devuelve siempre, sin
+  // importar cuál vista se pidió, para poder mostrar la cantidad en el botón
+  // de la vista que NO está activa (el usuario la ve sin tener que cambiarse).
+  const conteos = {
+    inicial: todasLasFilas.filter((f) => f.cuotasEnMoraInicial > 0).length,
+    contraentrega: todasLasFilas.filter((f) => f.saldoContraentregaVencido).length,
+  };
+
+  // Dos vistas sobre el mismo cache, seleccionadas por `vista`:
+  //  - 'inicial' (default): mora de la Cuota Inicial (el plan completo MENOS
+  //    Saldo Contraentrega) -- la cobranza activa real.
+  //  - 'contraentrega': negocios cuyo Saldo Contraentrega (la cuota final,
+  //    ~70%, pendiente hasta escrituración) ya venció -- apartado propio
+  //    porque NO es cobranza activa de la misma forma, pero el equipo igual
+  //    quiere poder revisarlos sin que se mezclen con la mora real de arriba.
+  // En ambos casos se remapean los campos calculados en
+  // construirFilasCompletas() sobre los nombres de siempre (cuotasEnMora,
+  // montoEnMora, maxDiasAtraso, esperadoAFecha) para que el resto de esta
+  // función y el frontend (CarteraMora.jsx) no necesiten saber la diferencia.
+  let filas = vista === 'contraentrega'
+    ? todasLasFilas
+        .filter((f) => f.saldoContraentregaVencido)
+        .map((f) => ({
+          ...f,
+          cuotasEnMora: 1,
+          montoEnMora: f.pendienteSaldoContraentrega,
+          maxDiasAtraso: f.diasAtrasoSaldoContraentrega ?? 0,
+          esperadoAFecha: f.valorSaldoContraentrega ?? 0,
+        }))
+    : todasLasFilas
+        .filter((f) => f.cuotasEnMoraInicial > 0)
+        .map((f) => ({
+          ...f,
+          cuotasEnMora: f.cuotasEnMoraInicial,
+          montoEnMora: f.montoEnMoraInicial,
+          maxDiasAtraso: f.maxDiasAtrasoInicial,
+          esperadoAFecha: f.esperadoAFechaInicial,
+        }));
   if (search) {
     const s = search.toLowerCase();
     filas = filas.filter((f) =>
@@ -568,11 +848,18 @@ async function obtenerCarteraMora({ search, etapa, frente, torre, rango, sortBy,
   const limitNum = Math.max(1, limit);
   const data = filas
     .slice((pageNum - 1) * limitNum, pageNum * limitNum)
-    .map(({ _tieneMovimientos, porMes, esperadoAFecha, ...fila }) => fila);
+    .map(({
+      _tieneMovimientos, porMes, porMesInicial, porMesContraentrega,
+      porDia, porDiaInicial, porDiaContraentrega, esperadoAFecha,
+      cuotasEnMoraInicial, montoEnMoraInicial, maxDiasAtrasoInicial, esperadoAFechaInicial,
+      saldoContraentregaVencido, pendienteSaldoContraentrega, diasAtrasoSaldoContraentrega,
+      ...fila
+    }) => fila);
 
   return {
     data,
     resumen: { negociosEnMora: total, totalCuotasEnMora, totalMontoEnMora, totalEsperadoAFecha, pctMoraPortafolio },
+    conteos,
     porRangoMora,
     pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
     etapasDisponibles: [...valores.porEtapa.keys()].sort(compararEtapas),

@@ -131,14 +131,14 @@ const COLUMNAS_FIJAS = [
     }
   ),
   columnHelper.accessor('cuotasEnMora', {
-    header: 'Cuotas vencidas',
+    header: 'Cuotas vencidas (total)',
     cell: (info) => {
       const v = info.getValue();
       return !v ? <span className="text-slate-300">—</span> : <span className="font-mono text-[13px] text-red-600">{v}</span>;
     },
   }),
   columnHelper.accessor('montoEnMora', {
-    header: 'Valor cuotas vencidas',
+    header: 'Valor cuotas vencidas (total)',
     cell: (info) => {
       const v = info.getValue();
       return !v ? <span className="text-slate-300">—</span> : <span className="font-mono text-[13px] text-red-600">{formatCOP(v)}</span>;
@@ -590,8 +590,8 @@ export default function ReportePlanRecaudo() {
         { header: 'Valor saldo contraentrega', key: 'valorSaldoContraentrega', width: 18 },
         { header: 'Total abonado del inmueble', key: 'totalAbonado', width: 22 },
         { header: 'Pendiente por recaudar', key: 'pendienteRecaudar', width: 20 },
-        { header: 'Cuotas vencidas', key: 'cuotasEnMora', width: 14 },
-        { header: 'Valor cuotas vencidas', key: 'montoEnMora', width: 20 },
+        { header: 'Cuotas vencidas (total)', key: 'cuotasEnMora', width: 14 },
+        { header: 'Valor cuotas vencidas (total)', key: 'montoEnMora', width: 20 },
       ];
 
       const wb = new ExcelJS.Workbook();

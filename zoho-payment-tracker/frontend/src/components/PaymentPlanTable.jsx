@@ -8,7 +8,7 @@ import {
   createColumnHelper,
 } from '@tanstack/react-table';
 import { getOpportunities, getStages } from '../utils/api';
-import { formatCOP, formatDate, formatDateTime } from '../utils/format';
+import { formatDate, formatDateTime } from '../utils/format';
 import FilterBar from './FilterBar';
 import StageBadge from './StageBadge';
 
@@ -34,16 +34,6 @@ const columns = [
     cell: (info) => (
       <span className="font-mono text-[14px] text-slate-600">{formatDate(info.getValue())}</span>
     ),
-  }),
-  columnHelper.accessor('camposFinancieros', {
-    header: 'Valor Total',
-    cell: (info) => {
-      const campos = info.getValue();
-      const amount = campos?.Amount ?? info.row.original.Amount;
-      return (
-        <span className="font-mono text-[14px] text-slate-700 font-semibold">{formatCOP(amount)}</span>
-      );
-    },
   }),
   columnHelper.accessor('referenciaRecaudo', {
     header: 'Ref. Recaudo',

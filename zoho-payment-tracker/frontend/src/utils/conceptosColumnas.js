@@ -1,5 +1,5 @@
 // Concepto de cada columna del informe de fiducia, según Cartera.
-// Fuente: DICCIONARIO-COLUMNAS-FIDUCIA.md (raíz del repo). Redacción pulida para lectura.
+// Fuente: docs/proyecto/DICCIONARIO-COLUMNAS-FIDUCIA.md. Redacción pulida para lectura.
 //
 // Separado por hoja porque una misma columna puede significar cosas distintas:
 //   - "resumen"     → Negocio.datos (PLANTILLA DEL RESUMEN)

@@ -1,5 +1,5 @@
 // Columnas del informe de fiducia que NO deben mostrarse, según el concepto
-// provisto por Cartera (ver DICCIONARIO-COLUMNAS-FIDUCIA.md en la raíz del repo).
+// provisto por Cartera (ver docs/proyecto/DICCIONARIO-COLUMNAS-FIDUCIA.md).
 //
 // Motivos: "no aplica" / "en este momento no aplica", o
 // "necesario para cuando se va a entregar el inmueble" (uso futuro).

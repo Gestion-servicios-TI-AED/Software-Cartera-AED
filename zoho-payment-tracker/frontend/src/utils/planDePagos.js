@@ -33,13 +33,32 @@ export function formatFechaUTC(fecha) {
   return fecha.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
 }
 
+// "Saldo Contraentrega" (Forma de Pago) / "SALDO CONTRA ENTREGA" (Propuesta
+// de Pago) -- misma cuota, distinto espaciado. Esa fila nunca trae fecha
+// propia en Zoho (a diferencia de Separación/cuotas numeradas), así que acá
+// se detecta para poder inferirle una fecha.
+function esSaldoContraentrega(cuotaVal) {
+  return String(cuotaVal ?? '').toLowerCase().replace(/\s+/g, '').includes('saldocontraentrega');
+}
+
 // Enriquece las filas con una columna "Fecha estimada" al inicio.
 export function addFechaEstimada(rows, fechaBase) {
   if (!fechaBase || !rows?.length) return rows;
   const cuotaKey = detectarCuotaKey(rows);
   if (!cuotaKey) return rows;
+  // Fecha de la última cuota real vista hasta el momento (Separación o
+  // cuota numerada) -- se usa para inferir la de Saldo Contraentrega, que en
+  // Zoho llega sin "Fecha_Estimada" propia: es la fecha que le sigue a esa
+  // última cuota (filas de subtotal como "TOTAL CUOTA INICIAL" no la mueven,
+  // porque tampoco tienen fecha propia).
+  let ultimaFechaReal = null;
   return rows.map((row) => {
-    const fecha = fechaEstimadaCuota(fechaBase, row[cuotaKey]);
+    let fecha = fechaEstimadaCuota(fechaBase, row[cuotaKey]);
+    if (!fecha && esSaldoContraentrega(row[cuotaKey]) && ultimaFechaReal) {
+      fecha = new Date(ultimaFechaReal);
+      fecha.setUTCMonth(fecha.getUTCMonth() + 1);
+    }
+    if (fecha) ultimaFechaReal = fecha;
     if (!fecha) return row;
     return { 'Fecha estimada': formatFechaUTC(fecha), ...row };
   });
