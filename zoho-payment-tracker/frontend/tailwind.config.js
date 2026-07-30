@@ -28,12 +28,13 @@ export default {
           900: 'oklch(0.208 0.016 195 / <alpha-value>)',
           950: 'oklch(0.129 0.012 195 / <alpha-value>)',
         },
-        // ── Marca (teal AED) ──────────────────────────────────────────────
+        // ── Marca (cyan-teal + navy del logo Baía Kristal) ─────────────────
         brand: {
           DEFAULT: 'var(--brand)',
           strong: 'var(--brand-strong)',
           soft: 'var(--brand-soft)',
           tint: 'var(--brand-tint)',
+          navy: 'var(--brand-navy)',
         },
         // ── Neutros (navy-tinted) ─────────────────────────────────────────
         ink: 'var(--ink)',

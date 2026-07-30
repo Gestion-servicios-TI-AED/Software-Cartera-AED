@@ -17,6 +17,8 @@ import { separarUnidadesAdicionales } from '../utils/unidadesAdicionales';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import logoBaiaKristal from '../assets/baia-kristal-logo.png';
+import cornerBaiaKristal from '../assets/baia-kristal-corner.png';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -558,6 +560,75 @@ function CuotaRow({ c }) {
   );
 }
 
+// Fetch + cómputo completo de la conciliación de un negocio (subforms Zoho +
+// movimientos fiduciarios + ajustes de Fecha de Entrega configurados) --
+// compartido entre ConciliacionSection (vista en pantalla) y el export de
+// Estado de Cuenta (PDF), para no duplicar esta lógica en dos sitios.
+async function obtenerConciliacionCompleta(negocio) {
+  const oportunidad = negocio.oportunidad;
+  if (!oportunidad) return { cuotas: [], resumen: null, movimientos: [], valorVenta: null };
+
+  const [subs, configFrentes] = await Promise.all([
+    getSubforms(oportunidad.id),
+    getConfiguracionesFrentes().catch(() => ({ data: [] })),
+  ]);
+  // Todos los movimientos del negocio (loop defensivo si total > 200)
+  const movimientos = [];
+  let page = 1, totalPages = 1;
+  do {
+    const res = await getNegocioMovimientos(negocio.id, { page, limit: 200 });
+    movimientos.push(...(res.data || []));
+    totalPages = res.pagination?.totalPages ?? 1;
+    page += 1;
+  } while (page <= totalPages);
+
+  const valorVentaKey = Object.keys(negocio.datos || {}).find((k) => k.toLowerCase() === 'valor venta');
+  const valorVenta = valorVentaKey ? parseMonto(negocio.datos[valorVentaKey]) : null;
+
+  // Propuesta de Pago primero (es con la que se hace la conciliación real
+  // del negocio), Forma de Pago como respaldo solo si no hay propuesta.
+  // Mismo criterio que dashboardRecaudoService.js (Dashboard / Cartera en
+  // Gestión) para que no diverjan entre sí.
+  const planRows = subs?.propuestaPago?.length ? subs.propuestaPago : (subs?.formaPago || []);
+  const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos);
+  if (cuotasPlan.length === 0) {
+    return { cuotas: [], resumen: null, movimientos, valorVenta };
+  }
+
+  // Recalcular la última cuota (Saldo Contraentrega) para que cuadre con VALOR VENTA
+  if (valorVenta != null && !isNaN(valorVenta) && cuotasPlan.length >= 2) {
+    const sumaResto = cuotasPlan.slice(0, -1).reduce((s, c) => s + c.valorPlan, 0);
+    const lastCuota = cuotasPlan[cuotasPlan.length - 1];
+    lastCuota.valorPlan = valorVenta - sumaResto;
+  }
+
+  // Fecha de entrega configurada en Ajustes -- reemplaza la fecha estimada
+  // (inferida) de Saldo Contraentrega. Prioridad: piso específico primero,
+  // si no hay, toda la torre, si no hay, todo el proyecto -- son mutuamente
+  // excluyentes en Ajustes, pero se resuelve en ese orden igual. Mismo
+  // criterio que dashboardRecaudoService.js (Dashboard / Cartera en
+  // Gestión) para que no diverjan entre sí.
+  const configFrentesData = configFrentes?.data || [];
+  const configFrente = negocio.frente
+    ? configFrentesData.find((c) => c.frente === negocio.frente && c.torre === negocio.torre && c.piso === negocio.piso) ??
+      configFrentesData.find((c) => c.frente === negocio.frente && c.torre === negocio.torre && c.piso === null) ??
+      configFrentesData.find((c) => c.frente === negocio.frente && c.torre === null && c.piso === null)
+    : null;
+  if (configFrente?.fechaEntrega) {
+    cuotasPlan[cuotasPlan.length - 1].fechaEstimada = new Date(configFrente.fechaEntrega);
+  }
+
+  const { cuotas, resumen } = conciliar(cuotasPlan, normalizarPagos(movimientos));
+
+  if (valorVenta != null && !isNaN(valorVenta)) {
+    resumen.totalPlan = valorVenta;
+    resumen.porcentaje = valorVenta > 0 ? Math.round((resumen.totalPagado / valorVenta) * 100) : 0;
+    resumen.saldoAFavor = Math.max(0, resumen.totalPagado - valorVenta);
+  }
+
+  return { cuotas, resumen, movimientos, valorVenta };
+}
+
 function ConciliacionSection({ negocio }) {
   const oportunidad = negocio.oportunidad;
   const [datos, setDatos] = useState(null);
@@ -569,20 +640,8 @@ function ConciliacionSection({ negocio }) {
     let alive = true;
     (async () => {
       try {
-        const [subs, configFrentes] = await Promise.all([
-          getSubforms(oportunidad.id),
-          getConfiguracionesFrentes().catch(() => ({ data: [] })),
-        ]);
-        // Todos los movimientos del negocio (loop defensivo si total > 200)
-        const movs = [];
-        let page = 1, totalPages = 1;
-        do {
-          const res = await getNegocioMovimientos(negocio.id, { page, limit: 200 });
-          movs.push(...(res.data || []));
-          totalPages = res.pagination?.totalPages ?? 1;
-          page += 1;
-        } while (page <= totalPages);
-        if (alive) setDatos({ subforms: subs || { formaPago: [], propuestaPago: [] }, movimientos: movs, configFrentes: configFrentes?.data || [] });
+        const resultado = await obtenerConciliacionCompleta(negocio);
+        if (alive) setDatos(resultado);
       } catch (err) {
         if (alive) setError(err.message);
       } finally {
@@ -609,50 +668,11 @@ function ConciliacionSection({ negocio }) {
   if (error) {
     return <p className="px-4 py-4 text-[14px] text-red-500">Error cargando la conciliación: {error}</p>;
   }
-
-  // Propuesta de Pago primero (es con la que se hace la conciliación real
-  // del negocio), Forma de Pago como respaldo solo si no hay propuesta.
-  // Mismo criterio que dashboardRecaudoService.js (Dashboard / Cartera en
-  // Gestión) para que no diverjan entre sí.
-  const planRows = datos.subforms.propuestaPago?.length ? datos.subforms.propuestaPago : (datos.subforms.formaPago || []);
-  const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos);
-  if (cuotasPlan.length === 0) {
+  if (!datos.resumen) {
     return <p className="px-4 py-4 text-[14px] text-slate-500 italic">La oportunidad vinculada no tiene plan de pagos registrado.</p>;
   }
 
-  // Usar VALOR VENTA del negocio como total del plan
-  const valorVentaKey = Object.keys(negocio.datos || {}).find((k) => k.toLowerCase() === 'valor venta');
-  const valorVenta = valorVentaKey ? parseMonto(negocio.datos[valorVentaKey]) : null;
-
-  // Recalcular la última cuota (Saldo Contraentrega) para que cuadre con VALOR VENTA
-  if (valorVenta != null && !isNaN(valorVenta) && cuotasPlan.length >= 2) {
-    const sumaResto = cuotasPlan.slice(0, -1).reduce((s, c) => s + c.valorPlan, 0);
-    const lastCuota = cuotasPlan[cuotasPlan.length - 1];
-    lastCuota.valorPlan = valorVenta - sumaResto;
-  }
-
-  // Fecha de entrega configurada en Ajustes -- reemplaza la fecha estimada
-  // (inferida) de Saldo Contraentrega. Prioridad: piso específico primero,
-  // si no hay, toda la torre, si no hay, todo el proyecto -- son mutuamente
-  // excluyentes en Ajustes, pero se resuelve en ese orden igual. Mismo
-  // criterio que dashboardRecaudoService.js (Dashboard / Cartera en
-  // Gestión) para que no diverjan entre sí.
-  const configFrente = negocio.frente
-    ? datos.configFrentes.find((c) => c.frente === negocio.frente && c.torre === negocio.torre && c.piso === negocio.piso) ??
-      datos.configFrentes.find((c) => c.frente === negocio.frente && c.torre === negocio.torre && c.piso === null) ??
-      datos.configFrentes.find((c) => c.frente === negocio.frente && c.torre === null && c.piso === null)
-    : null;
-  if (configFrente?.fechaEntrega && cuotasPlan.length > 0) {
-    cuotasPlan[cuotasPlan.length - 1].fechaEstimada = new Date(configFrente.fechaEntrega);
-  }
-
-  const { cuotas, resumen } = conciliar(cuotasPlan, normalizarPagos(datos.movimientos));
-
-  if (valorVenta != null && !isNaN(valorVenta)) {
-    resumen.totalPlan = valorVenta;
-    resumen.porcentaje = valorVenta > 0 ? Math.round((resumen.totalPagado / valorVenta) * 100) : 0;
-    resumen.saldoAFavor = Math.max(0, resumen.totalPagado - valorVenta);
-  }
+  const { cuotas, resumen } = datos;
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -750,6 +770,7 @@ function NegocioDetalle({ id }) {
   const [negocio, setNegocio] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [exportando, setExportando] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -759,6 +780,23 @@ function NegocioDetalle({ id }) {
       .catch((err) => setError(err.response?.data?.error || err.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  async function handleExportarEstadoCuenta() {
+    if (!negocio || exportando) return;
+    setExportando(true);
+    try {
+      const datos = await obtenerConciliacionCompleta(negocio);
+      if (!datos.resumen) {
+        window.alert('Este negocio no tiene un plan de pagos registrado -- no se puede generar el estado de cuenta.');
+        return;
+      }
+      await exportarEstadoCuenta(negocio, datos);
+    } catch (err) {
+      window.alert(`Error generando el estado de cuenta: ${err.message}`);
+    } finally {
+      setExportando(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -858,6 +896,24 @@ function NegocioDetalle({ id }) {
               <span className="text-[13px] text-slate-500 bg-aed-base border border-aed-border px-2 py-0.5 rounded-full">
                 {negocio.totalMovimientos} mov.
               </span>
+              {negocio.oportunidad && (
+                <button
+                  onClick={handleExportarEstadoCuenta}
+                  disabled={exportando}
+                  title="Exportar estado de cuenta (PDF)"
+                  className="flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 rounded-full bg-brand text-white hover:bg-brand-strong disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  {exportando ? (
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <Download size={12} />
+                  )}
+                  Estado de cuenta
+                </button>
+              )}
             </div>
             {saldoFmt && (
               <div className="text-right">
@@ -1046,6 +1102,231 @@ function exportPDF(negocios, filename) {
     columnStyles: { 0: { cellWidth: 28 }, 1: { cellWidth: 26 }, 2: { cellWidth: 22 }, 5: { cellWidth: 26 }, 6: { cellWidth: 12 } },
   });
 
+  doc.save(filename);
+}
+
+// ── Estado de Cuenta (PDF por negocio) ──────────────────────────────────────
+
+const COLOR_NAVY = [15, 23, 42];
+const COLOR_TEAL = [15, 118, 110];
+const COLOR_TEAL_LIGHT = [204, 251, 241];
+const COLOR_RED = [185, 28, 28];
+const COLOR_MUTED = [100, 116, 139];
+// Colores de estado de la tabla resumen -- verde (pagado/bien), ámbar
+// (pendiente/alerta), rojo (vencido/crítico), reservados solo para esto y
+// no reutilizados como color categórico en otro lado del documento.
+const COLOR_GREEN = [4, 120, 87];
+const COLOR_AMBER = [180, 83, 9];
+
+// Mismo criterio de "no es un pago" que normalizarPagos() en utils/conciliacion.js
+// -- se repite aquí porque esta tabla necesita los campos crudos del
+// movimiento (Fecha Mov. Banco, Fecha Contable) y no el objeto ya normalizado.
+const TIPOS_EXCLUIDOS_APORTES = ['GENERADO POR VENTA UNIDAD'];
+
+function limpiarNombreComprador(nombre) {
+  return String(nombre || '').replace(/^\|+\s*/, '').replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, '');
+}
+
+// Proporción real del recorte de cada asset (ancho/alto en px) -- para
+// escalar sin deformar al dibujarlos en el PDF.
+const LOGO_RATIO = 542 / 343;
+const CORNER_RATIO = 267 / 348;
+
+// Cache de las imágenes ya convertidas a data URL (fetch es asíncrono; se
+// resuelve una sola vez y se reusa en exports siguientes).
+const imageDataUrlCache = new Map();
+async function cargarImagenComoDataUrl(url) {
+  if (imageDataUrlCache.has(url)) return imageDataUrlCache.get(url);
+  const blob = await (await fetch(url)).blob();
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+  imageDataUrlCache.set(url, dataUrl);
+  return dataUrl;
+}
+
+// Dibuja el encabezado y devuelve el Y a partir del cual debe arrancar el
+// contenido (varía según el alto real del logo).
+function drawEncabezadoEstadoCuenta(doc, pageWidth, logoDataUrl, cornerDataUrl) {
+  if (cornerDataUrl) {
+    const cornerH = 60;
+    doc.addImage(cornerDataUrl, 'PNG', -6, -10, cornerH * CORNER_RATIO, cornerH);
+  }
+
+  const logoW = 38;
+  const logoH = logoW / LOGO_RATIO;
+  const logoY = 6;
+  if (logoDataUrl) {
+    doc.addImage(logoDataUrl, 'PNG', (pageWidth - logoW) / 2, logoY, logoW, logoH);
+  }
+
+  const tituloY = logoY + logoH + 9;
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(...COLOR_NAVY);
+  doc.text('ESTADO DE CUENTA', pageWidth / 2, tituloY, { align: 'center' });
+  doc.setDrawColor(...COLOR_TEAL);
+  doc.setLineWidth(0.6);
+  doc.line(pageWidth / 2 - 30, tituloY + 2.5, pageWidth / 2 + 30, tituloY + 2.5);
+
+  return tituloY + 10;
+}
+
+function drawEncabezadoContinuacion(doc, negocio, pageWidth, logoDataUrl) {
+  if (logoDataUrl) {
+    const w = 16, h = w / LOGO_RATIO;
+    doc.addImage(logoDataUrl, 'PNG', 14, 3, w, h);
+  }
+  doc.setFont(undefined, 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...COLOR_MUTED);
+  doc.text(`Estado de Cuenta · ${negocio.referencia || ''}`, pageWidth - 14, 10, { align: 'right' });
+  doc.setDrawColor(...COLOR_TEAL);
+  doc.setLineWidth(0.3);
+  doc.line(14, 15, pageWidth - 14, 15);
+}
+
+async function exportarEstadoCuenta(negocio, datos) {
+  const { cuotas, resumen, movimientos, valorVenta } = datos;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  const [logoDataUrl, cornerDataUrl] = await Promise.all([
+    cargarImagenComoDataUrl(logoBaiaKristal).catch(() => null),
+    cargarImagenComoDataUrl(cornerBaiaKristal).catch(() => null),
+  ]);
+  const yInicio = drawEncabezadoEstadoCuenta(doc, pageWidth, logoDataUrl, cornerDataUrl);
+
+  const hoy = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const fechaCorte = negocio.negocioActualizadoEl
+    ? new Date(negocio.negocioActualizadoEl).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : hoy;
+  const nombres = (negocio.compradores || []).map((c) => limpiarNombreComprador(c.nombre)).join('\n') || '—';
+  const identificaciones = (negocio.compradores || []).map((c) => c.nroId).filter(Boolean).join('\n') || '—';
+  const nombrePrincipal = (negocio.compradores?.[0] && limpiarNombreComprador(negocio.compradores[0].nombre)) || null;
+  const nomenclatura = negocio.datos?.Nomenclatura;
+
+  // Bloque de información (izquierda) -- el valor puede envolver a varias
+  // líneas (varios compradores, o un nombre largo) sin invadir la tabla
+  // resumen de la derecha (que arranca en x=122).
+  const infoRows = [
+    ['Fecha de Generación', hoy],
+    ['Fecha de Corte', fechaCorte],
+    ['Nombre', nombres],
+    ['Identificación', identificaciones],
+    ['Referencia de Recaudo', negocio.referencia || '—'],
+    ['Proyecto', 'Baía Kristal'],
+    ['Inmueble', nomenclatura ? `Apto ${nomenclatura}` : '—'],
+    ['Valor Inmueble', formatCOP(valorVenta) ?? '—'],
+  ];
+  const maxValueWidth = 122 - 55 - 3;
+  let y = yInicio;
+  doc.setFontSize(9);
+  infoRows.forEach(([label, value]) => {
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(...COLOR_NAVY);
+    doc.text(`${label}:`, 14, y);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(51, 65, 85);
+    const lines = doc.splitTextToSize(String(value), maxValueWidth);
+    doc.text(lines, 55, y);
+    y += Math.max(5.5, lines.length * 4.2 + 1.5);
+  });
+
+  // Tabla resumen coloreada (derecha)
+  const valorCuota = cuotas.length > 1
+    ? cuotas.slice(0, -1).reduce((s, c) => s + c.valorPlan, 0)
+    : (cuotas[0]?.valorPlan ?? 0);
+  const valorPendiente = Math.max(0, resumen.totalPlan - resumen.totalPagado);
+  autoTable(doc, {
+    startY: yInicio,
+    margin: { left: 122 },
+    tableWidth: 74,
+    theme: 'plain',
+    styles: { fontSize: 9, cellPadding: 2.2, fontStyle: 'bold', halign: 'center', valign: 'middle' },
+    body: [
+      ['VALOR CUOTA', formatCOP(valorCuota) ?? '—'],
+      ['VALOR CONSIGNADO', formatCOP(resumen.totalPagado) ?? '—'],
+      ['VALOR PENDIENTE', formatCOP(valorPendiente) ?? '—'],
+      ['VALOR VENCIDO', formatCOP(resumen.montoEnMora) ?? '$ 0'],
+    ],
+    columnStyles: { 0: { cellWidth: 38, textColor: 255 }, 1: { cellWidth: 36, textColor: 255 } },
+    didParseCell: (data) => {
+      const bg = [COLOR_NAVY, COLOR_GREEN, COLOR_AMBER, COLOR_RED][data.row.index];
+      data.cell.styles.fillColor = bg;
+    },
+  });
+
+  // Tabla PLAN DE PAGOS
+  const planStartY = Math.max(y + 4, doc.lastAutoTable.finalY + 8);
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(...COLOR_NAVY);
+  doc.text('PLAN DE PAGOS', 14, planStartY);
+
+  autoTable(doc, {
+    startY: planStartY + 3,
+    head: [['CUOTA', 'CONCEPTO', 'FECHA COMPROMISO', 'VALOR COMPROMISO', 'VALOR PAGADO']],
+    body: cuotas.map((c, i) => [
+      i,
+      i === cuotas.length - 1 ? 'Financiación' : 'Cuota Inicial',
+      c.fechaEstimada ? formatFechaUTC(c.fechaEstimada) : '—',
+      formatCOP(c.valorPlan) ?? '—',
+      formatCOP(c.cubierto) ?? '$ 0',
+    ]),
+    styles: { fontSize: 8.5, cellPadding: 2.2, halign: 'center', valign: 'middle' },
+    headStyles: { fillColor: COLOR_TEAL, textColor: 255, fontStyle: 'bold', halign: 'center' },
+    alternateRowStyles: { fillColor: COLOR_TEAL_LIGHT },
+    columnStyles: { 0: { cellWidth: 16 } },
+  });
+
+  // Tabla DETALLE DE APORTES (movimientos reales, orden cronológico)
+  const aportes = (movimientos || [])
+    .filter((m) => {
+      const tipo = String(m.datos?.['Tipo Movimiento'] || '').trim().toUpperCase();
+      return !TIPOS_EXCLUIDOS_APORTES.includes(tipo);
+    })
+    .map((m) => ({
+      fechaConsignacion: m.datos?.['Fecha Mov. Banco'] ? formatExcelDate(m.datos['Fecha Mov. Banco']) : '—',
+      fechaAplicacion: m.fechaContable ? formatFechaUTC(new Date(m.fechaContable)) : '—',
+      valor: parseMonto(m.datos?.Valor),
+      fechaOrden: m.fechaContable ? new Date(m.fechaContable) : null,
+    }))
+    .filter((a) => !isNaN(a.valor) && a.valor !== 0)
+    // Más reciente primero -- sin fecha al final, igual que antes.
+    .sort((a, b) => {
+      if (!a.fechaOrden && !b.fechaOrden) return 0;
+      if (!a.fechaOrden) return 1;
+      if (!b.fechaOrden) return -1;
+      return b.fechaOrden - a.fechaOrden;
+    });
+  const totalAportes = aportes.reduce((s, a) => s + a.valor, 0);
+
+  const aportesStartY = doc.lastAutoTable.finalY + 10;
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(...COLOR_NAVY);
+  doc.text('DETALLE DE APORTES', 14, aportesStartY);
+
+  autoTable(doc, {
+    startY: aportesStartY + 3,
+    head: [['FECHA CONSIGNACIÓN', 'FECHA APLICACIÓN', 'VALOR CONSIGNADO', 'OBSERVACIÓN']],
+    body: aportes.map((a) => [a.fechaConsignacion, a.fechaAplicacion, formatCOP(a.valor) ?? '—', '']),
+    foot: [['', '', formatCOP(totalAportes) ?? '—', 'TOTAL']],
+    styles: { fontSize: 8.5, cellPadding: 2.2, halign: 'center', valign: 'middle' },
+    headStyles: { fillColor: COLOR_TEAL, textColor: 255, fontStyle: 'bold', halign: 'center' },
+    alternateRowStyles: { fillColor: COLOR_TEAL_LIGHT },
+    footStyles: { fillColor: [226, 232, 240], textColor: COLOR_NAVY, fontStyle: 'bold', halign: 'center' },
+    margin: { top: 22 },
+    didDrawPage: (data) => {
+      if (data.pageNumber > 1) drawEncabezadoContinuacion(doc, negocio, pageWidth, logoDataUrl);
+    },
+  });
+
+  const filename = `Estado de Cuenta - ${negocio.referencia || 'negocio'}${nombrePrincipal ? ' - ' + nombrePrincipal : ''}.pdf`;
   doc.save(filename);
 }
 

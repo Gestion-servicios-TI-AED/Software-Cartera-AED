@@ -774,15 +774,14 @@ export default function ReportePlanRecaudo() {
           const col = FIJAS.length + j + 1;
           const cell = row.getCell(col);
           const valorMes = n.porMes[c.mes]?.[c.tipo] ?? 0;
-          const esperadoMes = n.porMes[c.mes]?.esperado ?? 0;
-          const recaudadoMes = n.porMes[c.mes]?.recaudado ?? 0;
-          // Igual que en pantalla: solo se deja vacía cuando Esperado Y
-          // Recaudado del mes son ambos $0 -- si cualquiera de los dos tiene
-          // movimiento real, el otro igual muestra "$0".
-          if (esperadoMes !== 0 || recaudadoMes !== 0) {
-            cell.value = valorMes;
-            cell.numFmt = '#,##0';
-          }
+          // A diferencia de la pantalla (que deja el mes en blanco cuando
+          // Esperado Y Recaudado son ambos $0, por limpieza visual), acá
+          // siempre se escribe 0 -- una columna con celdas realmente vacías
+          // (no "0") rompe el autosuma de Excel: al pararse en una celda
+          // vacía y sumar hacia arriba, Excel corta el rango justo ahí y
+          // deja fuera el resto de la columna en vez de sumarla completa.
+          cell.value = valorMes;
+          cell.numFmt = '#,##0';
           if (c.tipo === 'recaudado') cell.font = { color: { argb: COLOR_EXCEL.textoRecaudado } };
           else if (c.tipo === 'porRecaudar') cell.font = { color: { argb: COLOR_EXCEL.textoPendiente } };
           const esImpar = c.mesIdx % 2 === 1;

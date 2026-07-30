@@ -4,11 +4,19 @@
 
 @layer base {
   :root {
-    /* ── Marca (teal AED) ── */
-    --brand: #0f766e;
-    --brand-strong: #115e59;
-    --brand-soft: #ccfbf1;
-    --brand-tint: #f0fdfa;
+    /* ── Marca (cyan-teal del logo Baía Kristal) ──
+       Extraído del logo real (assets/baia-kristal-logo.png): matiz ≈187°
+       (el cyan de las formas decorativas), oscurecido lo justo para AA
+       (4.5:1) con texto blanco en botones. El navy dominante del logo
+       (#002068) queda reservado como acento puntual (ver `ink-brand`
+       más abajo) -- usarlo de fondo en superficies grandes competiría
+       demasiado con el resto de la paleta neutra. */
+    --brand: #0e7581;
+    --brand-strong: #0a4f57;
+    --brand-soft: #d6f2f5;
+    --brand-tint: #f4fafb;
+    /* Navy del logo, para acentos puntuales (no reemplaza `ink`) */
+    --brand-navy: #001c5c;
 
     /* ── Neutros teñidos de teal (cero grises planos) ──
        Mismo matiz (195°) y luminosidad que la rampa slate teal del config. */

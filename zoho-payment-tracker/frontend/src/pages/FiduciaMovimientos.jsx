@@ -240,8 +240,16 @@ export default function FiduciaMovimientos() {
       });
       headerRow.height = 20;
 
+      // Ancho por columna según el contenido más largo (encabezado o datos),
+      // no solo el encabezado -- con un tope para que un comentario largo no
+      // vuelva la columna gigantesca.
       headers.forEach((h, i) => {
-        ws.getColumn(i + 1).width = Math.max(h.length, 14);
+        let maxLen = h.length;
+        for (const fila of excelRows) {
+          const len = String(fila[i] ?? '').length;
+          if (len > maxLen) maxLen = len;
+        }
+        ws.getColumn(i + 1).width = Math.min(Math.max(maxLen + 4, 12), 60);
       });
       ws.views = [{ state: 'frozen', ySplit: 1 }];
       ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };

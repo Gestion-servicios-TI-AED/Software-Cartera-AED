@@ -69,6 +69,12 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
+const VISTAS_LINEA = [
+  { key: 'ambos', label: 'Ambos' },
+  { key: 'mensual', label: 'Mensual' },
+  { key: 'acumulado', label: 'Acumulado' },
+];
+
 // Tendencia mensual de Plan de pagos (Esperado) vs. Recaudado real, para todo
 // el portafolio (o el subconjunto filtrado). Incluye meses futuros del plan
 // -- por eso "Recaudado" naturalmente cae por debajo de "Esperado" en meses
@@ -86,6 +92,13 @@ export default function PlanVsRecaudoLineChart({ meses = [], totales = {}, granu
       return next;
     });
   };
+
+  // Mensual (Proyectado/Recaudado/Por recaudar, eje izquierdo) vs. Acumulado
+  // (eje derecho) -- son dos escalas tan distintas que a veces solo se quiere
+  // ver una a la vez, sin el "ruido" visual de la otra.
+  const [vista, setVista] = useState('ambos');
+  const mostrarMensual = vista !== 'acumulado';
+  const mostrarAcumulado = vista !== 'mensual';
 
   if (!meses.length) {
     return (
@@ -160,11 +173,42 @@ export default function PlanVsRecaudoLineChart({ meses = [], totales = {}, granu
   if (fraccionNegativa > 0 && fraccionNegativa < 1) {
     derMin = Math.min(derMinDatos, -(fraccionNegativa / (1 - fraccionNegativa)) * derMax);
   }
+  // Ticks del eje derecho: la MISMA cantidad que el izquierdo, y cada uno a
+  // la MISMA fracción del dominio (no un paso "bonito" calculado aparte) --
+  // así ambos ejes quedan "en línea", con una marca a la misma altura en
+  // los dos lados de la gráfica, no solo el $0.
+  const ticksDer = ticksIzq.map((t) => {
+    const frac = izqMax === izqMin ? 0 : (t - izqMin) / (izqMax - izqMin);
+    return derMin + frac * (derMax - derMin);
+  });
 
   return (
-    <ResponsiveContainer width="100%" height={altura}>
-      <LineChart data={chartData} margin={{ top: 4, right: 16, left: 8, bottom: muchosMeses ? 24 : 4 }}>
-        <CartesianGrid stroke="#64748b" strokeOpacity={0.18} vertical={false} />
+    <div>
+      <div className="flex gap-1 mb-3">
+        {VISTAS_LINEA.map((v) => (
+          <button
+            key={v.key}
+            onClick={() => setVista(v.key)}
+            className={`text-[12px] font-medium px-2 py-0.5 rounded-md border transition-colors ${
+              vista === v.key
+                ? 'bg-brand border-brand text-white'
+                : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
+            }`}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+      <ResponsiveContainer width="100%" height={altura}>
+      <LineChart data={chartData} margin={{ top: 4, right: 4, left: 8, bottom: muchosMeses ? 24 : 4 }}>
+        {/* Sin yAxisId, CartesianGrid no sabe con qué eje calcular las
+            líneas (tenemos dos ejes Y con id "left"/"right", ninguno es el
+            id "0" por defecto que busca) y termina dibujando solo 2 líneas
+            (los bordes del dominio) en vez de una por cada marca del eje.
+            Con el id explícito sí toma los ticks reales del eje que sí esté
+            visible -- si se oculta uno de los dos con el selector Mensual/
+            Acumulado, hay que apuntar al que quede. */}
+        <CartesianGrid stroke="#64748b" strokeOpacity={0.45} vertical={false} yAxisId={mostrarMensual ? 'left' : 'right'} />
         <XAxis
           dataKey="mesLabel"
           tick={{ fontSize: 11, fill: '#64748b' }}
@@ -175,17 +219,42 @@ export default function PlanVsRecaudoLineChart({ meses = [], totales = {}, granu
           height={muchosMeses ? 46 : 30}
           interval={muchosMeses ? 'preserveStartEnd' : 0}
         />
-        <YAxis
-          yAxisId="left"
-          domain={[izqMin, izqMax]}
-          ticks={ticksIzq}
-          tickFormatter={formatYAxis}
-          tick={{ fontSize: 11, fill: '#64748b' }}
-          axisLine={false}
-          tickLine={false}
-          width={52}
-        />
-        <YAxis yAxisId="right" domain={[derMin, derMax]} orientation="right" hide />
+        {/* Dos ejes con escalas MUY distintas (el derecho tiene que caber el
+            total acumulado de todo el plan, años de meses sumados; el
+            izquierdo solo el mes más alto) -- antes el derecho iba oculto,
+            lo que hacía ver "más abajo" una línea acumulada que en realidad
+            vale más, solo que en su propia escala más larga. Mostrar ambos
+            ejes, cada uno con su título, dice explícitamente que no son
+            comparables por altura entre sí. */}
+        {mostrarMensual && (
+          <YAxis
+            key="left"
+            yAxisId="left"
+            domain={[izqMin, izqMax]}
+            ticks={ticksIzq}
+            tickFormatter={formatYAxis}
+            tick={{ fontSize: 11, fill: '#64748b' }}
+            axisLine={false}
+            tickLine={false}
+            width={56}
+            label={{ value: 'Mensual', angle: -90, position: 'insideLeft', style: { fill: '#64748b', fontSize: 11, textAnchor: 'middle' } }}
+          />
+        )}
+        {mostrarAcumulado && (
+          <YAxis
+            key="right"
+            yAxisId="right"
+            domain={[derMin, derMax]}
+            ticks={ticksDer}
+            tickFormatter={formatYAxis}
+            orientation="right"
+            tick={{ fontSize: 11, fill: '#5b8def' }}
+            axisLine={false}
+            tickLine={false}
+            width={56}
+            label={{ value: 'Acumulado', angle: 90, position: 'insideRight', style: { fill: '#5b8def', fontSize: 11, textAnchor: 'middle' } }}
+          />
+        )}
         <Tooltip content={<CustomTooltip />} />
         <Legend
           verticalAlign="top"
@@ -204,64 +273,85 @@ export default function PlanVsRecaudoLineChart({ meses = [], totales = {}, granu
             </span>
           )}
         />
-        <Line
-          yAxisId="left"
-          type="monotone"
-          dataKey="esperado"
-          name="Proyectado (plan)"
-          stroke="#3b82f6"
-          strokeWidth={2}
-          strokeDasharray="5 4"
-          dot={{ r: 2.5, fill: '#3b82f6' }}
-          activeDot={{ r: 4 }}
-          hide={ocultas.has('esperado')}
-        />
-        <Line
-          yAxisId="left"
-          type="monotone"
-          dataKey="recaudado"
-          name="Recaudado"
-          stroke="#16a34a"
-          strokeWidth={2.5}
-          hide={ocultas.has('recaudado')}
-          dot={{ r: 2.5, fill: '#16a34a' }}
-          activeDot={{ r: 5 }}
-        />
-        <Line
-          yAxisId="left"
-          type="monotone"
-          dataKey="porRecaudar"
-          name="Por recaudar"
-          stroke="#ea580c"
-          strokeWidth={2}
-          dot={{ r: 2.5, fill: '#ea580c' }}
-          activeDot={{ r: 4 }}
-          hide={ocultas.has('porRecaudar')}
-        />
-        <Line
-          yAxisId="right"
-          type="monotone"
-          dataKey="esperadoAcumulado"
-          name="Proyectado acumulado"
-          stroke="#93c5fd"
-          strokeWidth={1.5}
-          strokeDasharray="2 3"
-          dot={false}
-          activeDot={{ r: 3 }}
-          hide={ocultas.has('esperadoAcumulado')}
-        />
-        <Line
-          yAxisId="right"
-          type="monotone"
-          dataKey="recaudadoAcumulado"
-          name="Recaudado acumulado"
-          stroke="#86efac"
-          strokeWidth={1.5}
-          dot={false}
-          activeDot={{ r: 3 }}
-          hide={ocultas.has('recaudadoAcumulado')}
-        />
+        {mostrarMensual && (
+          <Line
+            key="esperado"
+            yAxisId="left"
+            type="monotone"
+            dataKey="esperado"
+            name="Proyectado (plan)"
+            stroke="#3b82f6"
+            strokeWidth={2}
+            strokeDasharray="5 4"
+            dot={{ r: 2.5, fill: '#3b82f6' }}
+            activeDot={{ r: 4 }}
+            hide={ocultas.has('esperado')}
+            isAnimationActive={false}
+          />
+        )}
+        {mostrarMensual && (
+          <Line
+            key="recaudado"
+            yAxisId="left"
+            type="monotone"
+            dataKey="recaudado"
+            name="Recaudado"
+            stroke="#16a34a"
+            strokeWidth={2.5}
+            hide={ocultas.has('recaudado')}
+            dot={{ r: 2.5, fill: '#16a34a' }}
+            activeDot={{ r: 5 }}
+            isAnimationActive={false}
+          />
+        )}
+        {mostrarMensual && (
+          <Line
+            key="porRecaudar"
+            yAxisId="left"
+            type="monotone"
+            dataKey="porRecaudar"
+            name="Por recaudar"
+            stroke="#ea580c"
+            strokeWidth={2}
+            dot={{ r: 2.5, fill: '#ea580c' }}
+            activeDot={{ r: 4 }}
+            hide={ocultas.has('porRecaudar')}
+            isAnimationActive={false}
+          />
+        )}
+        {mostrarAcumulado && (
+          <Line
+            key="esperadoAcumulado"
+            yAxisId="right"
+            type="monotone"
+            dataKey="esperadoAcumulado"
+            name="Proyectado acumulado"
+            stroke="#93c5fd"
+            strokeWidth={1.5}
+            strokeDasharray="2 3"
+            dot={false}
+            activeDot={{ r: 3 }}
+            hide={ocultas.has('esperadoAcumulado')}
+            isAnimationActive={false}
+          />
+        )}
+        {mostrarAcumulado && (
+          <Line
+            key="recaudadoAcumulado"
+            yAxisId="right"
+            type="monotone"
+            dataKey="recaudadoAcumulado"
+            name="Recaudado acumulado"
+            stroke="#86efac"
+            strokeWidth={1.5}
+            dot={false}
+            activeDot={{ r: 3 }}
+            hide={ocultas.has('recaudadoAcumulado')}
+            isAnimationActive={false}
+          />
+        )}
       </LineChart>
-    </ResponsiveContainer>
+      </ResponsiveContainer>
+    </div>
   );
 }

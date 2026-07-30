@@ -4,6 +4,7 @@ import { Settings, LogOut } from 'lucide-react';
 import { NAV_ITEMS } from '../config/navItems';
 import { useHiddenNav } from '../utils/navPrefs';
 import { logout } from '../utils/api';
+import logoBaiaKristal from '../assets/baia-kristal-logo.png';
 
 function SidebarItem({ to, Icon, label, color, exact }) {
   const location = useLocation();
@@ -55,8 +56,8 @@ export default function Sidebar({ onLogout }) {
 
   return (
     <aside className="w-[60px] bg-white border-r border-aed-border flex flex-col items-center py-4 gap-1.5 flex-shrink-0 h-screen sticky top-0">
-      <div className="w-9 h-9 rounded-[10px] bg-gradient-to-br from-brand to-brand-strong flex items-center justify-center text-white font-heading font-bold text-[16px] mb-2 flex-shrink-0">
-        A
+      <div className="w-9 h-9 rounded-[10px] flex items-center justify-center mb-2 flex-shrink-0" title="Baía Kristal">
+        <img src={logoBaiaKristal} alt="Baía Kristal" className="w-full h-full object-contain" />
       </div>
 
       {items.map((item) => (

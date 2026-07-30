@@ -537,6 +537,11 @@ async function obtenerNegocioPorId(id) {
       etapa: info ? obtenerEtapaTorre(inmueble.datos.Proyecto_Torre) : null,
       inventarioDatos: inmueble.datos ?? null,
       negocioId: negocio?.id ?? null,
+      // Última vez que se actualizó este Negocio desde el Excel de fiducia
+      // -- usado como "Fecha de Corte" en el estado de cuenta exportable
+      // (los datos financieros son tan frescos como la última subida, no en
+      // vivo como Zoho).
+      negocioActualizadoEl: negocio?.updatedAt ?? null,
     };
   }
 
@@ -564,6 +569,7 @@ async function obtenerNegocioPorId(id) {
       etapa: null,
       inventarioDatos: null,
       negocioId: negocio.id,
+      negocioActualizadoEl: negocio.updatedAt ?? null,
     };
   }
 

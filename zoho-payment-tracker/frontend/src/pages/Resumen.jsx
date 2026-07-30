@@ -335,20 +335,56 @@ export default function Resumen() {
     return planRecaudo?.totales ?? {};
   }, [planRecaudo, filtroPorcentaje, granularidadTendencia, totalesQuincena]);
 
-  // KPIs gerenciales -- todos derivados de totalesColumnasFijas (el mismo
-  // cálculo/cache que ya usa el gráfico y el resto de esta página), así se
-  // adaptan solos al filtro Etapa/Frente/Torre de arriba y no pueden
-  // desincronizarse de lo que muestra el gráfico.
-  const kpis = useMemo(() => {
+  // KPIs de Recaudo (30%/70%) -- se recalculan sumando SOLO la ventana de
+  // tiempo seleccionada arriba (mismo rango que ya usa la gráfica de
+  // tendencia, sumando su serie diaria/mensual en vez de mostrar el
+  // acumulado de toda la vida del portafolio). El resto de KPIs (mora,
+  // disponibles, vendidos) son una foto del estado actual -- no una serie de
+  // tiempo -- así que se calculan aparte, sin filtro de ventana.
+  const kpisRecaudo = useMemo(() => {
+    const sumarVentana = (fuenteDia, fuenteMes) => {
+      let esperado = 0, recaudado = 0;
+      if (granularidadTendencia === 'mes') {
+        for (const m of mesesTendencia) {
+          const t = fuenteMes?.[m];
+          esperado += t?.esperado ?? 0;
+          recaudado += t?.recaudado ?? 0;
+        }
+      } else {
+        const dias = granularidadTendencia === 'dia'
+          ? diasTendencia
+          : (quincenas.length > 0
+              ? (planRecaudo?.dias ?? []).filter((d) => d >= quincenas[0].desde && d <= quincenas[quincenas.length - 1].hasta)
+              : []);
+        for (const d of dias) {
+          const t = fuenteDia?.[d];
+          esperado += t?.esperado ?? 0;
+          recaudado += t?.recaudado ?? 0;
+        }
+      }
+      return { esperado, recaudado };
+    };
+
+    if (!planRecaudo) return null;
+    const inicial = sumarVentana(planRecaudo.totalesDiaInicial, planRecaudo.totalesInicial);
+    const contraentrega = sumarVentana(planRecaudo.totalesDiaContraentrega, planRecaudo.totalesContraentrega);
+    return {
+      totalidad30: inicial.esperado,
+      recaudado30: inicial.recaudado,
+      porRecaudar30: Math.max(0, inicial.esperado - inicial.recaudado),
+      totalidad70: contraentrega.esperado,
+      recaudado70: contraentrega.recaudado,
+      pendienteContraentrega: Math.max(0, contraentrega.esperado - contraentrega.recaudado),
+    };
+  }, [planRecaudo, granularidadTendencia, mesesTendencia, diasTendencia, quincenas]);
+
+  // KPIs de estado actual -- foto de hoy, sin filtro de tiempo (mora,
+  // disponibles, vendidos no son una serie que tenga sentido acumular por
+  // ventana).
+  const kpisActuales = useMemo(() => {
     const t = planRecaudo?.totalesColumnasFijas;
     if (!t) return null;
     return {
-      totalidad30: t.valorCuotaInicial,
-      recaudado30: t.abonadoCuotaInicial,
-      porRecaudar30: Math.max(0, t.valorCuotaInicial - t.abonadoCuotaInicial),
-      totalidad70: t.valorSaldoContraentrega,
-      recaudado70: t.recaudadoContraentrega,
-      pendienteContraentrega: t.pendienteContraentrega,
       valorDisponible: t.valorDisponible,
       cantidadDisponible: t.cantidadDisponible,
       cuotasEnMoraInicial: t.cuotasEnMoraInicial,
@@ -357,6 +393,12 @@ export default function Resumen() {
       cantidadVendidos: t.cantidadVendidos,
     };
   }, [planRecaudo]);
+
+  // Etiqueta legible de la ventana de tiempo seleccionada, para dejar claro
+  // en los encabezados de KPI a qué periodo corresponden.
+  const labelVentana = rangoTendencia === 'anio'
+    ? `Año ${anioSeleccionado}`
+    : (RANGOS_TENDENCIA.find((r) => r.key === rangoTendencia)?.label ?? '');
 
   return (
     <div className="flex flex-col min-h-screen bg-aed-base">
@@ -410,13 +452,56 @@ export default function Resumen() {
           )}
         </div>
 
-        {/* KPIs gerenciales -- se adaptan al filtro Etapa/Frente/Torre de
-            arriba, porque salen del mismo cálculo. Agrupados por
-            Cuota Inicial (30%), Saldo Contraentrega (70%) e Inventario/Ventas. */}
+        {/* Filtro de tiempo (Último mes, Último año…) -- vive arriba, junto a
+            los demás filtros globales, porque afecta tanto los KPIs de
+            Recaudo de abajo como la gráfica de tendencia más adelante. */}
+        <div className="card p-3 flex items-center gap-2.5 flex-wrap">
+          <span className="text-[12px] font-semibold text-slate-400 uppercase tracking-wide">Periodo</span>
+          <div className="flex items-center gap-1 flex-wrap">
+            {RANGOS_TENDENCIA.map((r) => (
+              <button
+                key={r.key}
+                onClick={() => setRangoTendencia(r.key)}
+                className={`text-[12px] font-medium px-2 py-0.5 rounded-md border transition-colors ${
+                  rangoTendencia === r.key
+                    ? 'bg-brand border-brand text-white'
+                    : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+            {aniosDisponibles.length > 0 && (
+              <select
+                value={rangoTendencia === 'anio' ? anioSeleccionado : ''}
+                onChange={(e) => {
+                  setAnioSeleccionado(Number(e.target.value));
+                  setRangoTendencia('anio');
+                }}
+                className={`text-[12px] font-medium px-2 py-0.5 rounded-md border transition-colors ${
+                  rangoTendencia === 'anio'
+                    ? 'bg-brand border-brand text-white'
+                    : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
+                }`}
+              >
+                <option value="" disabled>Filtrar por año…</option>
+                {aniosDisponibles.map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+
+        {/* KPIs gerenciales -- Cuota Inicial (30%) y Saldo Contraentrega
+            (70%) se recalculan según el filtro Etapa/Frente/Torre Y el
+            periodo de tiempo de arriba. Mora/Disponibles/Vendidos son una
+            foto del estado actual -- no cambian con el periodo, se marcan
+            "(actual)" para que quede claro que no aplican ese filtro. */}
         <div className="flex flex-col gap-3">
           <div>
             <h3 className="text-[12px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
-              Cuota inicial (30%)
+              Cuota inicial (30%) — {labelVentana}
             </h3>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <KpiCard
@@ -424,40 +509,40 @@ export default function Resumen() {
                 iconBg="#eff6ff"
                 iconColor="#2563eb"
                 label="Totalidad del 30%"
-                value={kpis ? formatCOP(kpis.totalidad30) : '—'}
-                hint="Total esperado de la Cuota Inicial según el plan de pagos (todas las cuotas menos el Saldo Contraentrega)."
+                value={kpisRecaudo ? formatCOP(kpisRecaudo.totalidad30) : '—'}
+                hint={`Total esperado de la Cuota Inicial según el plan de pagos, dentro del periodo seleccionado (${labelVentana}).`}
               />
               <KpiCard
                 icon={Wallet}
                 iconBg="#f0fdf4"
                 iconColor="#16a34a"
                 label="Recaudado del 30%"
-                value={kpis ? formatCOP(kpis.recaudado30) : '—'}
-                hint="Lo realmente recaudado (movimientos) hacia la Cuota Inicial."
+                value={kpisRecaudo ? formatCOP(kpisRecaudo.recaudado30) : '—'}
+                hint={`Lo realmente recaudado (movimientos) hacia la Cuota Inicial, dentro del periodo seleccionado (${labelVentana}).`}
               />
               <KpiCard
                 icon={AlertTriangle}
                 iconBg="#fef2f2"
                 iconColor="#dc2626"
                 label="Por recaudar (30%)"
-                value={kpis ? formatCOP(kpis.porRecaudar30) : '—'}
-                hint="Cuota Inicial esperada según el plan de pagos, menos lo recaudado real hacia esa parte (movimientos)."
+                value={kpisRecaudo ? formatCOP(kpisRecaudo.porRecaudar30) : '—'}
+                hint={`Cuota Inicial esperada según el plan de pagos, menos lo recaudado real, dentro del periodo seleccionado (${labelVentana}).`}
               />
               <KpiCard
                 icon={CalendarClock}
                 iconBg="#fffbeb"
                 iconColor="#d97706"
-                label="Cuotas vencidas (30%)"
-                value={kpis ? kpis.cuotasEnMoraInicial : '—'}
-                sub={kpis ? formatCOP(kpis.montoEnMoraInicial) : undefined}
-                hint="Cuotas atrasadas SOLO de la Cuota Inicial (no incluye Saldo Contraentrega) -- mismo criterio que Cartera en Gestión."
+                label="Cuotas vencidas (30%) (actual)"
+                value={kpisActuales ? kpisActuales.cuotasEnMoraInicial : '—'}
+                sub={kpisActuales ? formatCOP(kpisActuales.montoEnMoraInicial) : undefined}
+                hint="Cuotas atrasadas SOLO de la Cuota Inicial, a hoy (no incluye Saldo Contraentrega, y no cambia con el filtro de periodo) -- mismo criterio que Cartera en Gestión."
               />
             </div>
           </div>
 
           <div>
             <h3 className="text-[12px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
-              Saldo contraentrega (70%)
+              Saldo contraentrega (70%) — {labelVentana}
             </h3>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
               <KpiCard
@@ -465,50 +550,50 @@ export default function Resumen() {
                 iconBg="#eff6ff"
                 iconColor="#2563eb"
                 label="Totalidad del 70%"
-                value={kpis ? formatCOP(kpis.totalidad70) : '—'}
-                hint="Total esperado del Saldo Contraentrega según conciliación (última cuota del plan)."
+                value={kpisRecaudo ? formatCOP(kpisRecaudo.totalidad70) : '—'}
+                hint={`Total esperado del Saldo Contraentrega según conciliación, dentro del periodo seleccionado (${labelVentana}).`}
               />
               <KpiCard
                 icon={Wallet}
                 iconBg="#f0fdf4"
                 iconColor="#16a34a"
                 label="Saldo recaudado contraentrega (70%)"
-                value={kpis ? formatCOP(kpis.recaudado70) : '—'}
-                hint="Lo realmente recaudado (movimientos) hacia el Saldo Contraentrega, sin contar excedentes/saldo a favor."
+                value={kpisRecaudo ? formatCOP(kpisRecaudo.recaudado70) : '—'}
+                hint={`Lo realmente recaudado (movimientos) hacia el Saldo Contraentrega, sin contar excedentes/saldo a favor, dentro del periodo seleccionado (${labelVentana}).`}
               />
               <KpiCard
                 icon={Landmark}
                 iconBg="#faf5ff"
                 iconColor="#7c3aed"
                 label="Saldo pendiente contraentrega (70%)"
-                value={kpis ? formatCOP(kpis.pendienteContraentrega) : '—'}
-                hint="Saldo Contraentrega (70%) según conciliación, menos lo recaudado real hacia esa parte (movimientos)."
+                value={kpisRecaudo ? formatCOP(kpisRecaudo.pendienteContraentrega) : '—'}
+                hint={`Saldo Contraentrega (70%) según conciliación, menos lo recaudado real, dentro del periodo seleccionado (${labelVentana}).`}
               />
             </div>
           </div>
 
           <div>
             <h3 className="text-[12px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
-              Inventario y ventas
+              Inventario y ventas (actual)
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <KpiCard
                 icon={Warehouse}
                 iconBg="#eff6ff"
                 iconColor="#3b82f6"
-                label="Inmuebles disponibles"
-                value={kpis ? formatCOP(kpis.valorDisponible) : '—'}
-                sub={kpis ? `${kpis.cantidadDisponible} unidades` : undefined}
-                hint="Valor y cantidad de los inmuebles sin negocio vinculado o con estado Libre -- lo que aún no se ha vendido."
+                label="Inmuebles disponibles (actual)"
+                value={kpisActuales ? formatCOP(kpisActuales.valorDisponible) : '—'}
+                sub={kpisActuales ? `${kpisActuales.cantidadDisponible} unidades` : undefined}
+                hint="Valor y cantidad de los inmuebles sin negocio vinculado o con estado Libre, a hoy -- no cambia con el filtro de periodo."
               />
               <KpiCard
                 icon={BadgeCheck}
                 iconBg="#f0fdf4"
                 iconColor="#16a34a"
-                label="Inmuebles vendidos"
-                value={kpis ? formatCOP(kpis.valorVendidos) : '—'}
-                sub={kpis ? `${kpis.cantidadVendidos} unidades` : undefined}
-                hint="Valor y cantidad de los negocios con Estado = VENDIDO."
+                label="Inmuebles vendidos (actual)"
+                value={kpisActuales ? formatCOP(kpisActuales.valorVendidos) : '—'}
+                sub={kpisActuales ? `${kpisActuales.cantidadVendidos} unidades` : undefined}
+                hint="Valor y cantidad de los negocios con Estado = VENDIDO, a hoy -- no cambia con el filtro de periodo."
               />
             </div>
           </div>
@@ -545,39 +630,12 @@ export default function Resumen() {
               </button>
             </div>
           </div>
-          <div className="flex items-center gap-1 mb-2 flex-wrap flex-shrink-0">
-            {RANGOS_TENDENCIA.map((r) => (
-              <button
-                key={r.key}
-                onClick={() => setRangoTendencia(r.key)}
-                className={`text-[12px] font-medium px-2 py-0.5 rounded-md border transition-colors ${
-                  rangoTendencia === r.key
-                    ? 'bg-brand border-brand text-white'
-                    : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
-                }`}
-              >
-                {r.label}
-              </button>
-            ))}
-            {aniosDisponibles.length > 0 && (
-              <select
-                value={rangoTendencia === 'anio' ? anioSeleccionado : ''}
-                onChange={(e) => {
-                  setAnioSeleccionado(Number(e.target.value));
-                  setRangoTendencia('anio');
-                }}
-                className={`text-[12px] font-medium px-2 py-0.5 rounded-md border transition-colors ${
-                  rangoTendencia === 'anio'
-                    ? 'bg-brand border-brand text-white'
-                    : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
-                }`}
-              >
-                <option value="" disabled>Filtrar por año…</option>
-                {aniosDisponibles.map((a) => (
-                  <option key={a} value={a}>{a}</option>
-                ))}
-              </select>
-            )}
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap flex-shrink-0">
+            <span className="text-[12px] text-slate-400">Periodo:</span>
+            <span className="text-[12px] font-semibold text-brand-strong bg-brand-tint px-2 py-0.5 rounded-md">
+              {labelVentana}
+            </span>
+            <span className="text-[11px] text-slate-400 italic">— cambiar arriba, en "Periodo"</span>
           </div>
 
           <div className="flex items-end gap-2.5 flex-wrap mb-3 flex-shrink-0">

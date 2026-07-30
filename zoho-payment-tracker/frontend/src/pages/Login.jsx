@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Lock } from 'lucide-react';
 import { login } from '../utils/api';
+import logoBaiaKristal from '../assets/baia-kristal-logo.png';
 
 export default function Login({ onSuccess }) {
   const [password, setPassword] = useState('');
@@ -25,9 +25,7 @@ export default function Login({ onSuccess }) {
     <div className="flex items-center justify-center h-screen bg-aed-base">
       <form onSubmit={handleSubmit} className="card w-full max-w-[340px] p-6 flex flex-col gap-4">
         <div className="flex flex-col items-center gap-2 mb-1">
-          <div className="w-11 h-11 rounded-[10px] bg-gradient-to-br from-brand to-brand-strong flex items-center justify-center text-white">
-            <Lock size={18} strokeWidth={2} />
-          </div>
+          <img src={logoBaiaKristal} alt="Baía Kristal" className="w-24 h-auto" />
           <h1 className="font-heading text-[17px] font-bold text-ink">Cartera AED</h1>
           <p className="text-[13px] text-slate-500">Ingresa la clave de acceso</p>
         </div>
