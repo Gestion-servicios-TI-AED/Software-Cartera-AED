@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Search, Layers, MapPin, Building, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, AlertTriangle, Briefcase, ExternalLink, Warehouse } from 'lucide-react';
 import { getCarteraMora } from '../utils/api';
 import { formatCOP } from '../utils/format';
-import { estadoBadgeClass } from '../utils/estados';
 import { etiquetaEtapa } from '../utils/etapas';
+import Spinner from '../components/Spinner';
 
 // Encabezados ordenables -- 3 clics por columna: ascendente → descendente →
 // sin ordenar. `key` es el campo que el backend usa para ordenar todo el
@@ -15,7 +15,6 @@ const COLUMNAS = [
   { key: 'unidad', label: 'Nomenclatura', align: 'left' },
   { key: 'referencia', label: 'Referencia', align: 'left' },
   { key: 'comprador', label: 'Comprador', align: 'left' },
-  { key: 'estado', label: 'Estado', align: 'left' },
   { key: 'valorInmueble', label: 'Valor apartamento', align: 'right' },
   { key: 'cuotasEnMora', label: 'Cuotas mora', align: 'right' },
   { key: 'maxDiasAtraso', label: 'Días atraso', align: 'right' },
@@ -418,9 +417,9 @@ export default function CarteraMora() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={vista === 'contraentrega' ? 7 : 12} className="px-4 py-12 text-center text-slate-400">Cargando…</td></tr>
+                <tr><td colSpan={vista === 'contraentrega' ? 7 : 11}><Spinner label="Cargando cartera en gestión…" /></td></tr>
               ) : filas.length === 0 ? (
-                <tr><td colSpan={vista === 'contraentrega' ? 7 : 12} className="px-4 py-12 text-center text-slate-400">Sin resultados.</td></tr>
+                <tr><td colSpan={vista === 'contraentrega' ? 7 : 11} className="px-4 py-12 text-center text-slate-400">Sin resultados.</td></tr>
               ) : vista === 'contraentrega' ? (
                 filas.map((f) => (
                   <tr
@@ -450,11 +449,6 @@ export default function CarteraMora() {
                     <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px]">{f.unidad ?? '—'}</td>
                     <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-slate-500">{f.referencia ?? <span className="text-slate-300">—</span>}</td>
                     <td className="px-3 py-2 whitespace-nowrap max-w-[220px] truncate" title={f.comprador ?? ''}>{f.comprador ?? <span className="text-slate-300">—</span>}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {f.estado ? (
-                        <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${estadoBadgeClass(f.estado)}`}>{f.estado}</span>
-                      ) : <span className="text-slate-300">—</span>}
-                    </td>
                     <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px]">
                       {f.valorInmueble != null ? formatCOP(f.valorInmueble) : <span className="text-slate-300">—</span>}
                     </td>

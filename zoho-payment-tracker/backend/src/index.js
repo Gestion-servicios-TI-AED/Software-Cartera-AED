@@ -5,6 +5,7 @@ const path = require('path');
 const cron = require('node-cron');
 const { PrismaClient } = require('@prisma/client');
 const { syncOpportunitiesFromZoho } = require('./services/zohoSync');
+const { cerrarMesAnteriorSiFalta } = require('./services/dashboardRecaudoService');
 const { requireAuth } = require('./middleware/auth');
 const authRouter = require('./routes/auth');
 const opportunitiesRouter = require('./routes/opportunities');
@@ -79,6 +80,17 @@ if (process.env.DISABLE_CRON === 'true') {
     syncOpportunitiesFromZoho().catch((err) =>
       console.error('[cron] Error Zoho sync:', err.message)
     );
+  });
+
+  // Cierre mensual del Consolidado de Cartera (Resumen Gerencial) -- corre
+  // todos los días (no solo el día 1) para autocurarse si el servidor
+  // estuvo caído justo al cambio de mes; cerrarMesAnteriorSiFalta() no hace
+  // nada si el mes anterior ya tiene una foto guardada.
+  cron.schedule('15 0 * * *', () => {
+    console.log('[cron] Verificando cierre de mes del Consolidado de Cartera...');
+    cerrarMesAnteriorSiFalta()
+      .then((r) => { if (r) console.log(`[cron] Mes ${r.mes} cerrado en Consolidado de Cartera`); })
+      .catch((err) => console.error('[cron] Error cerrando mes del Consolidado de Cartera:', err.message));
   });
 }
 

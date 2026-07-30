@@ -12,7 +12,10 @@ const {
   obtenerMovimientosPorId,
   estadisticasPorEtapaYFrente,
 } = require('../services/inventarioNegocioService');
-const { obtenerDashboardRecaudo, obtenerCarteraMora, invalidarCacheDashboard } = require('../services/dashboardRecaudoService');
+const {
+  obtenerDashboardRecaudo, obtenerCarteraMora,
+  obtenerMesesDisponiblesResumen, obtenerResumenCarteraMes, invalidarCacheDashboard,
+} = require('../services/dashboardRecaudoService');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -371,76 +374,67 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Construye el `where` de NegocioMovimiento a partir de los mismos filtros
+// que usa la grilla de /movimientos -- compartido con /movimientos/export
+// para que la exportación respete exactamente los mismos filtros aplicados.
+// Devuelve `null` si hay filtros de negocio pero ninguno coincide (sin match).
+async function resolverMovimientosWhere({ search, fideicomiso, estado, tipoMovimiento, fechaDesde, fechaHasta }) {
+  const negocioWhere = {};
+  if (estado) negocioWhere.estado = { contains: estado, mode: 'insensitive' };
+  if (fideicomiso) negocioWhere.datos = { path: ['Fideicomiso'], string_contains: fideicomiso };
+  if (search) {
+    negocioWhere.OR = [
+      { referencia: { contains: search, mode: 'insensitive' } },
+      { compradores: { some: { nombre: { contains: search, mode: 'insensitive' } } } },
+      { compradores: { some: { nroId:   { contains: search, mode: 'insensitive' } } } },
+      { datos: { path: ['Nomenclatura'], string_contains: search } },
+    ];
+  }
+
+  const hasNegocioFilters = Object.keys(negocioWhere).length > 0;
+  let negocioIds = null;
+  if (hasNegocioFilters) {
+    const matching = await prisma.negocio.findMany({ where: negocioWhere, select: { id: true } });
+    negocioIds = matching.map((n) => n.id);
+    if (negocioIds.length === 0) return null;
+  }
+
+  const movWhere = {};
+  const orConditions = [];
+  if (negocioIds !== null) orConditions.push({ negocioId: { in: negocioIds } });
+  if (search) orConditions.push({ idMovimiento: { contains: search, mode: 'insensitive' } });
+  if (orConditions.length > 0) movWhere.OR = orConditions;
+  if (tipoMovimiento) {
+    movWhere.AND = [...(movWhere.AND || []), { datos: { path: ['Tipo Movimiento'], equals: tipoMovimiento } }];
+  }
+  if (fechaDesde || fechaHasta) {
+    movWhere.fechaContable = {};
+    if (fechaDesde) movWhere.fechaContable.gte = new Date(fechaDesde);
+    if (fechaHasta) {
+      const d = new Date(fechaHasta);
+      d.setHours(23, 59, 59, 999);
+      movWhere.fechaContable.lte = d;
+    }
+  }
+  return movWhere;
+}
+
 // GET /api/negocios/movimientos — todos los movimientos con contexto de negocio
 router.get('/movimientos', async (req, res) => {
   try {
-    const { search, fideicomiso, estado, tipoMovimiento, estadoMovimiento, fechaDesde, fechaHasta, page = '1', limit = '50' } = req.query;
+    const { search, fideicomiso, estado, tipoMovimiento, fechaDesde, fechaHasta, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
 
-    // Filtros que viven en el modelo Negocio
-    const negocioWhere = {};
-    if (estado) negocioWhere.estado = { contains: estado, mode: 'insensitive' };
-    if (fideicomiso) negocioWhere.datos = { path: ['Fideicomiso'], string_contains: fideicomiso };
-    if (search) {
-      negocioWhere.OR = [
-        { referencia: { contains: search, mode: 'insensitive' } },
-        { compradores: { some: { nombre: { contains: search, mode: 'insensitive' } } } },
-        { compradores: { some: { nroId:   { contains: search, mode: 'insensitive' } } } },
-        { datos: { path: ['Nomenclatura'], string_contains: search } },
-      ];
-    }
-
-    // Resolver IDs de negocios que coinciden con los filtros de negocio
-    const hasNegocioFilters = Object.keys(negocioWhere).length > 0;
-    let negocioIds = null;
-    if (hasNegocioFilters) {
-      const matching = await prisma.negocio.findMany({
-        where: negocioWhere,
-        select: { id: true },
+    const movWhere = await resolverMovimientosWhere({ search, fideicomiso, estado, tipoMovimiento, fechaDesde, fechaHasta });
+    if (movWhere === null) {
+      return res.json({
+        data: [],
+        pagination: { total: 0, page: pageNum, limit: limitNum, totalPages: 0 },
+        fideicomisos: [],
+        estados: [],
+        tiposMovimiento: [],
       });
-      negocioIds = matching.map((n) => n.id);
-      // Si hay filtros de negocio pero ninguno coincide, devolver vacío
-      if (negocioIds.length === 0) {
-        return res.json({
-          data: [],
-          pagination: { total: 0, page: pageNum, limit: limitNum, totalPages: 0 },
-          fideicomisos: [],
-          estados: [],
-          tiposMovimiento: [],
-          estadosMovimiento: [],
-        });
-      }
-    }
-
-    // Filtros que viven en NegocioMovimiento
-    const movWhere = {};
-
-    // Condición OR: negocios que coinciden O idMovimiento que coincide
-    const orConditions = [];
-    if (negocioIds !== null) {
-      orConditions.push({ negocioId: { in: negocioIds } });
-    }
-    if (search) {
-      orConditions.push({ idMovimiento: { contains: search, mode: 'insensitive' } });
-    }
-    if (orConditions.length > 0) {
-      movWhere.OR = orConditions;
-    }
-    if (tipoMovimiento) {
-      movWhere.AND = [...(movWhere.AND || []), { datos: { path: ['Tipo Movimiento'], equals: tipoMovimiento } }];
-    }
-    if (estadoMovimiento) {
-      movWhere.AND = [...(movWhere.AND || []), { datos: { path: ['Estado'], equals: estadoMovimiento } }];
-    }
-    if (fechaDesde || fechaHasta) {
-      movWhere.fechaContable = {};
-      if (fechaDesde) movWhere.fechaContable.gte = new Date(fechaDesde);
-      if (fechaHasta) {
-        const d = new Date(fechaHasta);
-        d.setHours(23, 59, 59, 999);
-        movWhere.fechaContable.lte = d;
-      }
     }
 
     const [total, movimientos] = await Promise.all([
@@ -459,11 +453,10 @@ router.get('/movimientos', async (req, res) => {
     ]);
 
     // Opciones de filtro — siempre se devuelven
-    const [fideicomisosRaw, estadosRaw, tiposMovRaw, estadosMovRaw] = await Promise.all([
+    const [fideicomisosRaw, estadosRaw, tiposMovRaw] = await Promise.all([
       prisma.$queryRaw`SELECT DISTINCT datos->>'Fideicomiso' AS fideicomiso FROM "Negocio" WHERE datos->>'Fideicomiso' IS NOT NULL AND datos->>'Fideicomiso' != '' ORDER BY 1`,
       prisma.negocio.findMany({ select: { estado: true }, where: { estado: { not: null } }, distinct: ['estado'], orderBy: { estado: 'asc' } }),
       prisma.$queryRaw`SELECT DISTINCT datos->>'Tipo Movimiento' AS tipo FROM "NegocioMovimiento" WHERE datos->>'Tipo Movimiento' IS NOT NULL AND datos->>'Tipo Movimiento' != '' ORDER BY 1`,
-      prisma.$queryRaw`SELECT DISTINCT datos->>'Estado' AS estado FROM "NegocioMovimiento" WHERE datos->>'Estado' IS NOT NULL AND datos->>'Estado' != '' ORDER BY 1`,
     ]);
 
     res.json({
@@ -486,7 +479,48 @@ router.get('/movimientos', async (req, res) => {
       ...(fideicomisosRaw ? { fideicomisos: fideicomisosRaw.map((r) => r.fideicomiso).filter(Boolean) } : {}),
       ...(estadosRaw ? { estados: estadosRaw.map((e) => e.estado).filter(Boolean) } : {}),
       ...(tiposMovRaw ? { tiposMovimiento: tiposMovRaw.map((r) => r.tipo).filter(Boolean) } : {}),
-      ...(estadosMovRaw ? { estadosMovimiento: estadosMovRaw.map((r) => r.estado).filter(Boolean) } : {}),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/negocios/movimientos/export — todos los movimientos que matchean
+// los filtros, SIN paginar (para exportar exactamente lo que esta filtrado
+// en la grilla, no solo la pagina visible).
+router.get('/movimientos/export', async (req, res) => {
+  try {
+    const { search, fideicomiso, estado, tipoMovimiento, fechaDesde, fechaHasta } = req.query;
+
+    const movWhere = await resolverMovimientosWhere({ search, fideicomiso, estado, tipoMovimiento, fechaDesde, fechaHasta });
+    if (movWhere === null) return res.json({ data: [] });
+
+    const movimientos = await prisma.negocioMovimiento.findMany({
+      where: movWhere,
+      orderBy: [{ fechaContable: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+      include: {
+        negocio: {
+          include: { compradores: { orderBy: { orden: 'asc' } } },
+        },
+      },
+    });
+
+    res.json({
+      data: movimientos.map((m) => ({
+        id: m.id,
+        referencia: m.referencia,
+        fechaContable: m.fechaContable,
+        datos: m.datos,
+        negocio: m.negocio
+          ? {
+              estado: m.negocio.estado,
+              fideicomiso: m.negocio.datos?.Fideicomiso ?? null,
+              nomenclatura: m.negocio.datos?.Nomenclatura ?? null,
+              inventario: m.negocio.datos?.Inventario ?? null,
+              compradores: m.negocio.compradores,
+            }
+          : null,
+      })),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -546,6 +580,29 @@ router.get('/cartera-mora', async (req, res) => {
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
     const resultado = await obtenerCarteraMora({ search, etapa, frente, torre, rango, vista, sortBy, sortDir, page: pageNum, limit: limitNum });
+    res.json(resultado);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/negocios/resumen-etapas/meses — meses navegables (cerrados + el actual en vivo)
+router.get('/resumen-etapas/meses', async (req, res) => {
+  try {
+    const meses = await obtenerMesesDisponiblesResumen();
+    res.json(meses);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/negocios/resumen-etapas?mes=YYYY-MM — Consolidado de Cartera por
+// Etapa (Resumen Gerencial). Sin `mes`, o con el mes actual, se calcula en
+// vivo; con un mes ya cerrado, se lee la foto guardada (ver cerrarMesAnteriorSiFalta).
+router.get('/resumen-etapas', async (req, res) => {
+  try {
+    const resultado = await obtenerResumenCarteraMes(req.query.mes);
+    if (!resultado) return res.status(404).json({ error: 'No hay datos guardados para ese mes' });
     res.json(resultado);
   } catch (err) {
     res.status(500).json({ error: err.message });

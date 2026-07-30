@@ -1,7 +1,12 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { syncInventario, getSyncStatus } = require('../services/inventarioSync');
-const { detectarProjectCodeInconsistentes } = require('../services/inventarioNegocioService');
+const {
+  detectarProjectCodeInconsistentes,
+  valoresProyectoTorre,
+  compararEtapas,
+  esFrenteSeleccionable,
+} = require('../services/inventarioNegocioService');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -29,17 +34,40 @@ router.get('/verificar-project-code', async (req, res) => {
   }
 });
 
-// GET /api/inventario?search=&proyecto=&categoria=&estado=&page=&limit=
+// GET /api/inventario?search=&proyecto=&categoria=&estado=&etapa=&frente=&torre=&page=&limit=
 router.get('/', async (req, res) => {
   try {
-    const { search, proyecto, categoria, estado, page = '1', limit = '50' } = req.query;
+    const { search, proyecto, categoria, estado, etapa, frente, torre, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
+
+    // Mismo cascade Etapa → Frente → Torre que Negocios/Cartera en
+    // Gestión/Resumen -- se deriva de InventarioItem.datos.Proyecto_Torre
+    // directamente, sin pasar por Negocio (un inmueble tiene Etapa/Frente/
+    // Torre aunque no tenga negocio vinculado).
+    const valores = await valoresProyectoTorre();
 
     const and = [];
     if (proyecto) and.push({ proyecto });
     if (categoria) and.push({ categoria });
     if (estado) and.push({ estado });
+    if (etapa) {
+      const lista = valores.porEtapa.get(etapa) || [];
+      and.push(lista.length > 0
+        ? { OR: lista.map((v) => ({ datos: { path: ['Proyecto_Torre'], equals: v } })) }
+        : { id: '' });
+    }
+    if (frente && torre) {
+      const lista = valores.porFrenteTorre.get(`${frente}||${torre}`) || [];
+      and.push(lista.length > 0
+        ? { OR: lista.map((v) => ({ datos: { path: ['Proyecto_Torre'], equals: v } })) }
+        : { id: '' });
+    } else if (frente) {
+      const lista = valores.porFrente.get(frente) || [];
+      and.push(lista.length > 0
+        ? { OR: lista.map((v) => ({ datos: { path: ['Proyecto_Torre'], equals: v } })) }
+        : { id: '' });
+    }
     if (search) {
       and.push({
         OR: [
@@ -50,7 +78,7 @@ router.get('/', async (req, res) => {
       });
     }
     const where = and.length > 0 ? { AND: and } : {};
-    const noFilters = !search && !proyecto && !categoria && !estado;
+    const noFilters = !search && !proyecto && !categoria && !estado && !etapa && !frente && !torre;
 
     const [total, items, proyectos, categorias, estados] = await Promise.all([
       prisma.inventarioItem.count({ where }),
@@ -92,6 +120,11 @@ router.get('/', async (req, res) => {
       proyectos: proyectos ? proyectos.map((p) => p.proyecto) : undefined,
       categorias: categorias ? categorias.map((c) => c.categoria) : undefined,
       estados: estados ? estados.map((e) => e.estado) : undefined,
+      etapasDisponibles: [...valores.porEtapa.keys()].sort(compararEtapas),
+      frentesDisponibles: [...valores.porFrente.keys()].filter(esFrenteSeleccionable).sort(),
+      frentesPorEtapa: valores.frentesPorEtapa,
+      torresPorFrente: valores.torresPorFrente,
+      torresPorEtapaFrente: valores.torresPorEtapaFrente,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

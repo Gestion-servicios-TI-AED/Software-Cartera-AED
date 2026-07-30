@@ -188,3 +188,18 @@ model ConfiguracionFrente {
 
   @@unique([frente, torre, piso])
 }
+
+// Foto fija mensual del "Consolidado de Cartera por Etapa" de Resumen
+// Gerencial -- réplica en vivo del Excel manual, pero el Excel congela cada
+// mes en su propia hoja al cerrarlo, y nuestro cálculo es siempre en vivo
+// (no hay forma de reconstruir con certeza cómo se veía el portafolio en un
+// mes ya pasado). Este modelo guarda esa foto al cierre de cada mes (ver
+// cron en index.js) para poder navegar "mes a mes" igual que las hojas del
+// Excel. `mes` en formato "YYYY-MM"; `datos` es el mismo JSON que devuelve
+// obtenerResumenPorEtapa() (`{ etapas, total }`).
+model ResumenCarteraMensual {
+  id        String   @id @default(uuid())
+  mes       String   @unique
+  datos     Json
+  createdAt DateTime @default(now())
+}

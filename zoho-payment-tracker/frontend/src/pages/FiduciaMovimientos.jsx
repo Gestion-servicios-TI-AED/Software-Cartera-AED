@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, X, ChevronRight } from 'lucide-react';
-import { getAllNegocioMovimientos } from '../utils/api';
+import { Search, X, ChevronRight, Download } from 'lucide-react';
+import { getAllNegocioMovimientos, getAllNegocioMovimientosExport } from '../utils/api';
 import { formatExcelDate } from '../utils/format';
 import { filtrarKeysMovimiento } from '../utils/columnasExcluidas';
 import ConceptoHint from '../components/ConceptoHint';
-import { estadoBadgeClass } from '../utils/estados';
-import { descripcionProyecto } from '../utils/proyectos';
+import { descripcionProyecto, obtenerProyecto } from '../utils/proyectos';
+import * as XLSX from 'xlsx';
 
 function useDebounce(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
@@ -43,17 +43,6 @@ function formatCell(key, value) {
   return String(value);
 }
 
-// Color del estado del negocio — centralizado en utils/estados.js
-const estadoNegocioColor = estadoBadgeClass;
-
-function estadoMovColor(estado) {
-  if (!estado) return 'text-slate-600 bg-slate-100';
-  const e = estado.toLowerCase();
-  if (e.includes('aplicado')) return 'text-emerald-700 bg-emerald-50';
-  if (e.includes('pendiente') || e.includes('reversado')) return 'text-amber-700 bg-amber-50';
-  return 'text-slate-600 bg-slate-100';
-}
-
 function cleanNombre(nombre) {
   if (!nombre) return null;
   return nombre.replace(/^\d+\s+/, '').replace(/\s*\(\d+\.?\d*%\)\s*$/, '');
@@ -72,7 +61,6 @@ function MovimientoRow({ mov }) {
   const fecha    = datos['Fecha Contable'] ? formatExcelDate(datos['Fecha Contable']) : null;
   const tipo     = datos['Tipo Movimiento'] || datos['Concepto'] || null;
   const valor    = datos['Valor'] ? formatCOP(datos['Valor']) : null;
-  const estadoMov = datos['Estado'];
 
   const compradorPrincipal = cleanNombre(neg?.compradores?.[0]?.nombre);
   const extraCompradores   = (neg?.compradores?.length ?? 0) - 1;
@@ -112,11 +100,6 @@ function MovimientoRow({ mov }) {
             )
             : <span className="text-slate-300">—</span>}
         </td>
-        <td className="px-3 py-2.5 whitespace-nowrap">
-          {neg?.estado
-            ? <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${estadoNegocioColor(neg.estado)}`}>{neg.estado}</span>
-            : <span className="text-slate-300 text-[13px]">—</span>}
-        </td>
         <td className="px-3 py-2.5 whitespace-nowrap text-[13px] text-slate-500">
           {fecha ?? <span className="text-slate-300">—</span>}
         </td>
@@ -126,17 +109,10 @@ function MovimientoRow({ mov }) {
         <td className="px-3 py-2.5 whitespace-nowrap text-[14px] text-right font-medium text-slate-700">
           {valor ?? <span className="text-slate-300">—</span>}
         </td>
-        <td className="px-3 py-2.5 whitespace-nowrap text-right">
-          {estadoMov && (
-            <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${estadoMovColor(estadoMov)}`}>
-              {estadoMov}
-            </span>
-          )}
-        </td>
       </tr>
       {expanded && (
         <tr className="bg-brand-tint border-b border-aed-border">
-          <td colSpan={10} className="px-5 py-3">
+          <td colSpan={8} className="px-5 py-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-6 gap-y-2.5">
               {allFields.map((col) => {
                 const v = datos[col];
@@ -167,7 +143,6 @@ export default function FiduciaMovimientos() {
   const [fideicomisoFilter, setFideicomisoFilter] = useState('');
   const [estadoFilter,     setEstadoFilter]     = useState('');
   const [tipoMovFilter,    setTipoMovFilter]    = useState('');
-  const [estadoMovFilter,  setEstadoMovFilter]  = useState('');
   const [fechaDesde,       setFechaDesde]       = useState('');
   const [fechaHasta,       setFechaHasta]       = useState('');
   const [datePreset,       setDatePreset]       = useState('');
@@ -175,17 +150,16 @@ export default function FiduciaMovimientos() {
   const debouncedSearch = useDebounce(search);
 
   const filtersRef = useRef({});
-  filtersRef.current = { debouncedSearch, fideicomisoFilter, estadoFilter, tipoMovFilter, estadoMovFilter, fechaDesde, fechaHasta };
+  filtersRef.current = { debouncedSearch, fideicomisoFilter, estadoFilter, tipoMovFilter, fechaDesde, fechaHasta };
 
   const fetchData = useCallback((p = 1) => {
-    const { debouncedSearch: s, fideicomisoFilter: f, estadoFilter: e, tipoMovFilter: tm, estadoMovFilter: em, fechaDesde: fd, fechaHasta: fh } = filtersRef.current;
+    const { debouncedSearch: s, fideicomisoFilter: f, estadoFilter: e, tipoMovFilter: tm, fechaDesde: fd, fechaHasta: fh } = filtersRef.current;
     setLoading(true);
     getAllNegocioMovimientos({
       search:          s  || undefined,
       fideicomiso:     f  || undefined,
       estado:          e  || undefined,
       tipoMovimiento:  tm || undefined,
-      estadoMovimiento: em || undefined,
       fechaDesde:      fd || undefined,
       fechaHasta:      fh || undefined,
       page:            p,
@@ -196,17 +170,93 @@ export default function FiduciaMovimientos() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { fetchData(1); }, [debouncedSearch, fideicomisoFilter, estadoFilter, tipoMovFilter, estadoMovFilter, fechaDesde, fechaHasta, fetchData]);
+  useEffect(() => { fetchData(1); }, [debouncedSearch, fideicomisoFilter, estadoFilter, tipoMovFilter, fechaDesde, fechaHasta, fetchData]);
 
-  const clearAll  = () => { setSearch(''); setFideicomisoFilter(''); setEstadoFilter(''); setTipoMovFilter(''); setEstadoMovFilter(''); setFechaDesde(''); setFechaHasta(''); setDatePreset(''); };
-  const hasFilters = search || fideicomisoFilter || estadoFilter || tipoMovFilter || estadoMovFilter || fechaDesde || fechaHasta;
+  const clearAll  = () => { setSearch(''); setFideicomisoFilter(''); setEstadoFilter(''); setTipoMovFilter(''); setFechaDesde(''); setFechaHasta(''); setDatePreset(''); };
+  const hasFilters = search || fideicomisoFilter || estadoFilter || tipoMovFilter || fechaDesde || fechaHasta;
+
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = useCallback(async () => {
+    const { debouncedSearch: s, fideicomisoFilter: f, estadoFilter: e, tipoMovFilter: tm, fechaDesde: fd, fechaHasta: fh } = filtersRef.current;
+    setExporting(true);
+    try {
+      const res = await getAllNegocioMovimientosExport({
+        search:           s  || undefined,
+        fideicomiso:      f  || undefined,
+        estado:           e  || undefined,
+        tipoMovimiento:   tm || undefined,
+        fechaDesde:       fd || undefined,
+        fechaHasta:       fh || undefined,
+      });
+      const rows = res.data || [];
+      if (rows.length === 0) return;
+
+      // Union de todas las columnas de "datos" presentes en los movimientos
+      // exportados (respeta la misma exclusión que la vista — sólo
+      // "Sucursal" — así que "Fecha Mov. Banco" queda incluida siempre que
+      // algún movimiento la tenga), en orden de primera aparición.
+      const datosKeys = [];
+      const seen = new Set();
+      for (const mov of rows) {
+        for (const k of filtrarKeysMovimiento(Object.keys(mov.datos || {}))) {
+          if (!seen.has(k)) { seen.add(k); datosKeys.push(k); }
+        }
+      }
+
+      const headers = ['Referencia', 'Proyecto', 'Nomenclatura', 'Comprador(es)', 'Cédula(s)', 'Estado negocio', ...datosKeys];
+      const excelRows = rows.map((mov) => {
+        const neg = mov.negocio;
+        const compradores = (neg?.compradores || []).map((c) => cleanNombre(c.nombre)).filter(Boolean).join(' | ');
+        const cedulas = (neg?.compradores || []).map((c) => c.nroId || '').filter(Boolean).join(' | ');
+        const row = {
+          Referencia: mov.referencia ?? '',
+          Proyecto: neg?.fideicomiso ? shortFideicomiso(neg.fideicomiso) : '',
+          Nomenclatura: neg?.nomenclatura ?? '',
+          'Comprador(es)': compradores,
+          'Cédula(s)': cedulas,
+          'Estado negocio': neg?.estado ?? '',
+        };
+        const datos = mov.datos || {};
+        for (const k of datosKeys) {
+          const v = datos[k];
+          row[k] = v != null && v !== '' ? (formatCell(k, v) ?? String(v)) : '';
+        }
+        return row;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(excelRows, { header: headers });
+      ws['!cols'] = headers.map((h) => ({ wch: Math.max(h.length, 12) }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Movimientos');
+      const fecha = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `movimientos-fiduciarios-${fecha}.xlsx`);
+    } catch (err) {
+      console.error(err);
+      alert('Error al exportar los movimientos.');
+    } finally {
+      setExporting(false);
+    }
+  }, []);
 
   const pagination   = result?.pagination;
   const movimientos  = result?.data        || [];
-  const fideicomisos = result?.fideicomisos || [];
+  // Orden: Etapa 1 → 4 primero, luego los sin etapa especifica al final por
+  // orden alfabetico (mismo criterio pedido en Negocios/Dashboard).
+  const fideicomisos = [...(result?.fideicomisos || [])].sort((a, b) => {
+    const matchA = String(a).match(/^(\d{4,6})/);
+    const matchB = String(b).match(/^(\d{4,6})/);
+    const etapaA = matchA ? obtenerProyecto(matchA[1])?.etapa : null;
+    const etapaB = matchB ? obtenerProyecto(matchB[1])?.etapa : null;
+    if (etapaA != null && etapaB != null) return parseInt(etapaA, 10) - parseInt(etapaB, 10);
+    if (etapaA != null) return -1;
+    if (etapaB != null) return 1;
+    const labelA = (matchA && descripcionProyecto(matchA[1])) || shortFideicomiso(a);
+    const labelB = (matchB && descripcionProyecto(matchB[1])) || shortFideicomiso(b);
+    return String(labelA).localeCompare(String(labelB), 'es');
+  });
   const estados      = result?.estados      || [];
   const tiposMov     = result?.tiposMovimiento || [];
-  const estadosMov   = result?.estadosMovimiento || [];
 
   return (
     <div className="flex flex-col min-h-screen bg-aed-base">
@@ -223,6 +273,22 @@ export default function FiduciaMovimientos() {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
         )}
+        <button
+          onClick={handleExport}
+          disabled={exporting || !pagination || pagination.total === 0}
+          title="Exportar todos los movimientos filtrados"
+          className="ml-auto flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand text-white shadow-sm hover:bg-brand-strong disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-[14px] font-semibold"
+        >
+          {exporting ? (
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            <Download size={15} />
+          )}
+          Exportar
+        </button>
       </header>
 
       <div className="flex-1 p-5 flex flex-col gap-4">
@@ -289,7 +355,7 @@ export default function FiduciaMovimientos() {
             )}
           </div>
 
-          {/* Fila 2: Tipo movimiento + Estado movimiento */}
+          {/* Fila 2: Tipo movimiento */}
           <div className="flex flex-wrap gap-3 items-end">
             {tiposMov.length > 0 && (
               <div className="min-w-52">
@@ -301,20 +367,6 @@ export default function FiduciaMovimientos() {
                 >
                   <option value="">Todos los tipos</option>
                   {tiposMov.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-            )}
-
-            {estadosMov.length > 0 && (
-              <div className="min-w-44">
-                <label className="section-label block mb-1">Estado movimiento</label>
-                <select
-                  value={estadoMovFilter}
-                  onChange={(e) => setEstadoMovFilter(e.target.value)}
-                  className="input w-full py-2 px-3 text-[15px]"
-                >
-                  <option value="">Todos los estados</option>
-                  {estadosMov.map((e) => <option key={e} value={e}>{e}</option>)}
                 </select>
               </div>
             )}
@@ -405,11 +457,9 @@ export default function FiduciaMovimientos() {
                     <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Proyecto<ConceptoHint columna="Fideicomiso" hoja="movimiento" /></span></th>
                     <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Nomenclatura<ConceptoHint columna="Nomenclatura" hoja="movimiento" /></span></th>
                     <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Comprador<ConceptoHint columna="Propietario" hoja="movimiento" /></span></th>
-                    <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Estado negocio<ConceptoHint columna="Estado" hoja="resumen" /></span></th>
                     <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Fecha contable<ConceptoHint columna="Fecha Contable" hoja="movimiento" /></span></th>
                     <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Tipo movimiento<ConceptoHint columna="Tipo Movimiento" hoja="movimiento" /></span></th>
                     <th className="section-label px-3 py-2.5 text-right whitespace-nowrap"><span className="inline-flex items-center gap-1">Valor<ConceptoHint columna="Valor" hoja="movimiento" /></span></th>
-                    <th className="section-label px-3 py-2.5 text-right whitespace-nowrap">Estado mov.</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -136,6 +136,16 @@ export async function getCarteraMora(params = {}) {
   return data;
 }
 
+export async function getResumenPorEtapa(mes) {
+  const { data } = await api.get('/negocios/resumen-etapas', { params: mes ? { mes } : {} });
+  return data;
+}
+
+export async function getResumenEtapasMeses() {
+  const { data } = await api.get('/negocios/resumen-etapas/meses');
+  return data;
+}
+
 export async function getNegocio(referencia) {
   const { data } = await api.get(`/negocios/${encodeURIComponent(referencia)}`);
   return data;
@@ -173,6 +183,11 @@ export async function getInconsistenciasProjectCode() {
 
 export async function getAllNegocioMovimientos(params = {}) {
   const { data } = await api.get('/negocios/movimientos', { params });
+  return data;
+}
+
+export async function getAllNegocioMovimientosExport(params = {}) {
+  const { data } = await api.get('/negocios/movimientos/export', { params, timeout: 60000 });
   return data;
 }
 

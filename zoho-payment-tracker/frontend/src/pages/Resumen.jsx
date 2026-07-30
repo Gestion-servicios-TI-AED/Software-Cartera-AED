@@ -1,21 +1,25 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Clock, CheckCircle, XCircle, Layers, MapPin, Building, X, ChevronDown, ChevronUp,
+  ChevronLeft, ChevronRight,
   AlertTriangle, Landmark, Warehouse, CalendarClock, BadgeCheck, PieChart, Wallet,
+  Maximize2, Minimize2,
 } from 'lucide-react';
 import HelpTip from '../components/HelpTip';
 import KpiCard from '../components/KpiCard';
 import PlanVsRecaudoLineChart from '../components/stats/PlanVsRecaudoLineChart';
 import EtapaRecaudoBars from '../components/stats/EtapaRecaudoBars';
-import { EmbudoEstados } from '../components/stats/CarteraWidgets';
+import ConsolidadoCarteraEtapa from '../components/stats/ConsolidadoCarteraEtapa';
 import {
   getStatsResumen,
   getStatsSync,
-  getStatsCartera,
   getDashboardRecaudo,
+  getResumenPorEtapa,
+  getResumenEtapasMeses,
 } from '../utils/api';
 import { formatCOP, formatDateTime } from '../utils/format';
 import { etiquetaEtapa } from '../utils/etapas';
+import { useModoEnfocado } from '../hooks/useModoEnfocado';
 
 // Filtro de alcance del plan: Cuota Inicial (~30%, todo el plan MENOS Saldo
 // Contraentrega), Saldo Contraentrega (~70%, la última cuota), o Ambos (el
@@ -94,14 +98,47 @@ function restarMeses(mesKey, n) {
 export default function Resumen() {
   const [resumen, setResumen] = useState(null);
   const [syncLogs, setSyncLogs] = useState([]);
-  const [cartera, setCartera] = useState(null);
   const [planRecaudo, setPlanRecaudo] = useState(null);
+  // Consolidado de Cartera por Etapa -- navegable mes a mes como las hojas
+  // del Excel. `mesesDisponibles` trae los meses ya cerrados (con foto
+  // guardada) + el mes actual en vivo, siempre al final; `mesSeleccionado`
+  // es la clave "YYYY-MM" del que se está mostrando.
+  const [mesesDisponibles, setMesesDisponibles] = useState([]);
+  const [mesSeleccionado, setMesSeleccionado] = useState(null);
+  const [resumenEtapas, setResumenEtapas] = useState(null);
   const [rangoTendencia, setRangoTendencia] = useState('total');
   const [anioSeleccionado, setAnioSeleccionado] = useState(new Date().getFullYear());
   const [filtroPorcentaje, setFiltroPorcentaje] = useState('ambos');
-  // Escondidas por defecto -- se pueden desplegar con un clic.
+  // Escondida por defecto -- se puede desplegar con un clic.
   const [etapaAbierta, setEtapaAbierta] = useState(false);
-  const [estadoAbierto, setEstadoAbierto] = useState(false);
+  // Modo enfocado: la gráfica de tendencia pasa a cubrir toda la pantalla.
+  const [enfocado, toggleEnfocado] = useModoEnfocado();
+  // Alto real de la ventana -- para calcular en píxeles (no en %, que con
+  // Recharts anidado en flexbox se rompe fácil) cuánto le queda disponible al
+  // gráfico en pantalla completa. En vez de adivinar cuánto ocupa el
+  // encabezado (título/rango/filtros) con un número fijo, se MIDE de verdad
+  // con un ref -- un valor fijo quedaba muy conservador en monitores
+  // normales (terminaba dando prácticamente el mismo alto que el modo
+  // normal, sin ninguna ganancia visible).
+  const [altoVentana, setAltoVentana] = useState(() => window.innerHeight);
+  const headerTendenciaRef = useRef(null);
+  const [altoHeaderTendencia, setAltoHeaderTendencia] = useState(140);
+  useEffect(() => {
+    const onResize = () => setAltoVentana(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useLayoutEffect(() => {
+    const el = headerTendenciaRef.current;
+    if (!el) return undefined;
+    const medir = () => setAltoHeaderTendencia(el.getBoundingClientRect().height);
+    medir();
+    const observer = new ResizeObserver(medir);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [enfocado]);
+  // 40px de margen de seguridad (padding inferior del contenedor + aire).
+  const alturaGrafica = enfocado ? Math.max(400, altoVentana - altoHeaderTendencia - 40) : 640;
 
   // Filtro Etapa → Frente → Torre de la tendencia mensual -- mismo patrón en
   // cascada que ReportePlanRecaudo/CarteraMora.
@@ -118,9 +155,31 @@ export default function Resumen() {
     Promise.allSettled([
       getStatsResumen().then(setResumen),
       getStatsSync(5).then(setSyncLogs),
-      getStatsCartera().then(setCartera),
+      getResumenEtapasMeses().then((meses) => {
+        setMesesDisponibles(meses);
+        const actual = meses.find((m) => m.enVivo) ?? meses[meses.length - 1];
+        if (actual) setMesSeleccionado(actual.mes);
+      }),
     ]);
   }, []);
+
+  // Se recarga cada vez que cambia el mes seleccionado en el navegador de
+  // slides del Consolidado de Cartera por Etapa.
+  useEffect(() => {
+    if (!mesSeleccionado) return;
+    setResumenEtapas(null);
+    getResumenPorEtapa(mesSeleccionado).then(setResumenEtapas);
+  }, [mesSeleccionado]);
+
+  const idxMesSeleccionado = mesesDisponibles.findIndex((m) => m.mes === mesSeleccionado);
+  const irMesAnterior = () => {
+    if (idxMesSeleccionado > 0) setMesSeleccionado(mesesDisponibles[idxMesSeleccionado - 1].mes);
+  };
+  const irMesSiguiente = () => {
+    if (idxMesSeleccionado >= 0 && idxMesSeleccionado < mesesDisponibles.length - 1) {
+      setMesSeleccionado(mesesDisponibles[idxMesSeleccionado + 1].mes);
+    }
+  };
 
   // planRecaudo sí depende del filtro Etapa/Frente/Torre -- se recarga cada
   // vez que cambian (el backend recalcula meses/totales sobre el subconjunto
@@ -247,13 +306,15 @@ export default function Resumen() {
     for (const q of quincenas) {
       let esperado = 0;
       let recaudado = 0;
+      let porRecaudar = 0;
       for (const d of dias) {
         if (d >= q.desde && d <= q.hasta) {
           esperado += fuente?.[d]?.esperado ?? 0;
           recaudado += fuente?.[d]?.recaudado ?? 0;
+          porRecaudar += fuente?.[d]?.porRecaudar ?? 0;
         }
       }
-      out[q.key] = { esperado, recaudado };
+      out[q.key] = { esperado, recaudado, porRecaudar };
     }
     return out;
   }, [planRecaudo, quincenas, filtroPorcentaje, granularidadTendencia]);
@@ -454,23 +515,37 @@ export default function Resumen() {
         </div>
 
         {/* Tendencia: plan de pagos vs. recaudo real, mes a mes */}
-        <div className="card p-4">
-          <div className="flex items-baseline justify-between mb-1 flex-wrap gap-2">
+        <div className={enfocado
+          ? 'fixed inset-0 z-50 bg-aed-base p-5 overflow-auto'
+          : 'card p-4'}
+        >
+          <div className={enfocado ? 'card p-4' : ''}>
+          <div ref={headerTendenciaRef}>
+          <div className="flex items-baseline justify-between mb-1 flex-wrap gap-2 flex-shrink-0">
             <h2 className="text-[15px] font-semibold text-slate-700 flex items-center gap-1.5">
               Plan de pagos vs. Recaudo — tendencia mensual
               <HelpTip text="Compara, mes a mes y para todo el portafolio, cuánto se esperaba recaudar según el plan de pagos de cada negocio contra lo efectivamente recaudado. Incluye meses futuros del plan, por eso lo recaudado cae por debajo de lo esperado en los meses que aún no vencen." />
             </h2>
-            {resumen && (
-              <span className="text-[13px] text-slate-500 inline-flex items-center gap-1 flex-wrap">
-                Recaudado en el año
-                <b className="text-slate-600">{formatCOP(resumen.recaudoAnio)}</b>
-                <span className="mx-1">·</span>
-                Separaciones este mes
-                <b className="text-slate-600">{resumen.separacionesMes}</b>
-              </span>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              {resumen && (
+                <span className="text-[13px] text-slate-500 inline-flex items-center gap-1 flex-wrap">
+                  Recaudado en el año
+                  <b className="text-slate-600">{formatCOP(resumen.recaudoAnio)}</b>
+                  <span className="mx-1">·</span>
+                  Separaciones este mes
+                  <b className="text-slate-600">{resumen.separacionesMes}</b>
+                </span>
+              )}
+              <button
+                onClick={toggleEnfocado}
+                className="btn-secondary px-2.5 py-1 text-[13px] flex items-center gap-1.5"
+              >
+                {enfocado ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                {enfocado ? 'Salir de pantalla completa' : 'Pantalla completa'}
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-1 mb-2 flex-wrap">
+          <div className="flex items-center gap-1 mb-2 flex-wrap flex-shrink-0">
             {RANGOS_TENDENCIA.map((r) => (
               <button
                 key={r.key}
@@ -505,7 +580,7 @@ export default function Resumen() {
             )}
           </div>
 
-          <div className="flex items-end gap-2.5 flex-wrap mb-3">
+          <div className="flex items-end gap-2.5 flex-wrap mb-3 flex-shrink-0">
             <div className="flex gap-1">
               {FILTROS_PORCENTAJE.map((f) => (
                 <button
@@ -522,8 +597,53 @@ export default function Resumen() {
               ))}
             </div>
           </div>
+          </div>
 
-          <PlanVsRecaudoLineChart meses={puntosTendencia} totales={totalesElegidos} granularidad={granularidadTendencia} />
+          <PlanVsRecaudoLineChart
+            meses={puntosTendencia}
+            totales={totalesElegidos}
+            granularidad={granularidadTendencia}
+            altura={alturaGrafica}
+          />
+          </div>
+        </div>
+
+        {/* Consolidado de Cartera por Etapa -- réplica en vivo del Excel manual. Siempre visible, sin colapsar. */}
+        <div className="card p-4">
+          <h2 className="text-[15px] font-semibold text-slate-700 flex items-center gap-1.5 mb-3">
+            Consolidado de Cartera por Etapa
+            <HelpTip text="Réplica en vivo del Excel 'CONSOLIDADO DE CARTERA' que arma Gerencia cada mes. Algunas columnas quedan marcadas Pendiente porque su criterio exacto no está confirmado todavía." />
+          </h2>
+          <div className="flex items-center justify-center gap-4 mb-4">
+            <button
+              onClick={irMesAnterior}
+              disabled={idxMesSeleccionado <= 0}
+              className="p-3 rounded-full border-2 border-brand bg-brand-tint hover:bg-brand-soft disabled:opacity-30 disabled:cursor-not-allowed disabled:border-aed-border disabled:bg-transparent transition-colors shadow-sm"
+              aria-label="Mes anterior"
+            >
+              <ChevronLeft size={26} strokeWidth={2.75} className="text-brand" />
+            </button>
+            <span className="text-[16px] font-semibold text-slate-700 min-w-[190px] text-center">
+              {resumenEtapas?.etiqueta ?? '—'}
+              {resumenEtapas?.enVivo && (
+                <span className="ml-1.5 text-[12px] font-bold text-success align-middle">● EN VIVO</span>
+              )}
+            </span>
+            <button
+              onClick={irMesSiguiente}
+              disabled={idxMesSeleccionado < 0 || idxMesSeleccionado >= mesesDisponibles.length - 1}
+              className="p-3 rounded-full border-2 border-brand bg-brand-tint hover:bg-brand-soft disabled:opacity-30 disabled:cursor-not-allowed disabled:border-aed-border disabled:bg-transparent transition-colors shadow-sm"
+              aria-label="Mes siguiente"
+            >
+              <ChevronRight size={26} strokeWidth={2.75} className="text-brand" />
+            </button>
+          </div>
+          <ConsolidadoCarteraEtapa data={resumenEtapas} />
+          {mesesDisponibles.length <= 1 && (
+            <p className="text-[13px] text-slate-400 italic mt-2 text-center">
+              Todavía no hay meses cerrados para navegar -- se va a ir guardando una foto automáticamente al cierre de cada mes.
+            </p>
+          )}
         </div>
 
         {/* Distribución por etapa constructiva */}
@@ -541,22 +661,6 @@ export default function Resumen() {
           {etapaAbierta && (
             <div className="mt-3">
               <EtapaRecaudoBars totalesPorEtapa={planRecaudo?.totalesPorEtapa ?? {}} />
-            </div>
-          )}
-        </div>
-
-        {/* Negocios por estado */}
-        <div className="card p-4">
-          <button
-            onClick={() => setEstadoAbierto((v) => !v)}
-            className="w-full flex items-center justify-between"
-          >
-            <h2 className="text-[15px] font-semibold text-slate-700">Negocios por estado</h2>
-            {estadoAbierto ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
-          </button>
-          {estadoAbierto && (
-            <div className="mt-3">
-              <EmbudoEstados data={cartera?.estados ?? []} />
             </div>
           )}
         </div>

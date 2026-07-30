@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, X, Warehouse, RefreshCw, Building2 } from 'lucide-react';
+import { Search, X, Warehouse, RefreshCw, Layers, MapPin, Building } from 'lucide-react';
 import { getInventario, getInventarioItem, triggerInventarioSync, getInventarioSyncStatus } from '../utils/api';
+import { etiquetaEtapa } from '../utils/etapas';
 
 function useDebounce(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
@@ -208,16 +209,25 @@ function useSync(onSuccess) {
 export default function Inventario() {
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState(null);
-  const [proyectos, setProyectos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [estados, setEstados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
 
   const [search, setSearch] = useState('');
-  const [proyectoFilter, setProyectoFilter] = useState('');
   const [categoriaFilter, setCategoriaFilter] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
+  // Mismo cascade Etapa → Frente → Torre que Negocios (reemplaza el filtro
+  // "Proyecto" de antes -- Frente ya cubre esa misma dimensión, solo que
+  // agrupada por Etapa y con Torre en cascada).
+  const [etapaFilter, setEtapaFilter] = useState('');
+  const [frenteFilter, setFrenteFilter] = useState('');
+  const [torreFilter, setTorreFilter] = useState('');
+  const [etapasDisponibles, setEtapasDisponibles] = useState([]);
+  const [frentesDisponibles, setFrentesDisponibles] = useState([]);
+  const [frentesPorEtapa, setFrentesPorEtapa] = useState({});
+  const [torresPorFrente, setTorresPorFrente] = useState({});
+  const [torresPorEtapaFrente, setTorresPorEtapaFrente] = useState({});
   // Deep link: ?item=<InventarioItem.id> (ej. desde el menú de clic derecho
   // de Cartera en Gestión / Dashboard).
   const [searchParams] = useSearchParams();
@@ -225,30 +235,69 @@ export default function Inventario() {
 
   const debouncedSearch = useDebounce(search);
   const filtersRef = useRef({});
-  filtersRef.current = { debouncedSearch, proyectoFilter, categoriaFilter, estadoFilter };
+  filtersRef.current = { debouncedSearch, categoriaFilter, estadoFilter, etapaFilter, frenteFilter, torreFilter };
 
   const fetchList = useCallback((p = 1) => {
-    const { debouncedSearch: s, proyectoFilter: proy, categoriaFilter: cat, estadoFilter: est } = filtersRef.current;
+    const {
+      debouncedSearch: s, categoriaFilter: cat, estadoFilter: est,
+      etapaFilter: et, frenteFilter: fr, torreFilter: tr,
+    } = filtersRef.current;
     setLoading(true);
-    getInventario({ search: s || undefined, proyecto: proy || undefined, categoria: cat || undefined, estado: est || undefined, page: p, limit: 50 })
+    getInventario({
+      search: s || undefined, categoria: cat || undefined, estado: est || undefined,
+      etapa: et || undefined, frente: fr || undefined, torre: tr || undefined,
+      page: p, limit: 50,
+    })
       .then((res) => {
         setItems(res.data);
         setPagination(res.pagination);
-        if (res.proyectos) setProyectos(res.proyectos);
         if (res.categorias) setCategorias(res.categorias);
         if (res.estados) setEstados(res.estados);
+        setEtapasDisponibles(res.etapasDisponibles ?? []);
+        setFrentesDisponibles(res.frentesDisponibles ?? []);
+        setFrentesPorEtapa(res.frentesPorEtapa ?? {});
+        setTorresPorFrente(res.torresPorFrente ?? {});
+        setTorresPorEtapaFrente(res.torresPorEtapaFrente ?? {});
         setPage(p);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { fetchList(1); }, [debouncedSearch, proyectoFilter, categoriaFilter, estadoFilter, fetchList]);
+  useEffect(() => {
+    fetchList(1);
+  }, [debouncedSearch, categoriaFilter, estadoFilter, etapaFilter, frenteFilter, torreFilter, fetchList]);
 
   const { syncing, error: syncError, trigger: triggerSync } = useSync(() => fetchList(1));
 
-  const clearFilters = () => { setSearch(''); setProyectoFilter(''); setCategoriaFilter(''); setEstadoFilter(''); };
-  const hasFilters = search || proyectoFilter || categoriaFilter || estadoFilter;
+  // Mismo criterio de cascada Etapa → Frente → Torre que Negocios/Resumen:
+  // resetea Frente/Torre si dejan de ser válidos para la nueva Etapa.
+  const handleEtapaChange = useCallback((value) => {
+    setEtapaFilter(value);
+    setFrenteFilter((prevFrente) => {
+      if (value && prevFrente && !(frentesPorEtapa[value] || []).includes(prevFrente)) {
+        setTorreFilter('');
+        return '';
+      }
+      return prevFrente;
+    });
+  }, [frentesPorEtapa]);
+
+  const handleFrenteChange = useCallback((value) => {
+    setFrenteFilter(value);
+    setTorreFilter('');
+  }, []);
+
+  const frenteOptions = etapaFilter ? (frentesPorEtapa[etapaFilter] || []) : frentesDisponibles;
+  const torreOptions = frenteFilter
+    ? (etapaFilter ? (torresPorEtapaFrente[`${etapaFilter}||${frenteFilter}`] || []) : (torresPorFrente[frenteFilter] || []))
+    : [];
+
+  const clearFilters = () => {
+    setSearch(''); setCategoriaFilter(''); setEstadoFilter('');
+    setEtapaFilter(''); setFrenteFilter(''); setTorreFilter('');
+  };
+  const hasFilters = search || categoriaFilter || estadoFilter || etapaFilter || frenteFilter || torreFilter;
   const isEmpty = !loading && pagination?.total === 0 && !hasFilters;
 
   return (
@@ -302,15 +351,41 @@ export default function Inventario() {
               </div>
             </div>
 
-            {proyectos.length > 0 && (
+            {etapasDisponibles.length > 0 && (
               <div className="field">
                 <label className="field-label">
-                  <Building2 size={13} className="text-[#7c3aed]" />
-                  Proyecto
+                  <Layers size={13} className="text-[#7c3aed]" />
+                  Etapa
                 </label>
-                <select value={proyectoFilter} onChange={(e) => setProyectoFilter(e.target.value)} className="input text-[14px] h-8 py-0 pr-2 leading-none">
-                  <option value="">Todos los proyectos</option>
-                  {proyectos.map((p) => <option key={p} value={p}>{p}</option>)}
+                <select value={etapaFilter} onChange={(e) => handleEtapaChange(e.target.value)} className="input text-[14px] h-8 py-0 pr-2 leading-none">
+                  <option value="">Todas las etapas</option>
+                  {etapasDisponibles.map((et) => <option key={et} value={et}>{etiquetaEtapa(et)}</option>)}
+                </select>
+              </div>
+            )}
+
+            {frentesDisponibles.length > 0 && (
+              <div className="field">
+                <label className="field-label">
+                  <MapPin size={13} className="text-[#7c3aed]" />
+                  Frente
+                </label>
+                <select value={frenteFilter} onChange={(e) => handleFrenteChange(e.target.value)} className="input text-[14px] h-8 py-0 pr-2 leading-none">
+                  <option value="">Todos los frentes</option>
+                  {frenteOptions.map((fr) => <option key={fr} value={fr}>{fr}</option>)}
+                </select>
+              </div>
+            )}
+
+            {frenteFilter && torreOptions.length > 0 && (
+              <div className="field">
+                <label className="field-label">
+                  <Building size={13} className="text-[#7c3aed]" />
+                  Torre
+                </label>
+                <select value={torreFilter} onChange={(e) => setTorreFilter(e.target.value)} className="input text-[14px] h-8 py-0 pr-2 leading-none">
+                  <option value="">Todas las torres</option>
+                  {torreOptions.map((tr) => <option key={tr} value={tr}>Torre {tr}</option>)}
                 </select>
               </div>
             )}

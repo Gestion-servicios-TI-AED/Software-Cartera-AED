@@ -191,7 +191,11 @@ export function conciliar(cuotasPlan, pagos) {
     const cubierto = Math.max(0, Math.min(c.valorPlan, disponible));
     disponible -= cubierto;
     requerido += c.valorPlan;
-    const estado = cubierto >= c.valorPlan ? 'pagada' : cubierto > 0 ? 'parcial' : 'pendiente';
+    // Menos de $1 pendiente se cuenta como pagada -- residuo de redondeo de
+    // centavos entre el plan (Zoho) y los movimientos reales (Excel), no una
+    // deuda real. Sin este margen, esas cuotas quedaban "atrasadas" para
+    // siempre por deber fracciones de peso.
+    const estado = c.valorPlan - cubierto < 1 ? 'pagada' : cubierto > 0 ? 'parcial' : 'pendiente';
     let fechaCubierta = null;
     if (estado === 'pagada') {
       const p = prefijos.find((x) => x.acumulado >= requerido);

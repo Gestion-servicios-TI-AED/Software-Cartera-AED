@@ -188,15 +188,6 @@ function MovimientoRow({ mov, fields }) {
   const fecha = datos['Fecha Contable'] ? formatExcelDate(datos['Fecha Contable']) : null;
   const tipo = datos['Tipo Movimiento'] || datos['Concepto'] || null;
   const valor = datos['Valor'] ? formatCOP(datos['Valor']) : null;
-  const estado = datos['Estado'];
-
-  function estadoBadgeColor(e) {
-    if (!e) return '';
-    const el = e.toLowerCase();
-    if (el.includes('aplicado')) return 'text-emerald-700 bg-emerald-50';
-    if (el.includes('pendiente') || el.includes('reversado')) return 'text-amber-700 bg-amber-50';
-    return 'text-slate-600 bg-slate-100';
-  }
 
   return (
     <>
@@ -220,17 +211,10 @@ function MovimientoRow({ mov, fields }) {
         <td className="px-3 py-2.5 whitespace-nowrap text-[14px] text-right font-medium text-slate-700">
           {valor ?? <span className="text-slate-300">—</span>}
         </td>
-        <td className="px-3 py-2.5 whitespace-nowrap text-right">
-          {estado && (
-            <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${estadoBadgeColor(estado)}`}>
-              {estado}
-            </span>
-          )}
-        </td>
       </tr>
       {expanded && (
         <tr className="bg-brand-tint border-b border-aed-border">
-          <td colSpan={5} className="px-5 py-3">
+          <td colSpan={4} className="px-5 py-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2.5">
               {fields.map((col) => {
                 const v = datos[col];
@@ -305,7 +289,6 @@ function MovimientosSection({ id }) {
                   <th className="section-label px-3 py-2.5 text-left whitespace-nowrap"><span className="inline-flex items-center gap-1">Fecha<ConceptoHint columna="Fecha Contable" hoja="movimiento" /></span></th>
                   <th className="section-label px-3 py-2.5 text-left"><span className="inline-flex items-center gap-1">Tipo movimiento<ConceptoHint columna="Tipo Movimiento" hoja="movimiento" /></span></th>
                   <th className="section-label px-3 py-2.5 text-right whitespace-nowrap"><span className="inline-flex items-center gap-1">Valor<ConceptoHint columna="Valor" hoja="movimiento" /></span></th>
-                  <th className="section-label px-3 py-2.5 text-right whitespace-nowrap"><span className="inline-flex items-center gap-1">Estado<ConceptoHint columna="Estado" hoja="movimiento" /></span></th>
                 </tr>
               </thead>
               <tbody>

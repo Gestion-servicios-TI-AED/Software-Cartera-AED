@@ -24,7 +24,7 @@ function CustomTooltip({ active, payload, label }) {
   return (
     <div className="bg-white border border-aed-border rounded-lg px-3 py-2 shadow-sm text-[14px]">
       <p className="font-medium text-slate-700 mb-1">{etiquetaEtapa(label)}</p>
-      <p className="text-slate-500">Esperado: <b className="text-slate-700">{formatCOPCompleto(esperado)}</b></p>
+      <p className="text-slate-500">Proyectado: <b className="text-slate-700">{formatCOPCompleto(esperado)}</b></p>
       <p className="text-brand">Recaudado: <b>{formatCOPCompleto(recaudado)}</b></p>
       <p className="text-[13px] text-slate-400 mt-0.5">{pct}% avance</p>
     </div>
@@ -76,7 +76,7 @@ export default function EtapaRecaudoBars({ totalesPorEtapa = {} }) {
           iconType="circle"
           formatter={(value) => <span className="text-[13px] text-slate-600">{value}</span>}
         />
-        <Bar dataKey="esperado" name="Esperado (plan)" fill="#cbd5e1" radius={[4, 4, 0, 0]} maxBarSize={44} />
+        <Bar dataKey="esperado" name="Proyectado (plan)" fill="#cbd5e1" radius={[4, 4, 0, 0]} maxBarSize={44} />
         <Bar dataKey="recaudado" name="Recaudado" fill="#0f766e" radius={[4, 4, 0, 0]} maxBarSize={44} />
       </BarChart>
     </ResponsiveContainer>

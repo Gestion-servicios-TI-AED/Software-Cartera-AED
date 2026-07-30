@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback, useMemo, memo, Fragment } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect, memo, Fragment } from 'react';
 import { useReactTable, getCoreRowModel, flexRender, createColumnHelper } from '@tanstack/react-table';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
-import { Search, Layers, MapPin, Building, X, Download, History, CalendarRange, Briefcase, ExternalLink, Warehouse } from 'lucide-react';
+import { Search, Layers, MapPin, Building, X, Download, History, CalendarRange, Briefcase, ExternalLink, Warehouse, Maximize2, Minimize2 } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { getDashboardRecaudo } from '../utils/api';
 import { formatCOP, formatDate } from '../utils/format';
 import { etiquetaEtapa } from '../utils/etapas';
+import { useModoEnfocado } from '../hooks/useModoEnfocado';
+import Spinner from '../components/Spinner';
 
 function useDebounce(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
@@ -99,7 +101,7 @@ const COLUMNAS_FIJAS = [
     },
   }),
   columnHelper.accessor('fechaSaldoContraentrega', {
-    header: 'Fecha de terminación de obra',
+    header: 'Terminación de obra',
     cell: (info) => {
       const v = info.getValue();
       return v == null ? <span className="text-slate-300">—</span> : <span className="text-[13px]">{formatDate(v)}</span>;
@@ -123,7 +125,7 @@ const COLUMNAS_FIJAS = [
     (row) => (row.valorInmueble != null && row.totalAbonado != null ? Math.max(0, row.valorInmueble - row.totalAbonado) : null),
     {
       id: 'pendienteRecaudar',
-      header: 'Pendiente por recaudar',
+      header: 'Por recaudar',
       cell: (info) => {
         const v = info.getValue();
         return v == null ? <span className="text-slate-300">—</span> : <span className="font-mono text-[13px] text-amber-700">{formatCOP(v)}</span>;
@@ -180,6 +182,20 @@ function anchoColumna(id) {
   return ANCHOS_FIJOS[id] ?? 120;
 }
 
+// Identidad de la fila (dónde está el inmueble) -- se quedan fijas (sticky)
+// al hacer scroll horizontal, para no perder de vista a qué torre/unidad
+// pertenece cada valor aunque haya cientos de columnas de mes a la derecha.
+const COLUMNAS_STICKY_IZQ = ['etapa', 'frente', 'torre', 'unidad'];
+const STICKY_LEFT = (() => {
+  const mapa = {};
+  let acumulado = 0;
+  for (const id of COLUMNAS_STICKY_IZQ) {
+    mapa[id] = acumulado;
+    acumulado += anchoColumna(id);
+  }
+  return mapa;
+})();
+
 // Solo se deja la celda vacía cuando Esperado Y Recaudado del mes son
 // AMBOS $0 -- con cientos de columnas de mes, un "$0" repetido en casi
 // todas las celdas es puro ruido visual. Si cualquiera de los dos tiene
@@ -193,7 +209,7 @@ function ambosEnCero(row, mes) {
 const COLUMNA_ESPERADO = (mes) =>
   columnHelper.accessor((row) => row.porMes[mes]?.esperado ?? 0, {
     id: `${mes}-esperado`,
-    header: 'Esperado',
+    header: 'Proyectado',
     cell: (info) => {
       if (ambosEnCero(info.row.original, mes)) return null;
       return <span className="font-mono text-[13px]">{formatCOP(info.getValue())}</span>;
@@ -210,14 +226,30 @@ const COLUMNA_RECAUDADO = (mes) =>
     },
   });
 
+// "Por recaudar" de un mes = Diferencia (Valor de la cuota - Valor pagado) de
+// la conciliación, sumada sobre las cuotas de esos negocios cuya fecha
+// esperada cae en ese mes -- mismo campo que la columna "Diferencia" en
+// Negocios → Conciliación. Siempre visible (no depende del filtro "Ver"),
+// porque complementa tanto a Proyectado como a Recaudado.
+const COLUMNA_POR_RECAUDAR = (mes) =>
+  columnHelper.accessor((row) => row.porMes[mes]?.porRecaudar ?? 0, {
+    id: `${mes}-porRecaudar`,
+    header: 'Por recaudar',
+    cell: (info) => {
+      if (ambosEnCero(info.row.original, mes)) return null;
+      return <span className="font-mono text-[13px] text-amber-700">{formatCOP(info.getValue())}</span>;
+    },
+  });
+
 // `vista` decide qué sub-columnas de cada mes se arman: ambas (por defecto),
 // solo Esperado o solo Recaudado -- el grupo del mes se mantiene igual en
-// los tres casos, solo cambian sus hijas.
+// los tres casos, solo cambian sus hijas. "Por recaudar" siempre se agrega.
 function construirColumnasMeses(meses, vista = 'ambos') {
   return meses.map((mes) => {
     const hijas = [];
     if (vista !== 'recaudado') hijas.push(COLUMNA_ESPERADO(mes));
     if (vista !== 'esperado') hijas.push(COLUMNA_RECAUDADO(mes));
+    hijas.push(COLUMNA_POR_RECAUDAR(mes));
     return columnHelper.group({
       id: `mes-${mes}`,
       header: formatMesLabel(mes),
@@ -245,6 +277,24 @@ const TablaDashboard = memo(function TablaDashboard({
     pageCount: pagination.totalPages,
   });
 
+  // El ancho REAL renderizado de cada columna no siempre coincide con
+  // ANCHOS_FIJOS (el algoritmo de table-fixed con tantas columnas de mes no
+  // los respeta 1:1) -- así que el offset `left` de cada columna sticky se
+  // mide del DOM real en vez de asumirlo, o quedan huecos/superposiciones
+  // entre columnas fijas.
+  const stickyRefs = useRef({});
+  const [stickyLefts, setStickyLefts] = useState(() => ({ ...STICKY_LEFT }));
+  useLayoutEffect(() => {
+    let acumulado = 0;
+    const next = {};
+    for (const id of COLUMNAS_STICKY_IZQ) {
+      next[id] = acumulado;
+      const el = stickyRefs.current[id];
+      acumulado += el ? el.getBoundingClientRect().width : anchoColumna(id);
+    }
+    setStickyLefts(next);
+  }, [columns]);
+
   const leafColumns = table.getAllLeafColumns();
 
   return (
@@ -265,16 +315,22 @@ const TablaDashboard = memo(function TablaDashboard({
                 const esInicioMes = header.column.id.startsWith('mes-') || header.column.id.endsWith(`-${primeraColMes}`);
                 const ordenActivo = esFija && sortBy === header.column.id;
                 const Icono = ordenActivo ? (sortDir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
+                const stickyLeft = stickyLefts[header.column.id];
+                const esSticky = stickyLeft !== undefined;
                 return (
                   <th
                     key={header.id}
+                    ref={esSticky ? (el) => { stickyRefs.current[header.column.id] = el; } : undefined}
                     colSpan={header.colSpan}
                     onClick={esFija ? () => onSort(header.column.id) : undefined}
                     className={`section-label px-3 py-2 text-left whitespace-nowrap ${
                       esFija ? 'bg-teal-600 text-white cursor-pointer select-none hover:bg-teal-700' : esImpar ? 'bg-slate-100' : ''
                     } ${
                       header.column.id === 'montoEnMora' ? 'border-r-4 border-teal-700' : ''
-                    } ${esInicioMes && mesIdx > 0 ? 'border-l border-aed-border' : ''}`}
+                    } ${esInicioMes && mesIdx > 0 ? 'border-l border-aed-border' : ''} ${
+                      esSticky ? 'sticky z-30' : ''
+                    } ${header.column.id === 'unidad' ? 'shadow-[2px_0_4px_rgba(0,0,0,0.08)]' : ''}`}
+                    style={esSticky ? { left: stickyLeft } : undefined}
                   >
                     {header.isPlaceholder ? null : esFija ? (
                       <span className="inline-flex items-center gap-1">
@@ -293,7 +349,12 @@ const TablaDashboard = memo(function TablaDashboard({
         {mesesFiltrados.length > 0 && (
           <tfoot className="sticky bottom-0 z-20">
             <tr className="border-t-2 border-aed-border bg-aed-base font-semibold shadow-[0_-2px_4px_rgba(0,0,0,0.06)]">
-              <td colSpan={4} className="px-3 py-2 text-[13px] text-slate-600 bg-aed-base">Total del portafolio filtrado</td>
+              <td
+                colSpan={4}
+                className="px-3 py-2 text-[13px] text-slate-600 bg-aed-base sticky left-0 z-10 shadow-[2px_0_4px_rgba(0,0,0,0.08)]"
+              >
+                Total del portafolio filtrado
+              </td>
               <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] bg-aed-base">
                 {formatCOP(totalesColumnasFijas?.valorInmueble ?? 0)}
               </td>
@@ -331,6 +392,9 @@ const TablaDashboard = memo(function TablaDashboard({
                       {formatCOP(totales[mes]?.recaudado ?? 0)}
                     </td>
                   )}
+                  <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] text-amber-700 bg-aed-base">
+                    {formatCOP(totales[mes]?.porRecaudar ?? 0)}
+                  </td>
                 </Fragment>
               ))}
             </tr>
@@ -339,7 +403,7 @@ const TablaDashboard = memo(function TablaDashboard({
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={columns.length} className="px-4 py-12 text-center text-slate-400">Cargando…</td>
+              <td colSpan={columns.length}><Spinner label="Cargando plan de pagos…" /></td>
             </tr>
           ) : filas.length === 0 ? (
             <tr>
@@ -363,16 +427,25 @@ const TablaDashboard = memo(function TablaDashboard({
                     const mesIdx = mesIndexPorColumna[cell.column.id];
                     const esImpar = mesIdx !== undefined && mesIdx % 2 === 1;
                     const esInicioMes = cell.column.id.endsWith(`-${primeraColMes}`);
+                    const stickyLeft = stickyLefts[cell.column.id];
+                    const esSticky = stickyLeft !== undefined;
                     return (
                       <td
                         key={cell.id}
                         className={`px-3 py-2 whitespace-nowrap overflow-hidden text-ellipsis ${
-                          resaltada
-                            ? ''
-                            : esFija ? 'bg-teal-100' : esImpar ? 'bg-slate-50' : ''
+                          // Las columnas sticky necesitan un fondo opaco explícito
+                          // (no pueden depender del bg de la fila mostrando "a
+                          // través" de ellas) porque quedan fijas mientras el
+                          // resto de la fila se desplaza por debajo.
+                          esSticky
+                            ? (resaltada ? 'bg-amber-100' : 'bg-teal-100')
+                            : resaltada ? '' : esFija ? 'bg-teal-100' : esImpar ? 'bg-slate-50' : ''
                         } ${cell.column.id === 'montoEnMora' ? 'border-r-4 border-teal-700' : ''} ${
                           esInicioMes && mesIdx > 0 ? 'border-l border-aed-border' : ''
+                        } ${esSticky ? 'sticky z-10' : ''} ${
+                          cell.column.id === 'unidad' ? 'shadow-[2px_0_4px_rgba(0,0,0,0.08)]' : ''
                         }`}
+                        style={esSticky ? { left: stickyLeft } : undefined}
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
@@ -402,6 +475,9 @@ export default function ReportePlanRecaudo() {
   const [mesDesde, setMesDesde] = useState('');
   const [mesHasta, setMesHasta] = useState('');
   const [vistaMeses, setVistaMeses] = useState('ambos'); // 'ambos' | 'esperado' | 'recaudado'
+  // Modo enfocado: la tabla pasa a cubrir toda la pantalla -- útil con
+  // cientos de columnas de mes, donde el layout normal deja poco espacio.
+  const [enfocado, toggleEnfocado] = useModoEnfocado();
   const [etapas, setEtapas] = useState([]);
   const [frentes, setFrentes] = useState([]);
   const [frentesPorEtapa, setFrentesPorEtapa] = useState({});
@@ -549,6 +625,7 @@ export default function ReportePlanRecaudo() {
       map[`mes-${mes}`] = i;
       map[`${mes}-esperado`] = i;
       map[`${mes}-recaudado`] = i;
+      map[`${mes}-porRecaudar`] = i;
     });
     return map;
   }, [mesesFiltrados]);
@@ -570,12 +647,14 @@ export default function ReportePlanRecaudo() {
       });
       const mesesExport = filtrarRangoMeses(res.meses, mesDesde, mesHasta);
 
-      // Aplana cada mes a 1 o 2 sub-columnas (Esperado/Recaudado) según la
-      // vista elegida -- mismo criterio que construirColumnasMeses en pantalla.
+      // Aplana cada mes a sus sub-columnas (Esperado/Recaudado según la vista
+      // elegida, más "Por recaudar" que siempre se incluye) -- mismo criterio
+      // que construirColumnasMeses en pantalla.
       const colsMeses = [];
       mesesExport.forEach((mes, mesIdx) => {
         if (vistaMeses !== 'recaudado') colsMeses.push({ mes, tipo: 'esperado', mesIdx });
         if (vistaMeses !== 'esperado') colsMeses.push({ mes, tipo: 'recaudado', mesIdx });
+        colsMeses.push({ mes, tipo: 'porRecaudar', mesIdx });
       });
 
       const FIJAS = [
@@ -586,10 +665,10 @@ export default function ReportePlanRecaudo() {
         { header: 'Valor del inmueble', key: 'valorInmueble', width: 18 },
         { header: 'Valor cuota inicial', key: 'valorCuotaInicial', width: 18 },
         { header: 'Abonado cuota inicial', key: 'abonadoCuotaInicial', width: 20 },
-        { header: 'Fecha de terminación de obra', key: 'fechaSaldoContraentrega', width: 18 },
+        { header: 'Terminación de obra', key: 'fechaSaldoContraentrega', width: 18 },
         { header: 'Valor saldo contraentrega', key: 'valorSaldoContraentrega', width: 18 },
         { header: 'Total abonado del inmueble', key: 'totalAbonado', width: 22 },
-        { header: 'Pendiente por recaudar', key: 'pendienteRecaudar', width: 20 },
+        { header: 'Por recaudar', key: 'pendienteRecaudar', width: 20 },
         { header: 'Cuotas vencidas (total)', key: 'cuotasEnMora', width: 14 },
         { header: 'Valor cuotas vencidas (total)', key: 'montoEnMora', width: 20 },
       ];
@@ -639,7 +718,7 @@ export default function ReportePlanRecaudo() {
         hijas.forEach((h, j) => {
           const col = inicio + j;
           const cell = headerRow2.getCell(col);
-          cell.value = h.tipo === 'esperado' ? 'ESPERADO' : 'RECAUDADO';
+          cell.value = h.tipo === 'esperado' ? 'PROYECTADO' : h.tipo === 'recaudado' ? 'RECAUDADO' : 'POR RECAUDAR';
           cell.fill = fillSolida(bgHeader);
           cell.font = { bold: true, color: { argb: COLOR_EXCEL.textoHeaderMes }, size: 10 };
           if (j === 0 && mesIdx > 0) cell.border = bordeIzq;
@@ -705,6 +784,7 @@ export default function ReportePlanRecaudo() {
             cell.numFmt = '#,##0';
           }
           if (c.tipo === 'recaudado') cell.font = { color: { argb: COLOR_EXCEL.textoRecaudado } };
+          else if (c.tipo === 'porRecaudar') cell.font = { color: { argb: COLOR_EXCEL.textoPendiente } };
           const esImpar = c.mesIdx % 2 === 1;
           cell.fill = fillSolida(resaltada ? COLOR_EXCEL.resaltadaBg : (esImpar ? COLOR_EXCEL.celdaMesImparBg : COLOR_EXCEL.celdaMesParBg));
           const esInicioMes = j === 0 || colsMeses[j - 1].mesIdx !== c.mesIdx;
@@ -749,7 +829,10 @@ export default function ReportePlanRecaudo() {
           const cell = totalRow.getCell(col);
           cell.value = res.totales[c.mes]?.[c.tipo] ?? 0;
           cell.numFmt = '#,##0';
-          cell.font = { bold: true, color: { argb: c.tipo === 'recaudado' ? COLOR_EXCEL.textoRecaudado : COLOR_EXCEL.textoTotalLabel } };
+          cell.font = {
+            bold: true,
+            color: { argb: c.tipo === 'recaudado' ? COLOR_EXCEL.textoRecaudado : c.tipo === 'porRecaudar' ? COLOR_EXCEL.textoPendiente : COLOR_EXCEL.textoTotalLabel },
+          };
           cell.fill = fillSolida(COLOR_EXCEL.celdaMesImparBg);
           cell.border = bordeArriba;
         });
@@ -773,7 +856,10 @@ export default function ReportePlanRecaudo() {
   }, [search, etapaFilter, frenteFilter, torreFilter, conMovimientos, sortBy, sortDir, mesDesde, mesHasta, vistaMeses, filasResaltadas]);
 
   return (
-    <div className="h-full flex flex-col gap-3 p-5 overflow-hidden">
+    <div className={enfocado
+      ? 'fixed inset-0 z-50 bg-aed-base flex flex-col gap-3 p-5 overflow-hidden'
+      : 'h-full flex flex-col gap-3 p-5 overflow-hidden'}
+    >
       <div className="flex items-center gap-2 flex-shrink-0">
         <h1 className="text-[19px] font-bold text-slate-800 flex-1">Dashboard: Plan de pagos vs. Recaudo</h1>
         {filasResaltadas.size > 0 && (
@@ -784,6 +870,13 @@ export default function ReportePlanRecaudo() {
             <X size={11} /> Quitar resaltado ({filasResaltadas.size})
           </button>
         )}
+        <button
+          onClick={toggleEnfocado}
+          className="btn-secondary px-3 py-1.5 text-[14px] flex items-center gap-1.5"
+        >
+          {enfocado ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+          {enfocado ? 'Salir de pantalla completa' : 'Pantalla completa'}
+        </button>
         <button
           onClick={handleExport}
           disabled={exporting}
@@ -862,7 +955,7 @@ export default function ReportePlanRecaudo() {
           <div className="flex h-8 rounded-md border border-aed-border overflow-hidden">
             {[
               { value: 'ambos', label: 'Ambos' },
-              { value: 'esperado', label: 'Esperado' },
+              { value: 'esperado', label: 'Proyectado' },
               { value: 'recaudado', label: 'Recaudado' },
             ].map(({ value, label }) => (
               <button

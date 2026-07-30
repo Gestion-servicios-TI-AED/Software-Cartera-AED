@@ -9,8 +9,8 @@ const CODIGO_PROYECTO = {
   '99289': { etapa: '4', torres: 'KALA 3 Y 4' },
   '99306': { etapa: '4', torres: 'KALIZA 3' },
   '16013': { etapa: null, torres: 'Vela Village' },
-  '99331': { etapa: null, torres: 'Vela Village' },
-  '99332': { etapa: null, torres: 'Vela Village' },
+  '99331': { etapa: null, torres: 'Vela Village C2' },
+  '99332': { etapa: null, torres: 'Vela Village C3' },
   '16994': { etapa: null, torres: 'The Plaza' },
   '17664': { etapa: null, torres: 'Isla Laguna' },
 };
