@@ -5,7 +5,7 @@ import { formatExcelDate } from '../utils/format';
 import { filtrarKeysMovimiento } from '../utils/columnasExcluidas';
 import ConceptoHint from '../components/ConceptoHint';
 import { descripcionProyecto, obtenerProyecto } from '../utils/proyectos';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 function useDebounce(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
@@ -209,28 +209,52 @@ export default function FiduciaMovimientos() {
         const neg = mov.negocio;
         const compradores = (neg?.compradores || []).map((c) => cleanNombre(c.nombre)).filter(Boolean).join(' | ');
         const cedulas = (neg?.compradores || []).map((c) => c.nroId || '').filter(Boolean).join(' | ');
-        const row = {
-          Referencia: mov.referencia ?? '',
-          Proyecto: neg?.fideicomiso ? shortFideicomiso(neg.fideicomiso) : '',
-          Nomenclatura: neg?.nomenclatura ?? '',
-          'Comprador(es)': compradores,
-          'Cédula(s)': cedulas,
-          'Estado negocio': neg?.estado ?? '',
-        };
+        const fila = [
+          mov.referencia ?? '',
+          neg?.fideicomiso ? shortFideicomiso(neg.fideicomiso) : '',
+          neg?.nomenclatura ?? '',
+          compradores,
+          cedulas,
+          neg?.estado ?? '',
+        ];
         const datos = mov.datos || {};
         for (const k of datosKeys) {
           const v = datos[k];
-          row[k] = v != null && v !== '' ? (formatCell(k, v) ?? String(v)) : '';
+          fila.push(v != null && v !== '' ? (formatCell(k, v) ?? String(v)) : '');
         }
-        return row;
+        return fila;
       });
 
-      const ws = XLSX.utils.json_to_sheet(excelRows, { header: headers });
-      ws['!cols'] = headers.map((h) => ({ wch: Math.max(h.length, 12) }));
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Movimientos');
+      // Mismo estilo de encabezado (teal de marca, texto blanco en negrita)
+      // que el resto de las exportaciones Excel de la app.
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Movimientos');
+      ws.addRow(headers);
+      excelRows.forEach((fila) => ws.addRow(fila));
+
+      const headerRow = ws.getRow(1);
+      headerRow.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D9488' } };
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+        cell.alignment = { vertical: 'middle' };
+      });
+      headerRow.height = 20;
+
+      headers.forEach((h, i) => {
+        ws.getColumn(i + 1).width = Math.max(h.length, 14);
+      });
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
       const fecha = new Date().toISOString().slice(0, 10);
-      XLSX.writeFile(wb, `movimientos-fiduciarios-${fecha}.xlsx`);
+      a.download = `movimientos-fiduciarios-${fecha}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
       alert('Error al exportar los movimientos.');
