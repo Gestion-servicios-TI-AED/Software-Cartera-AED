@@ -5,9 +5,32 @@ const {
   actualizarFechaEntregaTorre,
   actualizarFechaEntregaPiso,
 } = require('../services/configuracionFrenteService');
+const { obtenerMenuOculto, actualizarMenuOculto } = require('../services/configuracionAppService');
 const { invalidarCacheDashboard } = require('../services/dashboardRecaudoService');
 
 const router = express.Router();
+
+// GET /api/configuraciones/menu -- ítems del sidebar ocultos, global para
+// todos (no hay usuarios individuales; antes era una preferencia por
+// navegador en localStorage).
+router.get('/menu', async (req, res) => {
+  try {
+    const hidden = await obtenerMenuOculto();
+    res.json({ hidden });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/configuraciones/menu  { hidden: string[] }
+router.put('/menu', async (req, res) => {
+  try {
+    const hidden = await actualizarMenuOculto(req.body?.hidden);
+    res.json({ hidden });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // GET /api/configuraciones/frentes
 router.get('/frentes', async (req, res) => {

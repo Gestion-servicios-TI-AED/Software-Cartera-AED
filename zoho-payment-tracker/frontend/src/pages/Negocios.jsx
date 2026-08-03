@@ -1229,6 +1229,13 @@ async function exportarEstadoCuenta(negocio, datos) {
   const identificaciones = (negocio.compradores || []).map((c) => c.nroId).filter(Boolean).join('\n') || '—';
   const nombrePrincipal = (negocio.compradores?.[0] && limpiarNombreComprador(negocio.compradores[0].nombre)) || null;
   const nomenclatura = negocio.datos?.Nomenclatura;
+  // Mismo texto que ya se ve en la lista/detalle de Negocios (ej. "Isla
+  // Laguna - Torre 1 102", "Kala Golf Torre 1 1-C") -- se arma en
+  // resolverProjectCode() del backend a partir de Proyecto_Torre + Product_Name
+  // crudos de Zoho, tal cual vienen (por eso el guion aparece en unos
+  // proyectos y en otros no). Solo cae a "Apto N" si el inmueble no tiene
+  // inventario de Zoho vinculado (negocio "huérfano", sin projectCode).
+  const inmuebleLabel = negocio.projectCode || (nomenclatura ? `Apto ${nomenclatura}` : null);
 
   // Bloque de información (izquierda) -- el valor puede envolver a varias
   // líneas (varios compradores, o un nombre largo) sin invadir la tabla
@@ -1240,7 +1247,7 @@ async function exportarEstadoCuenta(negocio, datos) {
     ['Identificación', identificaciones],
     ['Referencia de Recaudo', negocio.referencia || '—'],
     ['Proyecto', 'Baía Kristal'],
-    ['Inmueble', nomenclatura ? `Apto ${nomenclatura}` : '—'],
+    ['Inmueble', inmuebleLabel ?? '—'],
     ['Valor Inmueble', formatCOP(valorVenta) ?? '—'],
   ];
   const maxValueWidth = 122 - 55 - 3;

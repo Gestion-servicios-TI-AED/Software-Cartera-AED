@@ -260,6 +260,17 @@ export async function getConfiguracionesFrentes() {
   return data;
 }
 
+// Ítems del sidebar ocultos -- global para todos (ver navPrefs.js)
+export async function getMenuOculto() {
+  const { data } = await api.get('/configuraciones/menu');
+  return data;
+}
+
+export async function actualizarMenuOculto(hidden) {
+  const { data } = await api.put('/configuraciones/menu', { hidden });
+  return data;
+}
+
 export async function actualizarFechaEntregaTorre(frente, torre, fechaEntrega) {
   const { data } = await api.put(
     `/configuraciones/frentes/${encodeURIComponent(frente)}/torres/${encodeURIComponent(torre)}`,

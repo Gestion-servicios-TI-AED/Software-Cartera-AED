@@ -1,4 +1,4 @@
-import { Target, Landmark, ArrowLeftRight, Briefcase, BarChart3, Building2, LineChart, AlertTriangle } from 'lucide-react';
+import { Target, Landmark, Banknote, Briefcase, BarChart3, Building2, LineChart, ShieldAlert } from 'lucide-react';
 
 // Ítems del menú lateral. Fuente única para Sidebar y Ajustes.
 // `key` es el identificador estable usado para guardar la preferencia de visibilidad.
@@ -15,14 +15,16 @@ const BRAND_ACCENT = '#0e7581';
 //   Oportunidades → Target (pipeline de ventas de Zoho, no un dashboard cualquiera)
 //   Inmuebles     → Building2 (son inmuebles/apartamentos, no cajas de bodega)
 //   Encargos      → Landmark (encargos FIDUCIARIOS -- institución financiera/trust)
+//   Movimientos   → Banknote (movimientos bancarios/de dinero, más financiero que unas flechas genéricas)
 //   Dashboard     → LineChart (la página es literalmente Plan vs. Recaudo en el tiempo)
+//   Cartera       → ShieldAlert (cartera en gestión/mora -- "atención, vigilar", sin ser un ícono de error crudo)
 export const NAV_ITEMS = [
   { key: 'negocios',      to: '/',                    Icon: Briefcase,      label: 'Negocios',      color: BRAND_ACCENT, exact: true },
   { key: 'oportunidades', to: '/oportunidades',       Icon: Target,         label: 'Oportunidades', color: BRAND_ACCENT, exact: true },
   { key: 'inventario',    to: '/inventario',          Icon: Building2,      label: 'Inmuebles',     color: BRAND_ACCENT, exact: true },
   { key: 'encargos',      to: '/fiducia',             Icon: Landmark,       label: 'Encargos',      color: BRAND_ACCENT },
-  { key: 'movimientos',   to: '/fiducia/movimientos', Icon: ArrowLeftRight, label: 'Movimientos',   color: BRAND_ACCENT },
+  { key: 'movimientos',   to: '/fiducia/movimientos', Icon: Banknote,       label: 'Movimientos',   color: BRAND_ACCENT },
   { key: 'resumen',       to: '/resumen',             Icon: BarChart3,      label: 'Resumen',       color: BRAND_ACCENT, exact: true },
   { key: 'dashboard',     to: '/dashboard',           Icon: LineChart,      label: 'Dashboard',     color: BRAND_ACCENT, exact: true },
-  { key: 'cartera-mora',  to: '/cartera-mora',        Icon: AlertTriangle,  label: 'Cartera',       color: BRAND_ACCENT, exact: true },
+  { key: 'cartera-mora',  to: '/cartera-mora',        Icon: ShieldAlert,    label: 'Cartera',       color: BRAND_ACCENT, exact: true },
 ];

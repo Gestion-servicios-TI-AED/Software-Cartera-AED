@@ -208,3 +208,15 @@ model ResumenCarteraMensual {
   datos     Json
   createdAt DateTime @default(now())
 }
+
+// Configuración global de la aplicación, compartida por todos -- no hay
+// usuarios individuales (una sola clave de acceso), así que cualquier ajuste
+// acá aplica para todo el que entre. Clave/valor genérico (en vez de una
+// columna por ajuste) para poder agregar más configuraciones globales sin
+// nueva migración. Hoy solo se usa para `menuOculto` (qué ítems del sidebar
+// están ocultos, ver Ajustes.jsx / navPrefs.js).
+model ConfiguracionApp {
+  clave     String   @id
+  valor     Json
+  updatedAt DateTime @updatedAt
+}
