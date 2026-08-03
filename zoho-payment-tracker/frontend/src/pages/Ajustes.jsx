@@ -774,7 +774,7 @@ export default function Ajustes() {
           </Seccion>
 
           <div className="xl:col-span-2">
-            <Seccion title="Conciliación" icon={CalendarClock} color="#0f766e">
+            <Seccion title="Conciliación" icon={CalendarClock} color="#0e7581">
               <FechaEntregaFrenteCard />
             </Seccion>
           </div>

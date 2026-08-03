@@ -1033,7 +1033,7 @@ export default function ReportePlanRecaudo() {
 
       {menuContextual && (
         <div
-          className="fixed z-50 bg-white border border-aed-border rounded-md shadow-lg py-1 min-w-[200px]"
+          className="fixed z-50 bg-white border border-aed-border rounded-md shadow-[var(--shadow-overlay)] py-1 min-w-[200px]"
           style={{ top: menuContextual.y, left: menuContextual.x }}
           onClick={(e) => e.stopPropagation()}
         >

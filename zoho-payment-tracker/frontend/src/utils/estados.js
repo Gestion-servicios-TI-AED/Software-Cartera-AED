@@ -72,7 +72,7 @@ export function estadoMeta(estado) {
 // ── Paleta categórica (gráficas y diferenciación no semántica) ──────────────
 // 8 hues accesibles que no chocan entre sí. Consumir en orden.
 export const CATEGORICAL = [
-  '#0f766e', // teal (marca)
+  '#0e7581', // teal (marca)
   '#0284c7', // sky
   '#7c3aed', // violet
   '#d97706', // amber

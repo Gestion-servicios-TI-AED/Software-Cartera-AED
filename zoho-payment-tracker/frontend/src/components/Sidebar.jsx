@@ -6,6 +6,11 @@ import { useHiddenNav } from '../utils/navPrefs';
 import { logout } from '../utils/api';
 import logoBaiaKristal from '../assets/baia-kristal-logo.png';
 
+// Fila de navegación icono + etiqueta -- el sidebar dejó de ser icon-only
+// para que cada módulo se reconozca de un vistazo, sin depender de memorizar
+// qué ícono es cuál. Misma barra de acento de 3px + fondo tenue (10%) que
+// antes, ahora ocupando todo el ancho de la fila en vez de solo rodear el
+// ícono centrado.
 function SidebarItem({ to, Icon, label, color, exact }) {
   const location = useLocation();
   const isActive = exact
@@ -14,18 +19,16 @@ function SidebarItem({ to, Icon, label, color, exact }) {
       !(to === '/fiducia' && location.pathname === '/fiducia/movimientos');
 
   return (
-    <div className="relative w-full flex justify-center group">
+    <div className="relative w-full group">
       {isActive && (
         <span
-          className="absolute left-0 top-[6px] bottom-[6px] w-[3px] rounded-r"
+          className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r"
           style={{ backgroundColor: color }}
         />
       )}
       <NavLink
         to={to}
-        title={label}
-        aria-label={label}
-        className="w-10 h-10 rounded-[10px] flex items-center justify-center transition-colors"
+        className="flex items-center gap-3 h-11 px-3.5 rounded-[10px] transition-colors"
         style={
           isActive
             ? { backgroundColor: `${color}1a`, color }
@@ -33,10 +36,13 @@ function SidebarItem({ to, Icon, label, color, exact }) {
         }
       >
         <Icon
-          size={18}
+          size={19}
           strokeWidth={1.9}
-          className="transition-transform group-hover:scale-110"
+          className="flex-shrink-0 transition-transform group-hover:scale-110"
         />
+        <span className="text-[14px] font-medium leading-none whitespace-nowrap overflow-hidden text-ellipsis">
+          {label}
+        </span>
       </NavLink>
     </div>
   );
@@ -55,47 +61,53 @@ export default function Sidebar({ onLogout }) {
   };
 
   return (
-    <aside className="w-[60px] bg-white border-r border-aed-border flex flex-col items-center py-4 gap-1.5 flex-shrink-0 h-screen sticky top-0">
-      <div className="w-9 h-9 rounded-[10px] flex items-center justify-center mb-2 flex-shrink-0" title="Baía Kristal">
-        <img src={logoBaiaKristal} alt="Baía Kristal" className="w-full h-full object-contain" />
+    <aside className="w-[212px] bg-white border-r border-aed-border flex flex-col py-4 px-2.5 gap-1 flex-shrink-0 h-screen sticky top-0">
+      <div className="flex items-center gap-2.5 px-1.5 mb-3 flex-shrink-0">
+        <div className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0" title="Baía Kristal">
+          <img src={logoBaiaKristal} alt="Baía Kristal" className="w-full h-full object-contain" />
+        </div>
+        <span className="font-heading text-[14px] font-bold text-ink leading-tight">
+          Baía Kristal
+        </span>
       </div>
 
       {items.map((item) => (
         <SidebarItem key={item.key} {...item} />
       ))}
 
-      <div className="w-7 h-px bg-slate-200 my-1" />
+      <div className="h-px bg-slate-200 my-1.5 mx-1.5" />
 
       {/* Ajustes */}
-      <div className="relative w-full flex justify-center group">
+      <div className="relative w-full group">
         <NavLink
           to="/ajustes"
-          title="Ajustes"
-          aria-label="Ajustes"
           className={({ isActive }) =>
-            `w-10 h-10 rounded-[10px] flex items-center justify-center transition-colors ${
+            `flex items-center gap-3 h-11 px-3.5 rounded-[10px] transition-colors ${
               isActive
                 ? 'bg-slate-100 text-slate-700'
                 : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
             }`
           }
         >
-          <Settings size={18} strokeWidth={1.9} className="transition-transform group-hover:scale-110" />
+          <Settings size={19} strokeWidth={1.9} className="flex-shrink-0 transition-transform group-hover:scale-110" />
+          <span className="text-[14px] font-medium leading-none">Ajustes</span>
         </NavLink>
       </div>
 
-      <div className="mt-auto w-8 h-8 rounded-full bg-gradient-to-br from-brand-soft to-emerald-100 flex items-center justify-center text-[13px] font-bold text-brand-strong flex-shrink-0">
-        RG
+      <div className="mt-auto flex items-center gap-2.5 px-1.5 pt-2">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-soft to-emerald-100 flex items-center justify-center text-[13px] font-bold text-brand-strong flex-shrink-0">
+          RG
+        </div>
+        <button
+          onClick={handleLogout}
+          title="Cerrar sesión"
+          aria-label="Cerrar sesión"
+          className="flex items-center gap-1.5 flex-1 min-w-0 text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          <LogOut size={15} strokeWidth={1.9} className="flex-shrink-0" />
+          <span className="text-[13px] font-medium truncate">Cerrar sesión</span>
+        </button>
       </div>
-
-      <button
-        onClick={handleLogout}
-        title="Cerrar sesión"
-        aria-label="Cerrar sesión"
-        className="w-8 h-8 mt-1 flex items-center justify-center rounded-[10px] text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors flex-shrink-0"
-      >
-        <LogOut size={16} strokeWidth={1.9} />
-      </button>
     </aside>
   );
 }

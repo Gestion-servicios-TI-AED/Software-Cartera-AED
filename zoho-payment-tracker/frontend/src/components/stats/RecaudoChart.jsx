@@ -60,7 +60,7 @@ export default function RecaudoChart({ data = [] }) {
           width={52}
         />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f1f5f9' }} />
-        <Bar dataKey="total" fill="#0f766e" radius={[4, 4, 0, 0]} maxBarSize={40} />
+        <Bar dataKey="total" fill="#0e7581" radius={[4, 4, 0, 0]} maxBarSize={40} />
       </BarChart>
     </ResponsiveContainer>
   );

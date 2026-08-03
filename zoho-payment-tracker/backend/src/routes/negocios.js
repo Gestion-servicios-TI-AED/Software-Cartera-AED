@@ -573,15 +573,37 @@ router.get('/dashboard-recaudo', async (req, res) => {
   }
 });
 
-// GET /api/negocios/cartera-mora?search=&etapa=&frente=&torre=&rango=&vista=&sortBy=&sortDir=&page=&limit=
+// GET /api/negocios/cartera-mora?search=&etapa=&frente=&torre=&rango=&vista=&tramite=&sortBy=&sortDir=&page=&limit=
+// tramite: '' (todos, sin canjes) | 'en_tramite' | 'no_en_tramite' | 'canje'
 router.get('/cartera-mora', async (req, res) => {
   try {
-    const { search, etapa, frente, torre, rango, vista, sortBy, sortDir, page = '1', limit = '50' } = req.query;
+    const { search, etapa, frente, torre, rango, vista, tramite, sortBy, sortDir, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(9999, Math.max(1, parseInt(limit)));
-    const resultado = await obtenerCarteraMora({ search, etapa, frente, torre, rango, vista, sortBy, sortDir, page: pageNum, limit: limitNum });
+    const resultado = await obtenerCarteraMora({ search, etapa, frente, torre, rango, vista, tramite, sortBy, sortDir, page: pageNum, limit: limitNum });
     res.json(resultado);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/negocios/:negocioId/flags -- marca "en trámite"/"canje" desde
+// Cartera en Gestión (clic derecho). negocioId es el id crudo de Negocio (no
+// el id prefijado inv-/neg- que usan las demás rutas de este archivo).
+router.patch('/:negocioId/flags', async (req, res) => {
+  try {
+    const { negocioId } = req.params;
+    const { enTramite, esCanje } = req.body;
+    const data = {};
+    if (typeof enTramite === 'boolean') data.enTramite = enTramite;
+    if (typeof esCanje === 'boolean') data.esCanje = esCanje;
+    if (Object.keys(data).length === 0) return res.status(400).json({ error: 'Nada que actualizar' });
+
+    const negocio = await prisma.negocio.update({ where: { id: negocioId }, data });
+    invalidarCacheDashboard();
+    res.json({ id: negocio.id, enTramite: negocio.enTramite, esCanje: negocio.esCanje });
+  } catch (err) {
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Negocio no encontrado' });
     res.status(500).json({ error: err.message });
   }
 });

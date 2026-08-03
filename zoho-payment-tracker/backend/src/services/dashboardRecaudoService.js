@@ -32,7 +32,7 @@ async function resolverNegociosYOportunidades(inmuebles) {
   // menor id -- el Map de abajo debe reproducir el mismo ganador.
   const negocios = await prisma.negocio.findMany({
     select: {
-      id: true, referencia: true, datos: true, estado: true,
+      id: true, referencia: true, datos: true, estado: true, enTramite: true, esCanje: true,
       compradores: { orderBy: { orden: 'asc' }, take: 1, select: { nombre: true } },
     },
     orderBy: { id: 'asc' },
@@ -448,6 +448,10 @@ async function construirFilasCompletas() {
       referencia: negocio?.referencia ?? null,
       comprador: negocio?.compradores?.[0]?.nombre ?? null,
       estado: negocio?.estado ?? null,
+      // Marcado manual desde Cartera en Gestión (clic derecho) -- ver
+      // obtenerCarteraMora() para cómo afecta el filtro/exclusión.
+      enTramite: negocio?.enTramite ?? false,
+      esCanje: negocio?.esCanje ?? false,
       // Estado propio del inmueble en Inventario (InventarioItem.estado,
       // sincronizado del Producto de Zoho) -- vocabulario distinto al estado
       // del Negocio/oportunidad de arriba. Se usa SOLO para las tarjetas
@@ -778,13 +782,23 @@ function ordenarCarteraMora(filas, sortBy, sortDir) {
   });
 }
 
-async function obtenerCarteraMora({ search, etapa, frente, torre, rango, vista, sortBy, sortDir, page, limit }) {
-  const { filas: todasLasFilas, valores } = await obtenerCache();
+async function obtenerCarteraMora({ search, etapa, frente, torre, rango, vista, tramite, sortBy, sortDir, page, limit }) {
+  const { filas: filasCache, valores } = await obtenerCache();
+
+  // Canje: el comprador está aportando otra cosa a cambio del apartamento
+  // (no es una deuda real), así que nunca suma a la cartera -- salvo que el
+  // usuario pida explícitamente ver solo los canjes (`tramite === 'canje'`).
+  // Se filtra ACÁ, antes de todo lo demás (conteos incluidos), para que
+  // ninguna suma/tarjeta de la vista "Todos" los cuente por accidente.
+  const todasLasFilas = tramite === 'canje'
+    ? filasCache.filter((f) => f.esCanje)
+    : filasCache.filter((f) => !f.esCanje);
 
   // Conteo de cada vista sobre TODO el portafolio (sin los filtros de
-  // búsqueda/etapa/frente/torre de abajo) -- se devuelve siempre, sin
-  // importar cuál vista se pidió, para poder mostrar la cantidad en el botón
-  // de la vista que NO está activa (el usuario la ve sin tener que cambiarse).
+  // búsqueda/etapa/frente/torre de abajo, pero sí con el filtro canje/trámite
+  // de arriba) -- se devuelve siempre, sin importar cuál vista se pidió, para
+  // poder mostrar la cantidad en el botón de la vista que NO está activa (el
+  // usuario la ve sin tener que cambiarse).
   const conteos = {
     inicial: todasLasFilas.filter((f) => f.cuotasEnMoraInicial > 0).length,
     contraentrega: todasLasFilas.filter((f) => f.saldoContraentregaVencido).length,
@@ -829,6 +843,11 @@ async function obtenerCarteraMora({ search, etapa, frente, torre, rango, vista, 
       `${f.frente ?? ''} ${f.torre ?? ''}`.toLowerCase().includes(s)
     );
   }
+  // "canje" ya se resolvió arriba (excluido de todasLasFilas salvo que sea
+  // justo lo que se pidió ver). En_trámite/no_en_trámite es un filtro más
+  // fino sobre lo que queda.
+  if (tramite === 'en_tramite') filas = filas.filter((f) => f.enTramite);
+  else if (tramite === 'no_en_tramite') filas = filas.filter((f) => !f.enTramite);
   if (etapa) filas = filas.filter((f) => f.etapa === etapa);
   if (frente && torre) filas = filas.filter((f) => f.frente === frente && f.torre === torre);
   else if (frente) filas = filas.filter((f) => f.frente === frente);

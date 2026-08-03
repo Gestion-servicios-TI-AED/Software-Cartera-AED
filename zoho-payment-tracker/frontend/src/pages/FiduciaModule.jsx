@@ -45,7 +45,7 @@ function UploadModal({ onClose, onUploaded }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-[1px]">
-      <div className="bg-white rounded-2xl border border-aed-border shadow-xl w-full max-w-md mx-4 p-6">
+      <div className="bg-white rounded-2xl border border-aed-border shadow-[var(--shadow-overlay)] w-full max-w-md mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-[18px] font-bold text-slate-800">Importar Excel</h2>
           <button

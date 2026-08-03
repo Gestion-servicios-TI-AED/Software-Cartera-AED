@@ -8,6 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Zoho Payment Tracker** — sistema interno de AED que sincroniza oportunidades del CRM Zoho, procesa movimientos de pago desde correos Outlook y gestiona datos de encargos fiduciarios desde archivos Excel.
 
+## Documentación técnica
+
+Existe una documentación técnica completa del proyecto (arquitectura, base de datos, despliegue, seguridad, métricas) en:
+
+`C:\Users\GabrielEliasValdelam\Desktop\Documentaciones\Zoho-Payment-Tracker-Documentacion-Tecnica.md`
+
+**Mantenla actualizada automáticamente**: cuando hagas un cambio significativo en el código de este repositorio (nuevo módulo o funcionalidad, endpoint nuevo, cambio de schema/migración, variable de entorno nueva, cambio de arquitectura o del proceso de despliegue), actualiza en ese mismo cambio la(s) sección(es) correspondientes de ese documento -- no esperes a que te lo pidan aparte. No hace falta regenerar el documento completo por cada edición menor, solo mantener sincronizadas las partes que dejen de reflejar la realidad del código.
+
 ## Repository Structure
 
 ```

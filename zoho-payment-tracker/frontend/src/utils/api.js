@@ -136,6 +136,13 @@ export async function getCarteraMora(params = {}) {
   return data;
 }
 
+// Marca "en trámite" / "canje" desde el clic derecho de Cartera en Gestión.
+// negocioId es el id crudo de Negocio (fila.negocioId de getCarteraMora).
+export async function actualizarFlagsNegocio(negocioId, flags) {
+  const { data } = await api.patch(`/negocios/${negocioId}/flags`, flags);
+  return data;
+}
+
 export async function getResumenPorEtapa(mes) {
   const { data } = await api.get('/negocios/resumen-etapas', { params: mes ? { mes } : {} });
   return data;

@@ -117,7 +117,7 @@ function InventarioDetalle({ id }) {
             {entries.length}
           </span>
         </div>
-        <div className="bg-white columns-1 lg:columns-2 lg:gap-8 lg:[column-rule:1px_solid_#e9edf2]">
+        <div className="bg-white columns-1 lg:columns-2 lg:gap-8 lg:[column-rule:1px_solid_var(--border-soft)]">
           {entries.map(([k, v]) => (
             <div key={k} className="flex items-baseline justify-between gap-6 px-4 py-2 bg-white border-b border-aed-border/60 break-inside-avoid">
               <span className="section-label shrink-0">{toLabel(k)}</span>

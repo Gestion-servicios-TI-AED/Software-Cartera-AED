@@ -48,7 +48,7 @@ export default function HelpTip({
         createPortal(
           <div
             style={{ position: 'fixed', top: pos.top, left: pos.left, transform: 'translateX(-50%)', zIndex: 60 }}
-            className="pointer-events-none max-w-[250px] rounded-md bg-ink px-2.5 py-1.5 text-[14px] font-normal normal-case leading-snug text-white shadow-lg"
+            className="pointer-events-none max-w-[250px] rounded-md bg-ink px-2.5 py-1.5 text-[14px] font-normal normal-case leading-snug text-white shadow-[var(--shadow-overlay)]"
           >
             {text}
           </div>,

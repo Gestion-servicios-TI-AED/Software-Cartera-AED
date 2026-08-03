@@ -36,6 +36,15 @@
     --warning-text: #b45309; --warning-bg: #fffbeb; --warning-border: #fde68a;
     --info-text:    #1d4ed8; --info-bg:    #eff6ff; --info-border:    #bfdbfe;
     --neutral-text: #475569; --neutral-bg: #f1f5f9; --neutral-border: #e2e8f0;
+
+    /* ── Elevación (teñida de teal, no negro plano) ──
+       Antes solo existía shadow-sm de Tailwind (casi imperceptible). Esta
+       escala de 3 niveles tiñe la sombra con el matiz de marca (195°) en vez
+       de negro puro -- se siente cohesiva con la paleta en vez de "pegada
+       encima", y da profundidad real sin caer en skeuomorfismo. */
+    --shadow-card: 0 1px 3px 0 rgb(14 117 129 / 0.08), 0 1px 2px -1px rgb(14 117 129 / 0.06);
+    --shadow-raised: 0 4px 12px -2px rgb(14 117 129 / 0.14), 0 2px 4px -2px rgb(14 117 129 / 0.08);
+    --shadow-overlay: 0 16px 32px -8px rgb(10 79 87 / 0.22), 0 4px 8px -4px rgb(10 79 87 / 0.10);
   }
 
   body {
@@ -87,8 +96,18 @@
     @apply focus:ring-[color:var(--brand)];
   }
   .card {
-    @apply bg-white rounded-xl border shadow-sm;
+    @apply bg-white rounded-xl border;
     border-color: var(--border);
+    box-shadow: var(--shadow-card);
+  }
+  /* Elevación al pasar el mouse -- para tarjetas clicables (KpiCard, ítems de
+     lista navegables). No se aplica a `.card` por defecto porque muchas son
+     contenedores estáticos (secciones de página), no controles interactivos. */
+  .card-interactive {
+    @apply card transition-shadow duration-200;
+  }
+  .card-interactive:hover {
+    box-shadow: var(--shadow-raised);
   }
   .badge {
     @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[14px] font-semibold border;

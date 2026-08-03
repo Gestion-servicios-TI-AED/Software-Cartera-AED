@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Search, Layers, MapPin, Building, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, AlertTriangle, Briefcase, ExternalLink, Warehouse } from 'lucide-react';
-import { getCarteraMora } from '../utils/api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Search, Layers, MapPin, Building, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, AlertTriangle, Briefcase, ExternalLink, Warehouse, Clock, Repeat, Check } from 'lucide-react';
+import { getCarteraMora, actualizarFlagsNegocio } from '../utils/api';
 import { formatCOP } from '../utils/format';
 import { etiquetaEtapa } from '../utils/etapas';
 import Spinner from '../components/Spinner';
@@ -35,6 +35,27 @@ const COLUMNAS_CONTRAENTREGA = [
   { key: 'fechaSaldoContraentrega', label: 'Fecha vencida', align: 'right' },
   { key: 'montoEnMora', label: 'Valor pendiente', align: 'right' },
 ];
+
+// Filtro de trámite/canje -- "Todos" (default) excluye los canjes, igual
+// que en el backend: un canje no es una deuda real, no debe sumar a la
+// cartera salvo que se pida verlos explícitamente.
+const OPCIONES_TRAMITE = [
+  { key: '', label: 'Todos' },
+  { key: 'en_tramite', label: 'En trámite' },
+  { key: 'no_en_tramite', label: 'No en trámite' },
+  { key: 'canje', label: 'Canjes' },
+];
+
+// Misma regla que el backend (obtenerCarteraMora) -- se usa acá para saber,
+// apenas se marca/desmarca un flag, si la fila debe seguir visible bajo el
+// filtro de trámite actual sin tener que esperar una respuesta del servidor.
+function cumpleFiltroTramite(fila, tramite) {
+  if (tramite === 'canje') return !!fila.esCanje;
+  if (fila.esCanje) return false; // canje nunca aparece en Todos/en_tramite/no_en_tramite
+  if (tramite === 'en_tramite') return !!fila.enTramite;
+  if (tramite === 'no_en_tramite') return !fila.enTramite;
+  return true;
+}
 
 function formatFechaCorta(iso) {
   if (!iso) return '—';
@@ -105,6 +126,8 @@ export default function CarteraMora() {
   const [frenteFilter, setFrenteFilter] = useState('');
   const [torreFilter, setTorreFilter] = useState('');
   const [rangoFilter, setRangoFilter] = useState('');
+  // '' (Todos, sin canjes) | 'en_tramite' | 'no_en_tramite' | 'canje'
+  const [tramiteFilter, setTramiteFilter] = useState('');
   const [etapas, setEtapas] = useState([]);
   const [frentes, setFrentes] = useState([]);
   const [frentesPorEtapa, setFrentesPorEtapa] = useState({});
@@ -130,38 +153,74 @@ export default function CarteraMora() {
     else { setSortBy(null); setSortDir(null); }
   };
 
+  const paramsActuales = useCallback((p) => ({
+    search: debouncedSearch || undefined,
+    etapa: etapaFilter || undefined,
+    frente: frenteFilter || undefined,
+    torre: torreFilter || undefined,
+    rango: rangoFilter || undefined,
+    vista,
+    tramite: tramiteFilter || undefined,
+    sortBy: sortBy || undefined,
+    sortDir: sortDir || undefined,
+    page: p,
+    limit: 50,
+  }), [debouncedSearch, etapaFilter, frenteFilter, torreFilter, rangoFilter, tramiteFilter, vista, sortBy, sortDir]);
+
+  const aplicarResultado = (res, p) => {
+    setFilas(res.data);
+    setResumen(res.resumen);
+    setPagination(res.pagination);
+    setEtapas(res.etapasDisponibles);
+    setFrentes(res.frentesDisponibles);
+    setFrentesPorEtapa(res.frentesPorEtapa);
+    setTorresPorFrente(res.torresPorFrente);
+    setTorresPorEtapaFrente(res.torresPorEtapaFrente);
+    setPorRangoMora(res.porRangoMora);
+    setConteos(res.conteos);
+    setPage(p);
+  };
+
+  // Contador compartido entre load() y loadSilencioso() -- como esta pantalla
+  // puede tener varias peticiones en vuelo a la vez (cambiar de pestaña de
+  // trámite, el refresco de fondo tras marcar un flag, etc.) y no siempre
+  // responden en el mismo orden en que se pidieron, cada petición se marca
+  // con un número correlativo y, al volver, solo se aplica si sigue siendo
+  // la más reciente. Sin esto, una respuesta vieja y lenta (ej. de "Todos")
+  // podía llegar después de una más nueva (ej. "Canjes") y pisarla con datos
+  // del filtro equivocado.
+  const ultimaPeticionRef = useRef(0);
+
   const load = useCallback(async (p) => {
+    const miId = ++ultimaPeticionRef.current;
     setLoading(true);
     try {
-      const res = await getCarteraMora({
-        search: debouncedSearch || undefined,
-        etapa: etapaFilter || undefined,
-        frente: frenteFilter || undefined,
-        torre: torreFilter || undefined,
-        rango: rangoFilter || undefined,
-        vista,
-        sortBy: sortBy || undefined,
-        sortDir: sortDir || undefined,
-        page: p,
-        limit: 50,
-      });
-      setFilas(res.data);
-      setResumen(res.resumen);
-      setPagination(res.pagination);
-      setEtapas(res.etapasDisponibles);
-      setFrentes(res.frentesDisponibles);
-      setFrentesPorEtapa(res.frentesPorEtapa);
-      setTorresPorFrente(res.torresPorFrente);
-      setTorresPorEtapaFrente(res.torresPorEtapaFrente);
-      setPorRangoMora(res.porRangoMora);
-      setConteos(res.conteos);
-      setPage(p);
+      const res = await getCarteraMora(paramsActuales(p));
+      if (miId !== ultimaPeticionRef.current) return; // ya hay algo más nuevo en curso
+      aplicarResultado(res, p);
     } catch (err) {
+      if (miId !== ultimaPeticionRef.current) return;
       console.error('Error cargando cartera en gestión:', err);
     } finally {
-      setLoading(false);
+      if (miId === ultimaPeticionRef.current) setLoading(false);
     }
-  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter, rangoFilter, vista, sortBy, sortDir]);
+  }, [paramsActuales]);
+
+  // Igual que load(), pero SIN spinner ni bloquear la tabla -- para refrescar
+  // los KPIs/contadores en segundo plano después de marcar en trámite/canje,
+  // cuando la fila ya se actualizó de forma optimista en pantalla y no hace
+  // falta esperar al servidor para verla reflejada.
+  const loadSilencioso = useCallback(async (p) => {
+    const miId = ++ultimaPeticionRef.current;
+    try {
+      const res = await getCarteraMora(paramsActuales(p));
+      if (miId !== ultimaPeticionRef.current) return;
+      aplicarResultado(res, p);
+    } catch (err) {
+      if (miId !== ultimaPeticionRef.current) return;
+      console.error('Error refrescando cartera en segundo plano:', err);
+    }
+  }, [paramsActuales]);
 
   useEffect(() => { load(1); }, [load]);
 
@@ -180,13 +239,14 @@ export default function CarteraMora() {
       torre: torreFilter || undefined,
       rango: rangoFilter || undefined,
       vista: 'inicial',
+      tramite: tramiteFilter || undefined,
       page: 1,
       limit: 10,
     })
       .then((res) => { if (vigente) setTopFilas(res.data); })
       .catch((err) => console.error('Error cargando top 10:', err));
     return () => { vigente = false; };
-  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter, rangoFilter, vista]);
+  }, [debouncedSearch, etapaFilter, frenteFilter, torreFilter, rangoFilter, tramiteFilter, vista]);
 
   useEffect(() => {
     if (!menuContextual) return;
@@ -205,6 +265,42 @@ export default function CarteraMora() {
   const abrirMenuContextual = (e, fila) => {
     e.preventDefault();
     setMenuContextual({ x: e.clientX, y: e.clientY, fila });
+  };
+
+  // Marca/quita "en trámite" o "canje" desde el clic derecho -- actualización
+  // optimista: la fila cambia (o desaparece, si deja de cumplir el filtro de
+  // trámite actual) al toque, sin spinner ni recargar toda la tabla. El PATCH
+  // real y el refresco de los KPIs/contadores pasan de fondo. Si algo falla,
+  // recién ahí se recarga de verdad para no quedar en un estado inconsistente.
+  const handleToggleFlag = async (fila, campo) => {
+    setMenuContextual(null);
+    if (!fila.negocioId) return;
+    const nuevoValor = !fila[campo];
+    const filaActualizada = { ...fila, [campo]: nuevoValor };
+    const siguesCumpliendo = cumpleFiltroTramite(filaActualizada, tramiteFilter);
+
+    setFilas((prev) => siguesCumpliendo
+      ? prev.map((f) => (f.id === fila.id ? filaActualizada : f))
+      : prev.filter((f) => f.id !== fila.id));
+    if (!siguesCumpliendo) {
+      setPagination((prev) => ({ ...prev, total: Math.max(0, prev.total - 1) }));
+    }
+
+    try {
+      await actualizarFlagsNegocio(fila.negocioId, { [campo]: nuevoValor });
+      loadSilencioso(page);
+    } catch (err) {
+      console.error('Error actualizando el negocio:', err);
+      load(page); // revertir a lo que de verdad hay en el servidor
+      if (err.response?.status === 404) {
+        // El negocioId que tenía esta fila en pantalla ya no existe -- suele
+        // pasar si se cargó un Excel de fiducia nuevo (recrea los negocios
+        // con otro id) mientras esta página seguía abierta desde antes.
+        window.alert('No se pudo actualizar: esta fila quedó desactualizada (probablemente se recargó la cartera desde Excel). Actualiza la página (F5) e intenta de nuevo.');
+      } else {
+        window.alert(`No se pudo actualizar el negocio: ${err.response?.data?.error || err.message}`);
+      }
+    }
   };
 
   // Mismo criterio de cascada Etapa → Frente → Torre que ReportePlanRecaudo.
@@ -227,8 +323,8 @@ export default function CarteraMora() {
   const torreOptions = frenteFilter
     ? (etapaFilter ? (torresPorEtapaFrente[`${etapaFilter}||${frenteFilter}`] || []) : (torresPorFrente[frenteFilter] || []))
     : [];
-  const hasFilters = search || etapaFilter || frenteFilter || torreFilter || rangoFilter;
-  const clearFilters = () => { setSearch(''); setEtapaFilter(''); setFrenteFilter(''); setTorreFilter(''); setRangoFilter(''); };
+  const hasFilters = search || etapaFilter || frenteFilter || torreFilter || rangoFilter || tramiteFilter;
+  const clearFilters = () => { setSearch(''); setEtapaFilter(''); setFrenteFilter(''); setTorreFilter(''); setRangoFilter(''); setTramiteFilter(''); };
 
   return (
     <div className="min-h-screen flex flex-col gap-3 p-5">
@@ -373,6 +469,23 @@ export default function CarteraMora() {
         )}
       </div>
 
+      <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
+        <span className="text-[12px] font-semibold text-slate-500 uppercase tracking-[0.4px] mr-0.5">Trámite / Canje</span>
+        {OPCIONES_TRAMITE.map((o) => (
+          <button
+            key={o.key}
+            onClick={() => setTramiteFilter(o.key)}
+            className={`text-[13px] font-medium px-2.5 py-1 rounded-full border transition-colors ${
+              tramiteFilter === o.key
+                ? 'bg-brand border-brand text-white'
+                : 'bg-white border-aed-border text-slate-500 hover:bg-aed-base'
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+
       {vista === 'inicial' && (
         <div className="card p-3 flex-shrink-0">
           <button
@@ -484,7 +597,7 @@ export default function CarteraMora() {
 
       {menuContextual && (
         <div
-          className="fixed z-50 bg-white border border-aed-border rounded-md shadow-lg py-1 min-w-[200px]"
+          className="fixed z-50 bg-white border border-aed-border rounded-md shadow-[var(--shadow-overlay)] py-1 min-w-[200px]"
           style={{ top: menuContextual.y, left: menuContextual.x }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -517,6 +630,27 @@ export default function CarteraMora() {
             className="w-full text-left px-3 py-1.5 text-[14px] text-slate-700 hover:bg-aed-base flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           >
             <ExternalLink size={13} className="text-brand" /> Ver oportunidad
+          </button>
+          <div className="h-px bg-aed-border my-1" />
+          <button
+            onClick={() => handleToggleFlag(menuContextual.fila, 'enTramite')}
+            disabled={!menuContextual.fila.negocioId}
+            title={menuContextual.fila.negocioId ? undefined : 'No hay negocio vinculado a este inmueble'}
+            className="w-full text-left px-3 py-1.5 text-[14px] text-slate-700 hover:bg-aed-base flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          >
+            <Clock size={13} className="text-amber-500" />
+            {menuContextual.fila.enTramite ? 'Quitar en trámite' : 'Marcar en trámite'}
+            {menuContextual.fila.enTramite && <Check size={13} className="text-emerald-600 ml-auto" />}
+          </button>
+          <button
+            onClick={() => handleToggleFlag(menuContextual.fila, 'esCanje')}
+            disabled={!menuContextual.fila.negocioId}
+            title={menuContextual.fila.negocioId ? undefined : 'No hay negocio vinculado a este inmueble'}
+            className="w-full text-left px-3 py-1.5 text-[14px] text-slate-700 hover:bg-aed-base flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          >
+            <Repeat size={13} className="text-violet-500" />
+            {menuContextual.fila.esCanje ? 'Quitar canje' : 'Marcar canje'}
+            {menuContextual.fila.esCanje && <Check size={13} className="text-emerald-600 ml-auto" />}
           </button>
         </div>
       )}

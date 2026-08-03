@@ -149,7 +149,7 @@ function categorizeInventarioDatos(datosInmueble) {
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
-function Accordion({ icon: Icon, title, badge, children, defaultOpen = true, accent = '#0f766e' }) {
+function Accordion({ icon: Icon, title, badge, children, defaultOpen = true, accent = '#0e7581' }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="card overflow-hidden">
@@ -928,7 +928,7 @@ function NegocioDetalle({ id }) {
       </div>
 
       {/* 1. Comprador */}
-      <Accordion icon={User} title="Comprador" badge={negocio.compradores?.length} accent="#0f766e" defaultOpen>
+      <Accordion icon={User} title="Comprador" badge={negocio.compradores?.length} accent="#0e7581" defaultOpen>
         {negocio.compradores && negocio.compradores.length > 0 ? (
           <div className="divide-y divide-aed-border">
             {negocio.compradores.map((c, i) => {
@@ -1175,6 +1175,26 @@ function drawEncabezadoEstadoCuenta(doc, pageWidth, logoDataUrl, cornerDataUrl) 
   return tituloY + 10;
 }
 
+// Niveles de compresión para la tabla PLAN DE PAGOS -- de más cómodo a más
+// apretado. Se elige el más grande que quepa en el alto disponible de la
+// página para que la conciliación completa (a veces 30-40 cuotas) entre
+// siempre en una sola página, sin importar cuántas filas tenga.
+const NIVELES_TABLA_PLAN = [
+  { fontSize: 7.5, cellPadding: 1.8, headFontSize: 7,   altoFila: 6.7 },
+  { fontSize: 7,   cellPadding: 1.3, headFontSize: 6.5, altoFila: 5.5 },
+  { fontSize: 6.3, cellPadding: 0.9, headFontSize: 6,   altoFila: 4.4 },
+  { fontSize: 5.6, cellPadding: 0.6, headFontSize: 5.4, altoFila: 3.5 },
+  { fontSize: 5,   cellPadding: 0.4, headFontSize: 4.8, altoFila: 2.9 },
+];
+
+function estiloTablaPlan(numFilasConHeader, alturaDisponible) {
+  const presupuestoPorFila = alturaDisponible / numFilasConHeader;
+  for (const nivel of NIVELES_TABLA_PLAN) {
+    if (nivel.altoFila <= presupuestoPorFila) return nivel;
+  }
+  return NIVELES_TABLA_PLAN[NIVELES_TABLA_PLAN.length - 1];
+}
+
 function drawEncabezadoContinuacion(doc, negocio, pageWidth, logoDataUrl) {
   if (logoDataUrl) {
     const w = 16, h = w / LOGO_RATIO;
@@ -1193,6 +1213,7 @@ async function exportarEstadoCuenta(negocio, datos) {
   const { cuotas, resumen, movimientos, valorVenta } = datos;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
 
   const [logoDataUrl, cornerDataUrl] = await Promise.all([
     cargarImagenComoDataUrl(logoBaiaKristal).catch(() => null),
@@ -1248,15 +1269,25 @@ async function exportarEstadoCuenta(negocio, datos) {
     theme: 'plain',
     styles: { fontSize: 9, cellPadding: 2.2, fontStyle: 'bold', halign: 'center', valign: 'middle' },
     body: [
-      ['VALOR CUOTA', formatCOP(valorCuota) ?? '—'],
+      ['VALOR CUOTA INICIAL', formatCOP(valorCuota) ?? '—'],
       ['VALOR CONSIGNADO', formatCOP(resumen.totalPagado) ?? '—'],
       ['VALOR PENDIENTE', formatCOP(valorPendiente) ?? '—'],
       ['VALOR VENCIDO', formatCOP(resumen.montoEnMora) ?? '$ 0'],
     ],
-    columnStyles: { 0: { cellWidth: 38, textColor: 255 }, 1: { cellWidth: 36, textColor: 255 } },
+    columnStyles: { 0: { cellWidth: 38 }, 1: { cellWidth: 36 } },
     didParseCell: (data) => {
-      const bg = [COLOR_NAVY, COLOR_GREEN, COLOR_AMBER, COLOR_RED][data.row.index];
-      data.cell.styles.fillColor = bg;
+      // Columna izquierda (etiqueta): navy para todas, rojo solo en Vencido.
+      // Columna derecha (valor): siempre fondo blanco, con el texto en el
+      // mismo color de acento que la etiqueta de su fila.
+      const esVencido = data.row.index === 3;
+      const colorAcento = esVencido ? COLOR_RED : COLOR_NAVY;
+      if (data.column.index === 0) {
+        data.cell.styles.fillColor = colorAcento;
+        data.cell.styles.textColor = 255;
+      } else {
+        data.cell.styles.fillColor = [255, 255, 255];
+        data.cell.styles.textColor = colorAcento;
+      }
     },
   });
 
@@ -1267,21 +1298,55 @@ async function exportarEstadoCuenta(negocio, datos) {
   doc.setTextColor(...COLOR_NAVY);
   doc.text('PLAN DE PAGOS', 14, planStartY);
 
+  // Misma tabla que la Conciliación en pantalla (badgeConciliacion/labelCuota
+  // en Negocios.jsx) -- no la versión resumida de solo 5 columnas de antes.
+  // Toda la conciliación debe caber en esta única página (algunos negocios
+  // tienen 30-40 cuotas) -- se calcula el estilo (fuente/padding) más grande
+  // que aún quepa en el alto disponible, en vez de un tamaño fijo.
+  const estadosPlan = cuotas.map((c) => badgeConciliacion(c));
+  const COLOR_ESTADO = {
+    Atrasada: COLOR_RED,
+    Pagada: COLOR_GREEN,
+    Parcial: COLOR_AMBER,
+    Pendiente: COLOR_MUTED,
+  };
+  const planTableStartY = planStartY + 3;
+  const alturaDisponiblePlan = pageHeight - planTableStartY - 15;
+  const nivelPlan = estiloTablaPlan(cuotas.length + 1, alturaDisponiblePlan);
   autoTable(doc, {
-    startY: planStartY + 3,
-    head: [['CUOTA', 'CONCEPTO', 'FECHA COMPROMISO', 'VALOR COMPROMISO', 'VALOR PAGADO']],
-    body: cuotas.map((c, i) => [
-      i,
-      i === cuotas.length - 1 ? 'Financiación' : 'Cuota Inicial',
-      c.fechaEstimada ? formatFechaUTC(c.fechaEstimada) : '—',
-      formatCOP(c.valorPlan) ?? '—',
-      formatCOP(c.cubierto) ?? '$ 0',
-    ]),
-    styles: { fontSize: 8.5, cellPadding: 2.2, halign: 'center', valign: 'middle' },
-    headStyles: { fillColor: COLOR_TEAL, textColor: 255, fontStyle: 'bold', halign: 'center' },
+    startY: planTableStartY,
+    head: [['CUOTA', 'FECHA ESPERADA', 'FECHA DE PAGO', 'VALOR DE LA CUOTA', 'VALOR PAGADO', 'DIFERENCIA', 'DÍAS DE ATRASO', 'ESTADO']],
+    body: cuotas.map((c) => {
+      const badge = badgeConciliacion(c);
+      return [
+        labelCuota(c.etiqueta),
+        c.fechaEstimada ? formatFechaUTC(c.fechaEstimada) : '—',
+        c.estado === 'pagada' && c.fechaCubierta ? formatFechaUTC(c.fechaCubierta) : '—',
+        formatCOP(c.valorPlan) ?? '—',
+        c.cubierto > 0 ? formatCOP(c.cubierto) : '—',
+        formatCOP(c.valorPlan - c.cubierto) ?? '—',
+        c.atrasada && c.diasAtraso != null ? String(c.diasAtraso) : '—',
+        badge.txt,
+      ];
+    }),
+    styles: { fontSize: nivelPlan.fontSize, cellPadding: nivelPlan.cellPadding, halign: 'center', valign: 'middle' },
+    headStyles: { fillColor: COLOR_TEAL, textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: nivelPlan.headFontSize },
     alternateRowStyles: { fillColor: COLOR_TEAL_LIGHT },
-    columnStyles: { 0: { cellWidth: 16 } },
+    columnStyles: { 0: { cellWidth: 26 } },
+    pageBreak: 'avoid',
+    didParseCell: (data) => {
+      if (data.section !== 'body' || data.column.index !== 7) return;
+      const estado = estadosPlan[data.row.index];
+      data.cell.styles.textColor = COLOR_ESTADO[estado.txt] ?? COLOR_NAVY;
+      data.cell.styles.fontStyle = 'bold';
+    },
   });
+
+  // Detalle de Aportes siempre arranca en una página nueva -- así la
+  // conciliación (arriba) queda sola en la página 1 sin importar cuánto
+  // espacio le sobre o falte, y todo lo de movimientos queda agrupado aparte.
+  doc.addPage();
+  drawEncabezadoContinuacion(doc, negocio, pageWidth, logoDataUrl);
 
   // Tabla DETALLE DE APORTES (movimientos reales, orden cronológico)
   const aportes = (movimientos || [])
@@ -1305,7 +1370,10 @@ async function exportarEstadoCuenta(negocio, datos) {
     });
   const totalAportes = aportes.reduce((s, a) => s + a.valor, 0);
 
-  const aportesStartY = doc.lastAutoTable.finalY + 10;
+  // Posición fija (no doc.lastAutoTable.finalY) -- ya se forzó salto de
+  // página arriba, así que siempre empieza justo debajo del mini-encabezado
+  // recién dibujado, no importa qué tan larga fue la tabla de la página 1.
+  const aportesStartY = 22;
   doc.setFont(undefined, 'bold');
   doc.setFontSize(10.5);
   doc.setTextColor(...COLOR_NAVY);
@@ -1360,7 +1428,7 @@ function ExportMenu({ onExport, disabled }) {
         <Download size={12} className="text-slate-500" />
       </button>
       {open && (
-        <div className="absolute right-0 top-8 z-50 bg-white border border-aed-border rounded-lg shadow-lg overflow-hidden min-w-[140px]">
+        <div className="absolute right-0 top-8 z-50 bg-white border border-aed-border rounded-lg shadow-[var(--shadow-overlay)] overflow-hidden min-w-[140px]">
           {options.map(({ label, fmt }) => (
             <button
               key={fmt}

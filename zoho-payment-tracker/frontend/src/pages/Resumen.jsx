@@ -507,15 +507,15 @@ export default function Resumen() {
               <KpiCard
                 icon={PieChart}
                 iconBg="#eff6ff"
-                iconColor="#2563eb"
+                iconColor="#1d4ed8"
                 label="Totalidad del 30%"
                 value={kpisRecaudo ? formatCOP(kpisRecaudo.totalidad30) : '—'}
                 hint={`Total esperado de la Cuota Inicial según el plan de pagos, dentro del periodo seleccionado (${labelVentana}).`}
               />
               <KpiCard
                 icon={Wallet}
-                iconBg="#f0fdf4"
-                iconColor="#16a34a"
+                iconBg="#ecfdf5"
+                iconColor="#047857"
                 label="Recaudado del 30%"
                 value={kpisRecaudo ? formatCOP(kpisRecaudo.recaudado30) : '—'}
                 hint={`Lo realmente recaudado (movimientos) hacia la Cuota Inicial, dentro del periodo seleccionado (${labelVentana}).`}
@@ -523,7 +523,7 @@ export default function Resumen() {
               <KpiCard
                 icon={AlertTriangle}
                 iconBg="#fef2f2"
-                iconColor="#dc2626"
+                iconColor="#b91c1c"
                 label="Por recaudar (30%)"
                 value={kpisRecaudo ? formatCOP(kpisRecaudo.porRecaudar30) : '—'}
                 hint={`Cuota Inicial esperada según el plan de pagos, menos lo recaudado real, dentro del periodo seleccionado (${labelVentana}).`}
@@ -531,7 +531,7 @@ export default function Resumen() {
               <KpiCard
                 icon={CalendarClock}
                 iconBg="#fffbeb"
-                iconColor="#d97706"
+                iconColor="#b45309"
                 label="Cuotas vencidas (30%) (actual)"
                 value={kpisActuales ? kpisActuales.cuotasEnMoraInicial : '—'}
                 sub={kpisActuales ? formatCOP(kpisActuales.montoEnMoraInicial) : undefined}
@@ -548,15 +548,15 @@ export default function Resumen() {
               <KpiCard
                 icon={PieChart}
                 iconBg="#eff6ff"
-                iconColor="#2563eb"
+                iconColor="#1d4ed8"
                 label="Totalidad del 70%"
                 value={kpisRecaudo ? formatCOP(kpisRecaudo.totalidad70) : '—'}
                 hint={`Total esperado del Saldo Contraentrega según conciliación, dentro del periodo seleccionado (${labelVentana}).`}
               />
               <KpiCard
                 icon={Wallet}
-                iconBg="#f0fdf4"
-                iconColor="#16a34a"
+                iconBg="#ecfdf5"
+                iconColor="#047857"
                 label="Saldo recaudado contraentrega (70%)"
                 value={kpisRecaudo ? formatCOP(kpisRecaudo.recaudado70) : '—'}
                 hint={`Lo realmente recaudado (movimientos) hacia el Saldo Contraentrega, sin contar excedentes/saldo a favor, dentro del periodo seleccionado (${labelVentana}).`}
@@ -580,7 +580,7 @@ export default function Resumen() {
               <KpiCard
                 icon={Warehouse}
                 iconBg="#eff6ff"
-                iconColor="#3b82f6"
+                iconColor="#1d4ed8"
                 label="Inmuebles disponibles (actual)"
                 value={kpisActuales ? formatCOP(kpisActuales.valorDisponible) : '—'}
                 sub={kpisActuales ? `${kpisActuales.cantidadDisponible} unidades` : undefined}
@@ -588,8 +588,8 @@ export default function Resumen() {
               />
               <KpiCard
                 icon={BadgeCheck}
-                iconBg="#f0fdf4"
-                iconColor="#16a34a"
+                iconBg="#ecfdf5"
+                iconColor="#047857"
                 label="Inmuebles vendidos (actual)"
                 value={kpisActuales ? formatCOP(kpisActuales.valorVendidos) : '—'}
                 sub={kpisActuales ? `${kpisActuales.cantidadVendidos} unidades` : undefined}

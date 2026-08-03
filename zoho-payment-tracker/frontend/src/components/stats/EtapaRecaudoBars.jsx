@@ -77,7 +77,7 @@ export default function EtapaRecaudoBars({ totalesPorEtapa = {} }) {
           formatter={(value) => <span className="text-[13px] text-slate-600">{value}</span>}
         />
         <Bar dataKey="esperado" name="Proyectado (plan)" fill="#cbd5e1" radius={[4, 4, 0, 0]} maxBarSize={44} />
-        <Bar dataKey="recaudado" name="Recaudado" fill="#0f766e" radius={[4, 4, 0, 0]} maxBarSize={44} />
+        <Bar dataKey="recaudado" name="Recaudado" fill="#0e7581" radius={[4, 4, 0, 0]} maxBarSize={44} />
       </BarChart>
     </ResponsiveContainer>
   );

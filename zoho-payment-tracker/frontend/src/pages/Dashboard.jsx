@@ -57,22 +57,22 @@ export default function Dashboard() {
           <KpiCard
             icon={BarChart2}
             iconBg="#eff6ff"
-            iconColor="#3b82f6"
+            iconColor="#1d4ed8"
             label="Total oportunidades"
             value={kpis.total !== null ? kpis.total : '—'}
           />
           <KpiCard
             icon={Clock}
             iconBg="#fffbeb"
-            iconColor="#d97706"
+            iconColor="#b45309"
             label="En negociación"
             value={kpis.enNegociacion !== null ? kpis.enNegociacion : '—'}
             hint="Cantidad de etapas intermedias del proceso comercial (entre calificación y cierre)."
           />
           <KpiCard
             icon={Wallet}
-            iconBg="#f0fdf4"
-            iconColor="#16a34a"
+            iconBg="#ecfdf5"
+            iconColor="#047857"
             label="Total recaudado"
             value="—"
             sub="Ver detalle por oportunidad"

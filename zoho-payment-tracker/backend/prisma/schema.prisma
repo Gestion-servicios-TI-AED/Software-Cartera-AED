@@ -116,6 +116,11 @@ model Negocio {
   saldoActual Float?
   compradores NegocioComprador[]
   movimientos NegocioMovimiento[]
+  // Marcado manual desde Cartera en Gestión (clic derecho). "Canje" excluye
+  // el negocio de la cartera por completo -- no es una deuda real (el
+  // comprador está aportando otra cosa a cambio del apartamento).
+  enTramite   Boolean             @default(false)
+  esCanje     Boolean             @default(false)
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 

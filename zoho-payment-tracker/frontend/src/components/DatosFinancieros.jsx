@@ -23,7 +23,7 @@ export function ListaInfo({ entries, hoja = 'resumen', format }) {
     return <p className="px-4 py-4 text-[14px] text-slate-500 italic bg-white">Sin datos</p>;
   }
   return (
-    <div className="bg-white columns-1 lg:columns-2 lg:gap-8 lg:[column-rule:1px_solid_#e9edf2]">
+    <div className="bg-white columns-1 lg:columns-2 lg:gap-8 lg:[column-rule:1px_solid_var(--border-soft)]">
       {entries.map(([k, v]) => (
         <Fila key={k} etiqueta={k} valor={format(k, v)} hoja={hoja} />
       ))}
@@ -40,7 +40,7 @@ export function ListaFinanciera({ entries, format }) {
   const dinero = (v) => (v != null && v !== '' ? format('saldo', v) ?? String(v) : '—');
 
   return (
-    <div className="bg-white columns-1 lg:columns-2 lg:gap-8 lg:[column-rule:1px_solid_#e9edf2]">
+    <div className="bg-white columns-1 lg:columns-2 lg:gap-8 lg:[column-rule:1px_solid_var(--border-soft)]">
       {antes.map(([k, v]) => (
         <Fila key={k} etiqueta={k} valor={format(k, v)} hoja="resumen" />
       ))}

@@ -7,7 +7,7 @@ import {
 const STAGE_COLORS = {
   'Closed Won': '#047857',           // emerald
   'Closed Lost': '#b91c1c',          // red
-  'Proposal/Price Quote': '#0f766e', // teal (marca)
+  'Proposal/Price Quote': '#0e7581', // teal (marca)
   'Negotiation/Review': '#e11d48',   // rose
   'Qualification': '#b45309',        // amber
   'Value Proposition': '#0369a1',    // sky

@@ -150,12 +150,17 @@ const TIPOS_EXCLUIDOS_SIEMPRE = ['GENERADO POR VENTA UNIDAD'];
 // Excel de origen, pero igual representan plata real del negocio. Ordenados
 // por fecha contable ascendente (sin fecha al final).
 function normalizarPagos(movimientos) {
-  return (movimientos || [])
+  const pagos = (movimientos || [])
     .filter((m) => {
       const tipo = String(m.datos?.['Tipo Movimiento'] || '').trim().toUpperCase();
       return !TIPOS_EXCLUIDOS_SIEMPRE.includes(tipo);
     })
-    .map((m) => ({ id: m.idMovimiento ?? null, fecha: m.fechaContable ? new Date(m.fechaContable) : null, valor: parseMonto(m.datos?.Valor) }))
+    .map((m) => ({
+      id: m.idMovimiento ?? null,
+      fecha: m.fechaContable ? new Date(m.fechaContable) : null,
+      valor: parseMonto(m.datos?.Valor),
+      tipo: String(m.datos?.['Tipo Movimiento'] || '').trim().toUpperCase(),
+    }))
     .filter((p) => !isNaN(p.valor) && p.valor !== 0)
     .sort((a, b) => {
       if (!a.fecha && !b.fecha) return 0;
@@ -163,6 +168,35 @@ function normalizarPagos(movimientos) {
       if (!b.fecha) return -1;
       return a.fecha - b.fecha;
     });
+
+  // Un DESISTIMIENTOS cancela todo lo anterior: el cliente sacó su plata, así
+  // que el saldo real vuelve a $0 en ese punto. Si más adelante vuelve a
+  // abonar, la conciliación debe arrancar de $0 justo después del último
+  // desistimiento -- no arrastrar pagos que ya fueron devueltos. DESISTIMIENTOS
+  // siempre corta (es una señal explícita, sin importar si el acumulado da
+  // exactamente $0). AJUSTE MANUAL + y - en cambio se usa también para
+  // abonos normales (no es exclusivo de reversar), así que solo cuenta como
+  // corte cuando de verdad deja el acumulado en $0 -- si no, es un ajuste
+  // más, no un reinicio. Se toma el ÚLTIMO punto de corte que aparezca en la
+  // cronología. Confirmado contra datos reales: 211 negocios con
+  // DESISTIMIENTOS explícito + 17 más que cancelan el acumulado vía AJUSTE
+  // MANUAL. Los movimientos de antes del corte siguen intactos en el
+  // historial de movimientos -- esta función solo alimenta la cascada de
+  // conciliación, no filtra qué se muestra en pantalla.
+  const TOLERANCIA_CANCELACION = 1; // pesos, margen de redondeo
+  let acumulado = 0;
+  let ultimoReinicioIdx = -1;
+  pagos.forEach((p, i) => {
+    acumulado += p.valor;
+    if (p.tipo === 'DESISTIMIENTOS') {
+      ultimoReinicioIdx = i;
+    } else if (p.tipo === 'AJUSTE MANUAL + Y -' && Math.abs(acumulado) < TOLERANCIA_CANCELACION) {
+      ultimoReinicioIdx = i;
+    }
+  });
+  const vigentes = ultimoReinicioIdx >= 0 ? pagos.slice(ultimoReinicioIdx + 1) : pagos;
+
+  return vigentes.map(({ tipo, ...resto }) => resto);
 }
 
 // Pagos (con su fecha y valor completos) cuyo propio tramo en el acumulado
