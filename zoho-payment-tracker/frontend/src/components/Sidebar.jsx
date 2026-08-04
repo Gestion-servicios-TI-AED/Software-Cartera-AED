@@ -2,10 +2,12 @@ import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Settings, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
-import { NAV_ITEMS } from '../config/navItems';
+import { NAV_ITEMS_BAIA_KRISTAL, NAV_ITEMS_ALEGRA } from '../config/navItems';
 import { useHiddenNav } from '../utils/navPrefs';
+import { useProyectoActivo } from '../utils/proyectoActivo';
 import { logout } from '../utils/api';
 import logoBaiaKristal from '../assets/baia-kristal-logo.png';
+import logoAlegra from '../assets/alegra-logo.svg';
 
 const COLAPSADO_KEY = 'aed.sidebarColapsado';
 
@@ -101,8 +103,13 @@ function SidebarItem({ to, Icon, label, color, exact, colapsado }) {
 
 export default function Sidebar({ onLogout }) {
   const { hidden } = useHiddenNav();
-  const items = NAV_ITEMS.filter((item) => !hidden.has(item.key));
   const [colapsado, setColapsado] = useState(leerColapsado);
+  const { proyecto } = useProyectoActivo(); // el control para cambiarlo vive en Ajustes
+
+  const esAlegra = proyecto === 'alegra';
+  const itemsProyecto = esAlegra ? NAV_ITEMS_ALEGRA : NAV_ITEMS_BAIA_KRISTAL;
+  const items = itemsProyecto.filter((item) => !hidden.has(item.key));
+  const nombreProyecto = esAlegra ? 'Alegra' : 'Baía Kristal';
 
   const toggleColapsado = () => {
     setColapsado((prev) => {
@@ -126,12 +133,19 @@ export default function Sidebar({ onLogout }) {
     >
       <div className={`flex items-center mb-1 flex-shrink-0 ${colapsado ? 'justify-center' : 'justify-between px-1.5'}`}>
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0" title="Baía Kristal">
-            <img src={logoBaiaKristal} alt="Baía Kristal" className="w-full h-full object-contain" />
+          <div className="w-8 h-8 rounded-[10px] flex items-center overflow-hidden flex-shrink-0" title={nombreProyecto}>
+            {esAlegra ? (
+              // El SVG de Alegra es ancho (icono + wordmark); se escala a la altura
+              // de la caja y se recorta por la derecha para mostrar solo el ícono,
+              // igual que el mark compacto de Baía Kristal.
+              <img src={logoAlegra} alt={nombreProyecto} className="h-8 w-auto max-w-none object-contain" />
+            ) : (
+              <img src={logoBaiaKristal} alt={nombreProyecto} className="w-full h-full object-contain" />
+            )}
           </div>
           {!colapsado && (
             <span className="font-heading text-[14px] font-bold text-ink leading-tight whitespace-nowrap">
-              Baía Kristal
+              {nombreProyecto}
             </span>
           )}
         </div>

@@ -271,6 +271,12 @@ export async function actualizarMenuOculto(hidden) {
   return data;
 }
 
+// ── Alegra ─────────────────────────────────────────────────
+export async function getAlegraStatus() {
+  const { data } = await api.get('/alegra/status');
+  return data;
+}
+
 export async function actualizarFechaEntregaTorre(frente, torre, fechaEntrega) {
   const { data } = await api.put(
     `/configuraciones/frentes/${encodeURIComponent(frente)}/torres/${encodeURIComponent(torre)}`,

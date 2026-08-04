@@ -5,12 +5,17 @@ import {
   CalendarClock, Lock, XCircle, Search, ChevronsUpDown, ChevronsDownUp,
   FileSearch, Download, AlertTriangle,
 } from 'lucide-react';
-import { NAV_ITEMS } from '../config/navItems';
+import { NAV_ITEMS_BAIA_KRISTAL, NAV_ITEMS_ALEGRA } from '../config/navItems';
 import { useHiddenNav } from '../utils/navPrefs';
+import { useProyectoActivo, PROYECTOS } from '../utils/proyectoActivo';
 import {
   triggerSubformsBackfill, getSubformsBackfillStatus, getInconsistenciasProjectCode,
   getConfiguracionesFrentes, actualizarFechaEntregaProyecto, actualizarFechaEntregaTorre, actualizarFechaEntregaPiso,
 } from '../utils/api';
+import logoBaiaKristal from '../assets/baia-kristal-logo.png';
+import logoAlegra from '../assets/alegra-logo.svg';
+
+const LOGOS_PROYECTO = { 'baia-kristal': logoBaiaKristal, alegra: logoAlegra };
 
 function formatDuracion(segundos) {
   if (segundos == null) return null;
@@ -718,6 +723,9 @@ function Toggle({ checked, onChange, label }) {
 
 export default function Ajustes() {
   const { hidden, setVisible } = useHiddenNav();
+  const { proyecto, setProyecto } = useProyectoActivo();
+  const proyectoActual = PROYECTOS.find((p) => p.key === proyecto) ?? PROYECTOS[0];
+  const itemsMenuProyecto = proyecto === 'alegra' ? NAV_ITEMS_ALEGRA : NAV_ITEMS_BAIA_KRISTAL;
 
   return (
     <div className="flex flex-col min-h-screen bg-aed-base">
@@ -732,15 +740,48 @@ export default function Ajustes() {
           <Seccion title="Apariencia" icon={Settings} color="#64748b">
             <div className="card overflow-hidden">
               <div className="px-4 py-3 border-b border-aed-border">
-                <h2 className="text-[15px] font-semibold text-slate-800">Elementos del menú</h2>
+                <h2 className="text-[15px] font-semibold text-slate-800">Proyecto activo</h2>
                 <p className="text-[13px] text-slate-500 mt-0.5">
-                  Decide qué secciones se muestran en el menú lateral. Las que ocultes
-                  desaparecen de la barra, pero siguen funcionando si tienes su enlace.
+                  Elige qué cartera ver en el menú lateral. Cada proyecto tiene su propio
+                  CRM y su propia lógica -- esto solo cambia qué módulos aparecen abajo.
+                </p>
+              </div>
+              <div className="divide-y divide-aed-border">
+                {PROYECTOS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => setProyecto(p.key)}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-aed-base transition-colors"
+                  >
+                    <div className="flex-1 min-w-0 flex items-center h-9">
+                      <img
+                        src={LOGOS_PROYECTO[p.key]}
+                        alt={p.label}
+                        title={p.label}
+                        className="h-full w-auto max-w-[150px] object-contain object-left"
+                      />
+                    </div>
+                    {proyecto === p.key && <Check size={16} className="text-brand flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="card overflow-hidden">
+              <div className="px-4 py-3 border-b border-aed-border">
+                <h2 className="text-[15px] font-semibold text-slate-800">
+                  Elementos del menú -- {proyectoActual.label}
+                </h2>
+                <p className="text-[13px] text-slate-500 mt-0.5">
+                  Decide qué secciones se muestran en el menú lateral de este proyecto. Las
+                  que ocultes desaparecen de la barra, pero siguen funcionando si tienes su
+                  enlace. Cada proyecto guarda su propia lista -- ocultar algo acá no
+                  afecta al otro.
                 </p>
               </div>
 
               <div className="divide-y divide-aed-border">
-                {NAV_ITEMS.map((item) => {
+                {itemsMenuProyecto.map((item) => {
                   const visible = !hidden.has(item.key);
                   return (
                     <div key={item.key} className="flex items-center gap-3 px-4 py-3">

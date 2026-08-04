@@ -16,6 +16,7 @@ import EncargoNomenclaturas from './pages/EncargoNomenclaturas';
 import ApartamentoDetalle from './pages/ApartamentoDetalle';
 import Resumen from './pages/Resumen';
 import Ajustes from './pages/Ajustes';
+import Alegra from './pages/Alegra';
 import { checkAuth } from './utils/api';
 
 export default function App() {
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="/fiducia/:id" element={<FiduciaDetalle />} />
             <Route path="/resumen" element={<Resumen />} />
             <Route path="/ajustes" element={<Ajustes />} />
+            <Route path="/alegra/*" element={<Alegra />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

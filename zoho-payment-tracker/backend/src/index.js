@@ -4,17 +4,21 @@ const cors = require('cors');
 const path = require('path');
 const cron = require('node-cron');
 const { PrismaClient } = require('@prisma/client');
-const { syncOpportunitiesFromZoho } = require('./services/zohoSync');
-const { cerrarMesAnteriorSiFalta } = require('./services/dashboardRecaudoService');
+// Baía Kristal: CRM Zoho + Excel de fiducia (ver baia-kristal/README si se
+// agrega uno). Alegra: CRM HubSpot + su propio Excel, lógica separada.
+const { syncOpportunitiesFromZoho } = require('./baia-kristal/services/zohoSync');
+const { cerrarMesAnteriorSiFalta } = require('./baia-kristal/services/dashboardRecaudoService');
 const { requireAuth } = require('./middleware/auth');
 const authRouter = require('./routes/auth');
-const opportunitiesRouter = require('./routes/opportunities');
-const fieldsRouter = require('./routes/fields');
-const fiduciaRouter = require('./routes/fiducia');
-const negociosRouter = require('./routes/negocios');
-const statsRouter = require('./routes/stats');
-const inventarioRouter = require('./routes/inventario');
-const configuracionesRouter = require('./routes/configuraciones');
+const opportunitiesRouter = require('./baia-kristal/routes/opportunities');
+const fieldsRouter = require('./baia-kristal/routes/fields');
+const fiduciaRouter = require('./baia-kristal/routes/fiducia');
+const negociosRouter = require('./baia-kristal/routes/negocios');
+const statsRouter = require('./baia-kristal/routes/stats');
+const inventarioRouter = require('./baia-kristal/routes/inventario');
+const configuracionesRouter = require('./routes/configuraciones'); // global (menú)
+const configuracionesFrentesRouter = require('./baia-kristal/routes/configuracionesFrentes');
+const alegraRouter = require('./alegra/routes');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -32,14 +36,18 @@ app.get('/api/health', (req, res) => {
 // Todo lo demás bajo /api requiere sesión válida
 app.use('/api', requireAuth);
 
-// Rutas
+// Rutas -- Baía Kristal
 app.use('/api/opportunities', opportunitiesRouter);
 app.use('/api/fields', fieldsRouter);
 app.use('/api/fiducia', fiduciaRouter);
 app.use('/api/negocios', negociosRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/inventario', inventarioRouter);
-app.use('/api/configuraciones', configuracionesRouter);
+app.use('/api/configuraciones', configuracionesRouter); // global (menú)
+app.use('/api/configuraciones', configuracionesFrentesRouter); // Baía Kristal (frentes)
+
+// Rutas -- Alegra
+app.use('/api/alegra', alegraRouter);
 
 // GET /api/sync/status — ruta directa (también está en opportunities router)
 app.get('/api/sync/status', async (req, res) => {

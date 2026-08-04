@@ -6,7 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Zoho Payment Tracker** — sistema interno de AED que sincroniza oportunidades del CRM Zoho, procesa movimientos de pago desde correos Outlook y gestiona datos de encargos fiduciarios desde archivos Excel.
+**Cartera AED** — sistema interno de AED para el seguimiento de cartera de varios proyectos inmobiliarios. Cada proyecto tiene su propio CRM, su propio formato de Excel y su propia lógica de conciliación, aislados en su propia carpeta del backend (ver `Repository Structure`):
+
+- **Baía Kristal** (`backend/src/baia-kristal/`) — CRM Zoho + Excel de fiducia (muchas columnas, movimientos bancarios detallados). Es el proyecto original y el más completo; el resto de este documento describe su arquitectura en detalle salvo que se diga lo contrario.
+- **Alegra** (`backend/src/alegra/`) — CRM HubSpot + su propio Excel (bastantes menos columnas). En construcción: por ahora solo existe el scaffold (`GET /api/alegra/status`) y un cliente HubSpot básico (`alegra/services/hubspotClient.js`); falta definir el schema de datos (Prisma) y la lógica de conciliación propia una vez se tenga una muestra real del Excel.
+
+Lo compartido entre proyectos (login de una sola clave, configuración global del menú lateral) vive en la raíz de `backend/src/` (`middleware/`, `routes/auth.js`, `routes/configuraciones.js`, `services/configuracionAppService.js`), no dentro de la carpeta de ningún proyecto.
 
 ## Documentación técnica
 
@@ -20,9 +25,26 @@ Existe una documentación técnica completa del proyecto (arquitectura, base de 
 
 ```
 zoho-payment-tracker/
-  backend/   — Node.js + Express + Prisma (port 3001)
-  frontend/  — React + Vite + Tailwind (port 5173)
+  backend/
+    src/
+      index.js               — arranque del server, CORS, cron, montaje de rutas (compartido)
+      middleware/auth.js      — login de una sola clave, compartido por todos los proyectos
+      routes/auth.js          — compartido
+      routes/configuraciones.js — SOLO /menu (visibilidad global del sidebar), compartido
+      services/configuracionAppService.js — config global clave/valor (hoy: menú oculto)
+      baia-kristal/
+        config/                — columnasExcluidas.js, zoho.js
+        routes/                 — negocios, fiducia, opportunities, inventario, fields, stats,
+                                   configuracionesFrentes.js (fechas de entrega por frente/torre/piso)
+        services/               — zohoSync, zohoAuth, fiduciaService, conciliacionService,
+                                   dashboardRecaudoService, inventarioNegocioService, etc.
+      alegra/
+        routes/index.js        — placeholder (GET /status) mientras se define el schema
+        services/hubspotClient.js — cliente HubSpot (Private App access token, sin OAuth)
+  frontend/  — React + Vite + Tailwind (port 5173) — SIN separar por proyecto todavía
 ```
+
+Al agregar rutas/servicios de un proyecto, van DENTRO de su carpeta (`baia-kristal/` o `alegra/`); lo que aplique a cualquier proyecto (auth, config global) va en la raíz de `src/`. Los `require()` relativos entre `routes/` y `services/` de un mismo proyecto se resuelven igual que antes de la separación (`../services/x`), porque ambas carpetas se movieron juntas manteniendo su estructura relativa.
 
 ## Commands
 
@@ -46,15 +68,17 @@ No test suite is configured.
 
 ## Architecture
 
-### Data Sources & Sync
+### Data Sources & Sync (Baía Kristal)
 
-Three independent data pipelines feed the system:
+> Nota: `CLAUDE.md` describía antes una tercera fuente por correo de Outlook (`emailSync.js` + modelo `PagoMovimiento`) — **eso no existe en el código actual**, se corrigió acá. La ingesta de movimientos es 100% por carga manual de Excel (punto 2).
 
-1. **Zoho CRM** (`src/services/zohoSync.js`) — Cron horario + endpoint manual `/api/sync`. Usa OAuth 2.0 con refresh token. Sincronización incremental via `If-Modified-Since`. Solo procesa oportunidades con campo `Pago_Separacion` definido.
+Dos fuentes de datos independientes alimentan Baía Kristal:
 
-2. **Outlook Email** (`src/services/emailSync.js`) — Cron diario 8 AM + endpoint manual. MS Graph API con client credentials. Descarga adjuntos Excel, parsea filas, crea `PagoMovimiento` asociando por número de referencia. Idempotente via `emailId` (Graph message ID).
+1. **Zoho CRM** (`baia-kristal/services/zohoSync.js`) — Cron horario + endpoint manual `/api/sync`. Usa OAuth 2.0 con refresh token. Sincronización incremental via `If-Modified-Since`. Solo procesa oportunidades con campo `Pago_Separacion` definido.
 
-3. **Fiducia Excel** (`src/services/fiduciaService.js`) — Upload manual desde frontend. Soporta Excel protegidos con `EXCEL_PASSWORD`. Detecta nombre de proyecto desde columna "Fideicomiso". Agrupa por nomenclatura para vista de propietario/apartamento.
+2. **Fiducia Excel** (`baia-kristal/services/fiduciaService.js`) — Upload manual desde frontend. Soporta Excel protegidos con `EXCEL_PASSWORD`. Detecta nombre de proyecto desde columna "Fideicomiso". Agrupa por nomenclatura para vista de propietario/apartamento.
+
+Alegra (en construcción) usará HubSpot como CRM (`alegra/services/hubspotClient.js`, token estático de Private App, sin OAuth) + su propio Excel, con su propia lógica de conciliación — no comparte tablas ni servicios con Baía Kristal.
 
 ### Key Patterns
 
@@ -66,43 +90,61 @@ Three independent data pipelines feed the system:
 
 ### API Routes (`/api`)
 
-| Prefijo | Propósito |
-|---|---|
-| `/opportunities` | Lista paginada, detalle, subforms, estado de sync |
-| `/pagos` | Movimientos de pago, sync de correos |
-| `/fiducia` | Encargos, hojas, movimientos, nomenclaturas, propietarios |
-| `/fields` | Metadatos de campos Zoho |
-| `/sync` | Trigger manual de sync Zoho |
-| `/health` | Health check |
+| Prefijo | Proyecto | Propósito |
+|---|---|---|
+| `/opportunities` | Baía Kristal | Lista paginada, detalle, subforms, estado de sync Zoho |
+| `/negocios` | Baía Kristal | Negocios, conciliación, Cartera en Gestión, Dashboard Plan vs. Recaudo |
+| `/fiducia` | Baía Kristal | Encargos, hojas, movimientos, nomenclaturas, propietarios |
+| `/inventario` | Baía Kristal | Inventario de inmuebles (Productos de Zoho) |
+| `/fields` | Baía Kristal | Metadatos de campos Zoho |
+| `/stats` | Baía Kristal | KPIs de Resumen Gerencial |
+| `/configuraciones/frentes` | Baía Kristal | Fechas de entrega por frente/torre/piso |
+| `/alegra` | Alegra | En construcción — solo `/status` por ahora |
+| `/configuraciones/menu` | Compartido | Visibilidad global del sidebar |
+| `/auth`, `/sync`, `/health` | Compartido / Baía Kristal | Login, trigger manual de sync Zoho, health check |
 
 ### Database (Prisma / PostgreSQL)
 
-Modelos principales:
-- `Opportunity` — deal de Zoho con campos financieros y de propiedad
-- `SubformPago` / `SubformPropuesta` — subforms de Zoho en JSON
-- `PagoMovimiento` — movimientos extraídos de correos
-- `EncargFiduciario` / `HojaFiduciaria` / `MovimientoFiduciario` — datos fiduciarios
-- `SyncLog` — historial de sincronizaciones
-- `ZohoField` — metadatos de campos Zoho
+Un solo `schema.prisma` para todos los proyectos (Prisma no soporta bien múltiples archivos de schema en esta versión). Modelos de **Baía Kristal**:
+- `Opportunity` — deal de Zoho, con `formaPago`/`propuestaPago`/`camposFinancieros` como JSON (no hay modelos `SubformPago`/`SubformPropuesta` separados)
+- `InventarioItem` — Producto de Zoho (inmueble físico)
+- `Negocio` / `NegocioComprador` / `NegocioMovimiento` — expediente financiero por comprador, desde el Excel de fiducia
+- `EncargFiduciario` / `HojaFiduciaria` / `MovimientoFiduciario` — Excel de fiducia crudo, tal como se sube
+- `ZohoFieldMetadata` — metadatos de campos Zoho (no `ZohoField`)
+- `SyncLog` — historial de sincronizaciones con Zoho
+- `ConfiguracionFrente` — fechas de entrega configuradas
+- `ResumenCarteraMensual` — foto fija mensual del Consolidado de Cartera
 
-Al cambiar `schema.prisma`, siempre ejecutar `npm run db:migrate` (dev) o `npm run db:deploy` (prod) + `npm run db:generate`.
+Modelo **compartido**: `ConfiguracionApp` (clave/valor genérico; hoy solo `menuOculto`).
+
+Modelos de **Alegra**: ninguno todavía — pendiente definir una vez se tenga una muestra real del Excel y se decida qué propiedades de HubSpot importan.
+
+Al cambiar `schema.prisma`, siempre ejecutar `npm run db:migrate` (dev) o `npm run db:deploy` (prod) + `npm run db:generate`. Si Prisma detecta un drift de schema no relacionado al cambio que estás haciendo, escribe la migración a mano (`prisma/migrations/<timestamp>_<nombre>/migration.sql`) en vez de dejar que `migrate dev` intente resolver todo el drift de una vez (ver migraciones `add_resumen_cartera_mensual`, `add_negocio_flags_tramite_canje`, `add_configuracion_app` como referencia de ese patrón).
 
 ### Frontend
 
-React Router con rutas profundas para drill-down:
-- `/` → dashboard de oportunidades
-- `/opportunity/:id` → detalle con subforms y movimientos
-- `/fiducia` → lista de encargos
-- `/fiducia/:id` → hojas del encargo
-- `/fiducia/:id/apartamento/:nomenclatura` → detalle por propiedad
+Todo el frontend (`zoho-payment-tracker/frontend/`) sigue siendo un solo proyecto React sin separar por carpeta de proyecto (a diferencia del backend) — cuando Alegra tenga UI, decidir ahí si conviene separarla en `frontend/src/alegra/` o dejarla junto a las páginas de Baía Kristal con su propio prefijo de ruta.
 
-Todas las vistas usan Axios contra `http://localhost:3001/api`. TanStack React Table para grillas con paginación server-side.
+React Router con rutas profundas para drill-down (todas son de Baía Kristal hoy):
+- `/` → Negocios (vista principal)
+- `/oportunidades` → pipeline de oportunidades de Zoho
+- `/inventario` → inmuebles
+- `/opportunity/:id` → detalle de oportunidad con subforms y movimientos
+- `/fiducia` → lista de encargos; `/fiducia/movimientos` → vista global de movimientos
+- `/fiducia/:id` → hojas del encargo; `/fiducia/:id/apartamento/:referencia` → detalle por propiedad
+- `/resumen` → Resumen Gerencial; `/dashboard` → Plan vs. Recaudo; `/cartera-mora` → Cartera en Gestión
+- `/ajustes` → configuración (incluye visibilidad del menú, compartida entre proyectos)
+
+Todas las vistas usan Axios (`frontend/src/utils/api.js`) contra `http://localhost:3001/api`. TanStack React Table para grillas con paginación server-side.
 
 ## Environment Variables
 
 Ver `backend/.env`. Variables requeridas:
 - `DATABASE_URL` — PostgreSQL connection string
-- `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_REFRESH_TOKEN` — OAuth Zoho
-- `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` — MS Graph para Outlook
-- `OUTLOOK_SHARED_MAILBOX` — buzón compartido de movimientos
-- `EXCEL_PASSWORD` — contraseña de Excel protegidos de la fiducia (opcional)
+- `SESSION_SECRET`, `APP_PASSWORD` — login de una sola clave (compartido)
+- `PORT`, `FRONTEND_URL`, `COOKIE_SECURE`, `DISABLE_CRON` — configuración del servidor (compartido)
+- `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_REFRESH_TOKEN`, `ZOHO_API_BASE`, `ZOHO_ACCOUNTS_URL` — OAuth Zoho (Baía Kristal)
+- `EXCEL_PASSWORD` — contraseña de Excel protegidos de la fiducia (Baía Kristal, opcional)
+- `HUBSPOT_ACCESS_TOKEN` — token de Private App de HubSpot (Alegra); `HUBSPOT_API_BASE` opcional si no es el estándar
+
+No existen ya variables `AZURE_*`/`OUTLOOK_*` — la vía de correo Outlook que describía este archivo antes nunca llegó a estar en el código.

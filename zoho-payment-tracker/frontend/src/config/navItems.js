@@ -1,7 +1,10 @@
 import { Target, Landmark, Banknote, Briefcase, BarChart3, Building2, LineChart, ShieldAlert } from 'lucide-react';
 
-// Ítems del menú lateral. Fuente única para Sidebar y Ajustes.
-// `key` es el identificador estable usado para guardar la preferencia de visibilidad.
+// Ítems del menú lateral, separados por proyecto -- Sidebar muestra solo los
+// del proyecto activo (ver selector Baía Kristal/Alegra); Ajustes muestra la
+// lista combinada (NAV_ITEMS) para poder ocultar/mostrar cualquiera sin
+// importar de qué proyecto sea. `key` es el identificador estable usado para
+// guardar la preferencia de visibilidad (global, ver navPrefs.js).
 //
 // Un solo acento (Harbor Teal, el color real de marca) para todo el menú --
 // antes cada módulo tenía su propio color "arcoíris" (rosa, violeta, ámbar…)
@@ -18,7 +21,7 @@ const BRAND_ACCENT = '#0e7581';
 //   Movimientos   → Banknote (movimientos bancarios/de dinero, más financiero que unas flechas genéricas)
 //   Dashboard     → LineChart (la página es literalmente Plan vs. Recaudo en el tiempo)
 //   Cartera       → ShieldAlert (cartera en gestión/mora -- "atención, vigilar", sin ser un ícono de error crudo)
-export const NAV_ITEMS = [
+export const NAV_ITEMS_BAIA_KRISTAL = [
   { key: 'negocios',      to: '/',                    Icon: Briefcase,      label: 'Negocios',      color: BRAND_ACCENT, exact: true },
   { key: 'oportunidades', to: '/oportunidades',       Icon: Target,         label: 'Oportunidades', color: BRAND_ACCENT, exact: true },
   { key: 'inventario',    to: '/inventario',          Icon: Building2,      label: 'Inmuebles',     color: BRAND_ACCENT, exact: true },
@@ -28,3 +31,23 @@ export const NAV_ITEMS = [
   { key: 'dashboard',     to: '/dashboard',           Icon: LineChart,      label: 'Dashboard',     color: BRAND_ACCENT, exact: true },
   { key: 'cartera-mora',  to: '/cartera-mora',        Icon: ShieldAlert,    label: 'Cartera',       color: BRAND_ACCENT, exact: true },
 ];
+
+// Alegra -- tendrá los mismos módulos que Baía Kristal (mismo menú, mismos
+// íconos/labels), pero todavía no hay modelo de datos ni parser de Excel
+// propio: cada ítem apunta por ahora a una subruta de la misma página
+// placeholder (`/alegra/*` en App.jsx), lista para reemplazarse una por una
+// sin tener que tocar este menú otra vez cuando se construya cada módulo.
+export const NAV_ITEMS_ALEGRA = [
+  { key: 'alegra-negocios',      to: '/alegra',                    Icon: Briefcase,   label: 'Negocios',      color: BRAND_ACCENT, exact: true },
+  { key: 'alegra-oportunidades', to: '/alegra/oportunidades',       Icon: Target,      label: 'Oportunidades', color: BRAND_ACCENT, exact: true },
+  { key: 'alegra-inventario',    to: '/alegra/inventario',          Icon: Building2,   label: 'Inmuebles',     color: BRAND_ACCENT, exact: true },
+  { key: 'alegra-encargos',      to: '/alegra/fiducia',             Icon: Landmark,    label: 'Encargos',      color: BRAND_ACCENT },
+  { key: 'alegra-movimientos',   to: '/alegra/fiducia/movimientos', Icon: Banknote,    label: 'Movimientos',   color: BRAND_ACCENT },
+  { key: 'alegra-resumen',       to: '/alegra/resumen',             Icon: BarChart3,   label: 'Resumen',       color: BRAND_ACCENT, exact: true },
+  { key: 'alegra-dashboard',     to: '/alegra/dashboard',           Icon: LineChart,   label: 'Dashboard',     color: BRAND_ACCENT, exact: true },
+  { key: 'alegra-cartera-mora',  to: '/alegra/cartera-mora',        Icon: ShieldAlert, label: 'Cartera',       color: BRAND_ACCENT, exact: true },
+];
+
+// Lista combinada -- la usa Ajustes para poder ocultar/mostrar ítems de
+// cualquier proyecto desde un solo lugar.
+export const NAV_ITEMS = [...NAV_ITEMS_BAIA_KRISTAL, ...NAV_ITEMS_ALEGRA];
