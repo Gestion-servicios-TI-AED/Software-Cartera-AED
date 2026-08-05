@@ -8,15 +8,15 @@ const { PrismaClient } = require('@prisma/client');
 // agrega uno). Alegra: CRM HubSpot + su propio Excel, lógica separada.
 const { syncOpportunitiesFromZoho } = require('./baia-kristal/services/zohoSync');
 const { cerrarMesAnteriorSiFalta } = require('./baia-kristal/services/dashboardRecaudoService');
-const { requireAuth } = require('./middleware/auth');
+const { requireAuth, requireModulo } = require('./middleware/auth');
 const authRouter = require('./routes/auth');
+const usuariosRouter = require('./routes/usuarios');
 const opportunitiesRouter = require('./baia-kristal/routes/opportunities');
 const fieldsRouter = require('./baia-kristal/routes/fields');
 const fiduciaRouter = require('./baia-kristal/routes/fiducia');
 const negociosRouter = require('./baia-kristal/routes/negocios');
 const statsRouter = require('./baia-kristal/routes/stats');
 const inventarioRouter = require('./baia-kristal/routes/inventario');
-const configuracionesRouter = require('./routes/configuraciones'); // global (menú)
 const configuracionesFrentesRouter = require('./baia-kristal/routes/configuracionesFrentes');
 const alegraRouter = require('./alegra/routes');
 
@@ -43,14 +43,16 @@ app.use('/api/fiducia', fiduciaRouter);
 app.use('/api/negocios', negociosRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/inventario', inventarioRouter);
-app.use('/api/configuraciones', configuracionesRouter); // global (menú)
 app.use('/api/configuraciones', configuracionesFrentesRouter); // Baía Kristal (frentes)
 
 // Rutas -- Alegra
 app.use('/api/alegra', alegraRouter);
 
+// Rutas -- Usuarios y permisos (compartido, requiere admin -- ver requireAdmin dentro del router)
+app.use('/api/usuarios', usuariosRouter);
+
 // GET /api/sync/status — ruta directa (también está en opportunities router)
-app.get('/api/sync/status', async (req, res) => {
+app.get('/api/sync/status', requireModulo('oportunidades'), async (req, res) => {
   try {
     const last = await prisma.syncLog.findFirst({
       orderBy: { startedAt: 'desc' },
@@ -62,7 +64,7 @@ app.get('/api/sync/status', async (req, res) => {
 });
 
 // POST /api/sync — ruta directa
-app.post('/api/sync', async (req, res) => {
+app.post('/api/sync', requireModulo('oportunidades'), async (req, res) => {
   const force = req.query.full === 'true';
   res.json({ message: 'Sincronización iniciada' });
   syncOpportunitiesFromZoho(force).catch((err) =>
