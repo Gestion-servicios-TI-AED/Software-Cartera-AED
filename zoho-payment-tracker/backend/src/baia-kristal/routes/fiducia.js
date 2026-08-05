@@ -3,13 +3,14 @@ const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
 const { procesarArchivoFiducia } = require('../services/fiduciaService');
 const { runBackfill } = require('./negocios');
+const { requireModulo } = require('../../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 // POST /api/fiducia/upload — carga manual de un archivo Excel
-router.post('/upload', upload.single('archivo'), async (req, res) => {
+router.post('/upload', requireModulo('encargos'), upload.single('archivo'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se recibió archivo' });
 
@@ -38,7 +39,7 @@ router.post('/upload', upload.single('archivo'), async (req, res) => {
 });
 
 // GET /api/fiducia/encargos — lista paginada con búsqueda
-router.get('/encargos', async (req, res) => {
+router.get('/encargos', requireModulo(['encargos', 'oportunidades']), async (req, res) => {
   try {
     const { search, proyecto, page = '1', limit = '20' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
@@ -91,7 +92,7 @@ router.get('/encargos', async (req, res) => {
 });
 
 // GET /api/fiducia/encargos/:id — detalle del encargo con lista de hojas
-router.get('/encargos/:id', async (req, res) => {
+router.get('/encargos/:id', requireModulo('encargos'), async (req, res) => {
   try {
     const encargo = await prisma.encargFiduciario.findUnique({
       where: { id: req.params.id },
@@ -110,7 +111,7 @@ router.get('/encargos/:id', async (req, res) => {
 });
 
 // GET /api/fiducia/encargos/:id/hojas/:hojaId — datos completos de una hoja (paginado)
-router.get('/encargos/:id/hojas/:hojaId', async (req, res) => {
+router.get('/encargos/:id/hojas/:hojaId', requireModulo('encargos'), async (req, res) => {
   try {
     const { page = '1', limit = '200' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
@@ -143,7 +144,7 @@ router.get('/encargos/:id/hojas/:hojaId', async (req, res) => {
 });
 
 // PATCH /api/fiducia/encargos/:id — actualiza nombre y/o código
-router.patch('/encargos/:id', async (req, res) => {
+router.patch('/encargos/:id', requireModulo('encargos'), async (req, res) => {
   try {
     const { nombre, codigo } = req.body;
     const updated = await prisma.encargFiduciario.update({
@@ -160,7 +161,7 @@ router.patch('/encargos/:id', async (req, res) => {
 });
 
 // DELETE /api/fiducia/encargos/:id
-router.delete('/encargos/:id', async (req, res) => {
+router.delete('/encargos/:id', requireModulo('encargos'), async (req, res) => {
   try {
     await prisma.encargFiduciario.delete({ where: { id: req.params.id } });
     res.json({ message: 'Eliminado' });
@@ -170,7 +171,7 @@ router.delete('/encargos/:id', async (req, res) => {
 });
 
 // PATCH /api/fiducia/encargos/:id — actualizar nombre o código del encargo
-router.patch('/encargos/:id', async (req, res) => {
+router.patch('/encargos/:id', requireModulo('encargos'), async (req, res) => {
   try {
     const { nombre, codigo } = req.body;
     const data = {};
@@ -196,7 +197,7 @@ router.patch('/encargos/:id', async (req, res) => {
 //         fechaDesde, fechaHasta (ISO: YYYY-MM-DD, filtra 'Fecha Contable' DD/MM/YYYY),
 //         sortField (propietario|hoja|createdAt), sortDir (asc|desc),
 //         page, limit
-router.get('/movimientos', async (req, res) => {
+router.get('/movimientos', requireModulo('encargos'), async (req, res) => {
   try {
     const {
       encargId: rawEncargId, codigo, propietario, hoja, search,
@@ -339,7 +340,7 @@ router.get('/movimientos', async (req, res) => {
 });
 
 // GET /api/fiducia/propietarios — lista única de propietarios con conteo
-router.get('/propietarios', async (req, res) => {
+router.get('/propietarios', requireModulo('encargos'), async (req, res) => {
   try {
     const { encargId, search } = req.query;
 
@@ -363,7 +364,7 @@ router.get('/propietarios', async (req, res) => {
 });
 
 // GET /api/fiducia/encargos/:id/nomenclaturas — lista de nomenclaturas del encargo (desde Negocio)
-router.get('/encargos/:id/nomenclaturas', async (req, res) => {
+router.get('/encargos/:id/nomenclaturas', requireModulo('encargos'), async (req, res) => {
   try {
     const { search, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
@@ -442,7 +443,7 @@ router.get('/encargos/:id/nomenclaturas', async (req, res) => {
 // el número de apartamento se repite entre edificios/etapas de un mismo
 // fideicomiso (ej. "6C" existe en varias torres), así que buscar solo por
 // Nomenclatura + Fideicomiso podía devolver un apartamento equivocado.
-router.get('/encargos/:id/negocio/:referencia', async (req, res) => {
+router.get('/encargos/:id/negocio/:referencia', requireModulo('encargos'), async (req, res) => {
   try {
     const referencia = decodeURIComponent(req.params.referencia);
 
