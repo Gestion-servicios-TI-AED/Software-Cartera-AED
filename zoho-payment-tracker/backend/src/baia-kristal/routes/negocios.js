@@ -16,6 +16,7 @@ const {
   obtenerDashboardRecaudo, obtenerCarteraMora,
   obtenerMesesDisponiblesResumen, obtenerResumenCarteraMes, invalidarCacheDashboard,
 } = require('../services/dashboardRecaudoService');
+const { requireModulo } = require('../../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -320,7 +321,7 @@ async function runBackfill() {
 }
 
 // POST /api/negocios/backfill — extrae datos de MovimientoFiduciario existente
-router.post('/backfill', (req, res) => {
+router.post('/backfill', requireModulo('negocios'), (req, res) => {
   if (backfillRunning) {
     return res.json({ message: 'Backfill ya en ejecución', running: true });
   }
@@ -329,7 +330,7 @@ router.post('/backfill', (req, res) => {
 });
 
 // GET /api/negocios/backfill/status
-router.get('/backfill/status', (req, res) => {
+router.get('/backfill/status', requireModulo('negocios'), (req, res) => {
   res.json({
     running: backfillRunning,
     result: backfillResult,
@@ -339,7 +340,7 @@ router.get('/backfill/status', (req, res) => {
 // ── CRUD ───────────────────────────────────────────────────────────────────
 
 // GET /api/negocios?search=&estado=&etapa=&frente=&torre=&saldoPendiente=&page=&limit=
-router.get('/', async (req, res) => {
+router.get('/', requireModulo('negocios'), async (req, res) => {
   try {
     const { search, estado, etapa, frente, torre, saldoPendiente, conMovimientos, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
@@ -420,7 +421,7 @@ async function resolverMovimientosWhere({ search, fideicomiso, estado, tipoMovim
 }
 
 // GET /api/negocios/movimientos — todos los movimientos con contexto de negocio
-router.get('/movimientos', async (req, res) => {
+router.get('/movimientos', requireModulo('movimientos'), async (req, res) => {
   try {
     const { search, fideicomiso, estado, tipoMovimiento, fechaDesde, fechaHasta, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
@@ -488,7 +489,7 @@ router.get('/movimientos', async (req, res) => {
 // GET /api/negocios/movimientos/export — todos los movimientos que matchean
 // los filtros, SIN paginar (para exportar exactamente lo que esta filtrado
 // en la grilla, no solo la pagina visible).
-router.get('/movimientos/export', async (req, res) => {
+router.get('/movimientos/export', requireModulo('movimientos'), async (req, res) => {
   try {
     const { search, fideicomiso, estado, tipoMovimiento, fechaDesde, fechaHasta } = req.query;
 
@@ -528,7 +529,7 @@ router.get('/movimientos/export', async (req, res) => {
 });
 
 // GET /api/negocios/stats — resumen agregado para el dashboard
-router.get('/stats', async (_req, res) => {
+router.get('/stats', requireModulo('negocios'), async (_req, res) => {
   try {
     const [totalInmuebles, total, conSaldo, saldoAgg, porEstado, { porEtapa, porFrente }] = await Promise.all([
       prisma.inventarioItem.count(),
@@ -561,7 +562,7 @@ router.get('/stats', async (_req, res) => {
 });
 
 // GET /api/negocios/dashboard-recaudo?search=&etapa=&frente=&torre=&conMovimientos=&sortBy=&sortDir=&page=&limit=
-router.get('/dashboard-recaudo', async (req, res) => {
+router.get('/dashboard-recaudo', requireModulo(['dashboard', 'resumen']), async (req, res) => {
   try {
     const { search, etapa, frente, torre, conMovimientos, sortBy, sortDir, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
@@ -575,7 +576,7 @@ router.get('/dashboard-recaudo', async (req, res) => {
 
 // GET /api/negocios/cartera-mora?search=&etapa=&frente=&torre=&rango=&vista=&tramite=&sortBy=&sortDir=&page=&limit=
 // tramite: '' (todos, sin canjes) | 'en_tramite' | 'no_en_tramite' | 'canje'
-router.get('/cartera-mora', async (req, res) => {
+router.get('/cartera-mora', requireModulo('cartera-mora'), async (req, res) => {
   try {
     const { search, etapa, frente, torre, rango, vista, tramite, sortBy, sortDir, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
@@ -590,7 +591,7 @@ router.get('/cartera-mora', async (req, res) => {
 // PATCH /api/negocios/:negocioId/flags -- marca "en trámite"/"canje" desde
 // Cartera en Gestión (clic derecho). negocioId es el id crudo de Negocio (no
 // el id prefijado inv-/neg- que usan las demás rutas de este archivo).
-router.patch('/:negocioId/flags', async (req, res) => {
+router.patch('/:negocioId/flags', requireModulo('cartera-mora'), async (req, res) => {
   try {
     const { negocioId } = req.params;
     const { enTramite, esCanje } = req.body;
@@ -609,7 +610,7 @@ router.patch('/:negocioId/flags', async (req, res) => {
 });
 
 // GET /api/negocios/resumen-etapas/meses — meses navegables (cerrados + el actual en vivo)
-router.get('/resumen-etapas/meses', async (req, res) => {
+router.get('/resumen-etapas/meses', requireModulo('resumen'), async (req, res) => {
   try {
     const meses = await obtenerMesesDisponiblesResumen();
     res.json(meses);
@@ -621,7 +622,7 @@ router.get('/resumen-etapas/meses', async (req, res) => {
 // GET /api/negocios/resumen-etapas?mes=YYYY-MM — Consolidado de Cartera por
 // Etapa (Resumen Gerencial). Sin `mes`, o con el mes actual, se calcula en
 // vivo; con un mes ya cerrado, se lee la foto guardada (ver cerrarMesAnteriorSiFalta).
-router.get('/resumen-etapas', async (req, res) => {
+router.get('/resumen-etapas', requireModulo('resumen'), async (req, res) => {
   try {
     const resultado = await obtenerResumenCarteraMes(req.query.mes);
     if (!resultado) return res.status(404).json({ error: 'No hay datos guardados para ese mes' });
@@ -632,7 +633,7 @@ router.get('/resumen-etapas', async (req, res) => {
 });
 
 // GET /api/negocios/:id  (id = "inv-<InventarioItem.id>" o "neg-<Negocio.id>")
-router.get('/:id', async (req, res) => {
+router.get('/:id', requireModulo('negocios'), async (req, res) => {
   try {
     const id = decodeURIComponent(req.params.id);
     const detalle = await obtenerNegocioPorId(id);
@@ -645,7 +646,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // GET /api/negocios/:id/movimientos?page=&limit=
-router.get('/:id/movimientos', async (req, res) => {
+router.get('/:id/movimientos', requireModulo('negocios'), async (req, res) => {
   try {
     const id = decodeURIComponent(req.params.id);
     const { page = '1', limit = '50' } = req.query;
