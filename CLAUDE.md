@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Baía Kristal** (`backend/src/baia-kristal/`) — CRM Zoho + Excel de fiducia (muchas columnas, movimientos bancarios detallados). Es el proyecto original y el más completo; el resto de este documento describe su arquitectura en detalle salvo que se diga lo contrario.
 - **Alegra** (`backend/src/alegra/`) — CRM HubSpot + su propio Excel (bastantes menos columnas). En construcción: por ahora solo existe el scaffold (`GET /api/alegra/status`) y un cliente HubSpot básico (`alegra/services/hubspotClient.js`); falta definir el schema de datos (Prisma) y la lógica de conciliación propia una vez se tenga una muestra real del Excel.
 
-Lo compartido entre proyectos (login de una sola clave, configuración global del menú lateral) vive en la raíz de `backend/src/` (`middleware/`, `routes/auth.js`, `routes/configuraciones.js`, `services/configuracionAppService.js`), no dentro de la carpeta de ningún proyecto.
+Lo compartido entre proyectos (login por cuenta individual, gestión de usuarios y permisos por módulo) vive en la raíz de `backend/src/` (`middleware/auth.js`, `routes/auth.js`, `routes/usuarios.js`, `config/modulos.js`), no dentro de la carpeta de ningún proyecto.
 
 ## Documentación técnica
 
@@ -28,10 +28,10 @@ zoho-payment-tracker/
   backend/
     src/
       index.js               — arranque del server, CORS, cron, montaje de rutas (compartido)
-      middleware/auth.js      — login de una sola clave, compartido por todos los proyectos
-      routes/auth.js          — compartido
-      routes/configuraciones.js — SOLO /menu (visibilidad global del sidebar), compartido
-      services/configuracionAppService.js — config global clave/valor (hoy: menú oculto)
+      middleware/auth.js      — login por cuenta individual + requireModulo/requireAdmin, compartido por todos los proyectos
+      routes/auth.js          — login/logout/check, compartido
+      routes/usuarios.js      — CRUD de usuarios, permisos por módulo y auditoría (solo admins), compartido
+      config/modulos.js       — catálogo de módulos en texto plano (espejo de frontend/src/config/navItems.js), compartido
       baia-kristal/
         config/                — columnasExcluidas.js, zoho.js
         routes/                 — negocios, fiducia, opportunities, inventario, fields, stats,
@@ -56,6 +56,7 @@ npm run db:migrate   # Create new migration from schema changes
 npm run db:deploy    # Apply migrations to DB (use on deploy)
 npm run db:generate  # Regenerate Prisma client after schema edit
 npm run db:studio    # Open Prisma Studio GUI
+npm run db:seed-admin # Crea/actualiza el usuario admin inicial desde ADMIN_EMAIL/ADMIN_PASSWORD/ADMIN_NOMBRE (correr una sola vez al desplegar este cambio)
 ```
 
 ### Frontend (`zoho-payment-tracker/frontend/`)
@@ -88,6 +89,20 @@ Alegra (en construcción) usará HubSpot como CRM (`alegra/services/hubspotClien
 - **Background tasks**: Syncs manuales responden inmediatamente y procesan en background (`.catch()` pattern, no queue formal).
 - **SKIP_KEYS**: Metadatos internos de Zoho (`$in_merge`, `$field_states`, etc.) se filtran antes de persistir subforms.
 
+### Autenticación y permisos
+
+Cuentas individuales (correo + contraseña, `bcryptjs`), no una clave compartida.
+Cada `Usuario` tiene `modulosPermitidos: String[]` con las mismas `key` que
+`frontend/src/config/navItems.js` (reflejadas en texto plano en
+`backend/src/config/modulos.js`, porque el backend no puede importar un archivo
+que depende de `lucide-react`). `esAdmin: true` da acceso a todo, incluida la
+gestión de usuarios en Ajustes. El enforcement es real en el backend
+(`requireModulo(clave|claves[])` / `requireAdmin` en `middleware/auth.js`,
+aplicado por sub-ruta en cada router) — el frontend además oculta/protege por
+UI (`RutaProtegida`, `Sidebar.jsx`) pero eso es solo para la experiencia, no la
+única barrera. Cada cambio de administración sobre un usuario queda en
+`AuditoriaUsuario`, visible en Ajustes → Historial de cambios.
+
 ### API Routes (`/api`)
 
 | Prefijo | Proyecto | Propósito |
@@ -100,8 +115,8 @@ Alegra (en construcción) usará HubSpot como CRM (`alegra/services/hubspotClien
 | `/stats` | Baía Kristal | KPIs de Resumen Gerencial |
 | `/configuraciones/frentes` | Baía Kristal | Fechas de entrega por frente/torre/piso |
 | `/alegra` | Alegra | En construcción — solo `/status` por ahora |
-| `/configuraciones/menu` | Compartido | Visibilidad global del sidebar |
-| `/auth`, `/sync`, `/health` | Compartido / Baía Kristal | Login, trigger manual de sync Zoho, health check |
+| `/usuarios` | Compartido | CRUD de usuarios, permisos por módulo y auditoría (solo admins, `requireAdmin`) |
+| `/auth`, `/sync`, `/health` | Compartido / Baía Kristal | Login/logout/check, trigger manual de sync Zoho, health check |
 
 ### Database (Prisma / PostgreSQL)
 
@@ -115,7 +130,9 @@ Un solo `schema.prisma` para todos los proyectos (Prisma no soporta bien múltip
 - `ConfiguracionFrente` — fechas de entrega configuradas
 - `ResumenCarteraMensual` — foto fija mensual del Consolidado de Cartera
 
-Modelo **compartido**: `ConfiguracionApp` (clave/valor genérico; hoy solo `menuOculto`).
+Modelos **compartidos**:
+- `Usuario` — cuenta individual (correo/contraseña/`esAdmin`/`modulosPermitidos`), reemplaza la antigua clave única compartida
+- `AuditoriaUsuario` — historial de cambios de administración sobre usuarios (quién cambió qué a quién)
 
 Modelos de **Alegra**: ninguno todavía — pendiente definir una vez se tenga una muestra real del Excel y se decida qué propiedades de HubSpot importan.
 
@@ -133,7 +150,7 @@ React Router con rutas profundas para drill-down (todas son de Baía Kristal hoy
 - `/fiducia` → lista de encargos; `/fiducia/movimientos` → vista global de movimientos
 - `/fiducia/:id` → hojas del encargo; `/fiducia/:id/apartamento/:referencia` → detalle por propiedad
 - `/resumen` → Resumen Gerencial; `/dashboard` → Plan vs. Recaudo; `/cartera-mora` → Cartera en Gestión
-- `/ajustes` → configuración (incluye visibilidad del menú, compartida entre proyectos)
+- `/ajustes` → configuración (incluye Usuarios y permisos + Historial de cambios, compartido entre proyectos y visible solo para admins)
 
 Todas las vistas usan Axios (`frontend/src/utils/api.js`) contra `http://localhost:3001/api`. TanStack React Table para grillas con paginación server-side.
 
@@ -141,10 +158,11 @@ Todas las vistas usan Axios (`frontend/src/utils/api.js`) contra `http://localho
 
 Ver `backend/.env`. Variables requeridas:
 - `DATABASE_URL` — PostgreSQL connection string
-- `SESSION_SECRET`, `APP_PASSWORD` — login de una sola clave (compartido)
+- `SESSION_SECRET` — login (compartido)
 - `PORT`, `FRONTEND_URL`, `COOKIE_SECURE`, `DISABLE_CRON` — configuración del servidor (compartido)
 - `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_REFRESH_TOKEN`, `ZOHO_API_BASE`, `ZOHO_ACCOUNTS_URL` — OAuth Zoho (Baía Kristal)
 - `EXCEL_PASSWORD` — contraseña de Excel protegidos de la fiducia (Baía Kristal, opcional)
 - `HUBSPOT_ACCESS_TOKEN` — token de Private App de HubSpot (Alegra); `HUBSPOT_API_BASE` opcional si no es el estándar
+- `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NOMBRE` — solo para el arranque inicial (`npm run db:seed-admin`), crean el primer usuario admin. El resto de usuarios se gestionan desde Ajustes → Usuarios y permisos.
 
 No existen ya variables `AZURE_*`/`OUTLOOK_*` — la vía de correo Outlook que describía este archivo antes nunca llegó a estar en el código.
