@@ -13,30 +13,35 @@ const prisma = new PrismaClient();
 const COOKIE_SECURE = process.env.COOKIE_SECURE === 'true';
 
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) {
-    return res.status(401).json({ error: 'Correo o contraseña incorrectos' });
-  }
+  try {
+    const { email, password } = req.body || {};
+    if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
+      return res.status(401).json({ error: 'Correo o contraseña incorrectos' });
+    }
 
-  const usuario = await prisma.usuario.findUnique({
-    where: { email: String(email).toLowerCase().trim() },
-  });
-  if (!usuario || !usuario.activo) {
-    return res.status(401).json({ error: 'Correo o contraseña incorrectos' });
-  }
+    const usuario = await prisma.usuario.findUnique({
+      where: { email: String(email).toLowerCase().trim() },
+    });
+    if (!usuario || !usuario.activo) {
+      return res.status(401).json({ error: 'Correo o contraseña incorrectos' });
+    }
 
-  const coincide = await bcrypt.compare(password, usuario.passwordHash);
-  if (!coincide) {
-    return res.status(401).json({ error: 'Correo o contraseña incorrectos' });
-  }
+    const coincide = await bcrypt.compare(password, usuario.passwordHash);
+    if (!coincide) {
+      return res.status(401).json({ error: 'Correo o contraseña incorrectos' });
+    }
 
-  res.cookie(SESSION_COOKIE, createSessionToken(usuario.id), {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: COOKIE_SECURE,
-    maxAge: MAX_AGE_MS,
-  });
-  res.json({ ok: true });
+    res.cookie(SESSION_COOKIE, createSessionToken(usuario.id), {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: COOKIE_SECURE,
+      maxAge: MAX_AGE_MS,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error en /login:', err);
+    res.status(500).json({ error: 'Error iniciando sesión' });
+  }
 });
 
 router.post('/logout', (req, res) => {

@@ -47,6 +47,9 @@ router.post('/', async (req, res) => {
     if (!email || !nombre || !password) {
       return res.status(400).json({ error: 'Correo, nombre y contraseña son obligatorios' });
     }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+    }
     const modulos = esAdmin ? [] : (modulosPermitidos || []);
     if (!validarModulos(modulos)) {
       return res.status(400).json({ error: 'Módulo inválido en modulosPermitidos' });
@@ -123,6 +126,9 @@ router.patch('/:id', async (req, res) => {
     }
 
     if (password) {
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+      }
       data.passwordHash = await bcrypt.hash(password, 10);
       eventos.push({ accion: 'reset-password', detalle: null });
     }
