@@ -90,12 +90,26 @@ router.patch('/:id', async (req, res) => {
     const data = {};
     const eventos = [];
 
-    if (modulosPermitidos !== undefined) {
+    // Un admin nunca debe quedar con módulos residuales (mismo invariante que POST /).
+    // Si el resultado de esta edición deja al usuario como admin, los módulos finales
+    // son siempre [], sin importar lo que haya mandado el cliente.
+    const esAdminResultante = esAdmin !== undefined ? !!esAdmin : actual.esAdmin;
+
+    let modulosResultantes = actual.modulosPermitidos;
+    if (esAdminResultante) {
+      modulosResultantes = [];
+    } else if (modulosPermitidos !== undefined) {
       if (!validarModulos(modulosPermitidos)) {
         return res.status(400).json({ error: 'Módulo inválido en modulosPermitidos' });
       }
-      data.modulosPermitidos = modulosPermitidos;
-      eventos.push({ accion: 'modulos', detalle: { antes: actual.modulosPermitidos, despues: modulosPermitidos } });
+      modulosResultantes = modulosPermitidos;
+    }
+
+    const modulosCambiaron = JSON.stringify([...actual.modulosPermitidos].sort())
+      !== JSON.stringify([...modulosResultantes].sort());
+    if (modulosCambiaron) {
+      data.modulosPermitidos = modulosResultantes;
+      eventos.push({ accion: 'modulos', detalle: { antes: actual.modulosPermitidos, despues: modulosResultantes } });
     }
 
     if (esAdmin !== undefined && esAdmin !== actual.esAdmin) {
