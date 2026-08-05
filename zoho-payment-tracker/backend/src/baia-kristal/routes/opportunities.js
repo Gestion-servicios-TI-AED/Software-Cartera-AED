@@ -9,12 +9,13 @@ const {
   isSubformsBackfillRunning,
   getSubformsBackfillResult,
 } = require('../services/subformsBackfillService');
+const { requireModulo, requireAdmin } = require('../../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
 // GET /api/opportunities — lista paginada con filtros
-router.get('/', async (req, res) => {
+router.get('/', requireModulo('oportunidades'), async (req, res) => {
   try {
     const { stage, search, page = '1', limit = '20' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
@@ -77,7 +78,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/opportunities/stages — lista de etapas únicas
-router.get('/stages', async (req, res) => {
+router.get('/stages', requireModulo('oportunidades'), async (req, res) => {
   try {
     const stages = await prisma.opportunity.findMany({
       select: { stage: true },
@@ -92,7 +93,7 @@ router.get('/stages', async (req, res) => {
 });
 
 // GET /api/opportunities/:id — detalle completo
-router.get('/:id', async (req, res) => {
+router.get('/:id', requireModulo('oportunidades'), async (req, res) => {
   try {
     const opportunity = await prisma.opportunity.findUnique({
       where: { id: req.params.id },
@@ -110,7 +111,7 @@ router.get('/:id', async (req, res) => {
 
 // GET /api/opportunities/:id/subforms — devuelve Forma de Pago y Propuesta de Pago
 // Primero intenta desde la BD; si no hay, hace fallback a Zoho
-router.get('/:id/subforms', async (req, res) => {
+router.get('/:id/subforms', requireModulo(['oportunidades', 'negocios']), async (req, res) => {
   try {
     const opportunity = await prisma.opportunity.findUnique({
       where: { id: req.params.id },
@@ -171,7 +172,7 @@ router.get('/:id/subforms', async (req, res) => {
 // POST /api/opportunities/backfill-subforms — trae Forma de Pago / Propuesta
 // de Pago de Zoho para toda oportunidad con fecha de inicio de plan pero sin
 // subform cacheado. Corre en background; consultar progreso con el status.
-router.post('/backfill-subforms', (req, res) => {
+router.post('/backfill-subforms', requireAdmin, (req, res) => {
   if (isSubformsBackfillRunning()) {
     return res.json({ message: 'Backfill de planes de pago ya en ejecución', running: true });
   }
@@ -180,7 +181,7 @@ router.post('/backfill-subforms', (req, res) => {
 });
 
 // GET /api/opportunities/backfill-subforms/status
-router.get('/backfill-subforms/status', (req, res) => {
+router.get('/backfill-subforms/status', requireAdmin, (req, res) => {
   res.json({
     running: isSubformsBackfillRunning(),
     result: getSubformsBackfillResult(),
@@ -188,7 +189,7 @@ router.get('/backfill-subforms/status', (req, res) => {
 });
 
 // POST /api/sync — disparar sincronización manual
-router.post('/sync', async (req, res) => {
+router.post('/sync', requireModulo('oportunidades'), async (req, res) => {
   // Responder inmediatamente y sincronizar en background
   const force = req.query.full === 'true';
   res.json({ message: 'Sincronización iniciada' });
@@ -198,7 +199,7 @@ router.post('/sync', async (req, res) => {
 });
 
 // GET /api/sync/status — último estado de sincronización
-router.get('/sync/status', async (req, res) => {
+router.get('/sync/status', requireModulo('oportunidades'), async (req, res) => {
   try {
     const last = await prisma.syncLog.findFirst({
       orderBy: { startedAt: 'desc' },

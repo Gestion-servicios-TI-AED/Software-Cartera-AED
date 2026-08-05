@@ -3,8 +3,11 @@ const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { obtenerDashboardRecaudo } = require('../services/dashboardRecaudoService');
 
+const { requireModulo } = require('../../middleware/auth');
+
 const router = express.Router();
 const prisma = new PrismaClient();
+router.use(requireModulo('resumen'));
 
 // GET /api/stats/resumen — 5 KPIs principales
 router.get('/resumen', async (req, res) => {

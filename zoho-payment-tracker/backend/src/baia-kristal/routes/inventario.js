@@ -7,25 +7,26 @@ const {
   compararEtapas,
   esFrenteSeleccionable,
 } = require('../services/inventarioNegocioService');
+const { requireModulo, requireAdmin } = require('../../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
 // POST /api/inventario/sync — dispara sincronización manual completa
-router.post('/sync', (req, res) => {
+router.post('/sync', requireModulo('inventario'), (req, res) => {
   res.json({ message: 'Sincronización iniciada' });
   syncInventario();
 });
 
 // GET /api/inventario/sync/status
-router.get('/sync/status', (req, res) => {
+router.get('/sync/status', requireModulo('inventario'), (req, res) => {
   res.json(getSyncStatus());
 });
 
 // GET /api/inventario/verificar-project-code — detecta inmuebles con
 // Project_Code copiado por error de otro inmueble del mismo frente
 // (problema de datos en Zoho, no del sync).
-router.get('/verificar-project-code', async (req, res) => {
+router.get('/verificar-project-code', requireAdmin, async (req, res) => {
   try {
     const reporte = await detectarProjectCodeInconsistentes();
     res.json(reporte);
@@ -35,7 +36,7 @@ router.get('/verificar-project-code', async (req, res) => {
 });
 
 // GET /api/inventario?search=&proyecto=&categoria=&estado=&etapa=&frente=&torre=&page=&limit=
-router.get('/', async (req, res) => {
+router.get('/', requireModulo('inventario'), async (req, res) => {
   try {
     const { search, proyecto, categoria, estado, etapa, frente, torre, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page));
@@ -132,7 +133,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/inventario/:id — detalle completo (incluye todas las variables en `datos`)
-router.get('/:id', async (req, res) => {
+router.get('/:id', requireModulo('inventario'), async (req, res) => {
   try {
     const item = await prisma.inventarioItem.findUnique({ where: { id: req.params.id } });
     if (!item) return res.status(404).json({ error: 'Ítem de inventario no encontrado' });
