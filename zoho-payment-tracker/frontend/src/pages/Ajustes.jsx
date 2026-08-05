@@ -3,19 +3,19 @@ import ExcelJS from 'exceljs';
 import {
   Settings, RefreshCw, Check, ChevronDown, Building2, Building, Rows3,
   CalendarClock, Lock, XCircle, Search, ChevronsUpDown, ChevronsDownUp,
-  FileSearch, Download, AlertTriangle,
+  FileSearch, Download, AlertTriangle, Users,
 } from 'lucide-react';
 import { NAV_ITEMS_BAIA_KRISTAL, NAV_ITEMS_ALEGRA } from '../config/navItems';
-import { useHiddenNav } from '../utils/navPrefs';
-import { useProyectoActivo, PROYECTOS } from '../utils/proyectoActivo';
 import {
   triggerSubformsBackfill, getSubformsBackfillStatus, getInconsistenciasProjectCode,
   getConfiguracionesFrentes, actualizarFechaEntregaProyecto, actualizarFechaEntregaTorre, actualizarFechaEntregaPiso,
+  listarUsuarios, crearUsuario, editarUsuario, obtenerAuditoriaUsuarios,
 } from '../utils/api';
-import logoBaiaKristal from '../assets/baia-kristal-logo.png';
-import logoAlegra from '../assets/alegra-logo.svg';
 
-const LOGOS_PROYECTO = { 'baia-kristal': logoBaiaKristal, alegra: logoAlegra };
+const MODULOS_POR_PROYECTO = [
+  { proyecto: 'Baía Kristal', items: NAV_ITEMS_BAIA_KRISTAL },
+  { proyecto: 'Alegra', items: NAV_ITEMS_ALEGRA },
+];
 
 function formatDuracion(segundos) {
   if (segundos == null) return null;
@@ -71,9 +71,6 @@ function SubformsBackfillCard() {
     }, 2000);
   }, [stopPolling]);
 
-  // Al cargar la página, revisa si ya hay un backfill corriendo (ej. lo
-  // disparó otra persona, u otra pestaña) para reflejarlo sin necesidad
-  // de hacer clic.
   useEffect(() => {
     getSubformsBackfillStatus()
       .then((res) => {
@@ -522,9 +519,6 @@ function FechaEntregaFrenteCard() {
     getConfiguracionesFrentes()
       .then((res) => {
         setConfigs(res.data);
-        // Expandir por defecto solo los frentes/torres que ya tienen alguna
-        // fecha configurada (a cualquier nivel), para que se vean de
-        // inmediato sin abrir todo.
         const conFecha = new Set();
         const torresConFecha = new Set();
         for (const c of res.data) {
@@ -701,32 +695,248 @@ function Seccion({ title, icon: Icon, color, children }) {
   );
 }
 
-function Toggle({ checked, onChange, label }) {
+// Formulario de alta/edición de usuario. En edición no se piden correo/nombre
+// (no son editables acá) y la contraseña es opcional (solo se cambia si se
+// escribe algo). Los checkboxes de módulos se ocultan si es admin, porque
+// ese caso ya da acceso a todo -- no tiene sentido marcarlos uno por uno.
+function FormularioUsuario({ usuario, onGuardado, onCancelar }) {
+  const esEdicion = !!usuario;
+  const [email, setEmail] = useState(usuario?.email ?? '');
+  const [nombre, setNombre] = useState(usuario?.nombre ?? '');
+  const [password, setPassword] = useState('');
+  const [esAdmin, setEsAdmin] = useState(usuario?.esAdmin ?? false);
+  const [modulos, setModulos] = useState(new Set(usuario?.modulosPermitidos ?? []));
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+
+  const toggleModulo = (key) => {
+    setModulos((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setGuardando(true);
+    try {
+      if (esEdicion) {
+        const payload = { modulosPermitidos: [...modulos], esAdmin };
+        if (password) payload.password = password;
+        await editarUsuario(usuario.id, payload);
+      } else {
+        await crearUsuario({ email, nombre, password, esAdmin, modulosPermitidos: [...modulos] });
+      }
+      onGuardado();
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   return (
-    <button
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={onChange}
-      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand)] focus:ring-offset-2 ${
-        checked ? 'bg-brand' : 'bg-slate-300'
-      }`}
-    >
-      <span
-        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-          checked ? 'translate-x-5' : ''
-        }`}
+    <form onSubmit={handleSubmit} className="px-4 py-3.5 flex flex-col gap-3 border-t border-aed-border bg-aed-base">
+      {!esEdicion && (
+        <>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Correo"
+            required
+            className="input text-[14px] h-9"
+          />
+          <input
+            type="text"
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            placeholder="Nombre"
+            required
+            className="input text-[14px] h-9"
+          />
+        </>
+      )}
+      <input
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder={esEdicion ? 'Nueva contraseña (opcional)' : 'Contraseña inicial'}
+        required={!esEdicion}
+        className="input text-[14px] h-9"
       />
-    </button>
+
+      <label className="flex items-center gap-2 text-[13px] text-slate-700">
+        <input type="checkbox" checked={esAdmin} onChange={(e) => setEsAdmin(e.target.checked)} />
+        Administrador (acceso total + gestión de usuarios)
+      </label>
+
+      {!esAdmin && (
+        <div className="flex flex-col gap-2 max-h-56 overflow-y-auto border border-aed-border rounded-lg p-2.5 bg-white">
+          {MODULOS_POR_PROYECTO.map(({ proyecto, items }) => (
+            <div key={proyecto}>
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1">{proyecto}</p>
+              {items.map((item) => (
+                <label key={item.key} className="flex items-center gap-2 text-[13px] text-slate-700 py-0.5">
+                  <input type="checkbox" checked={modulos.has(item.key)} onChange={() => toggleModulo(item.key)} />
+                  {item.label}
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && <p className="text-[13px] text-red-600">{error}</p>}
+
+      <div className="flex items-center gap-2">
+        <button type="submit" disabled={guardando} className="btn-primary px-3 py-1.5 text-[14px] disabled:opacity-60">
+          {guardando ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" onClick={onCancelar} className="btn-secondary px-3 py-1.5 text-[14px]">
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function UsuariosCard() {
+  const [usuarios, setUsuarios] = useState(null);
+  const [error, setError] = useState(null);
+  const [creando, setCreando] = useState(false);
+  const [editandoId, setEditandoId] = useState(null);
+
+  const cargar = () => {
+    listarUsuarios().then(setUsuarios).catch((err) => setError(err.message));
+  };
+
+  useEffect(cargar, []);
+
+  const handleGuardado = () => {
+    setCreando(false);
+    setEditandoId(null);
+    cargar();
+  };
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="px-4 py-3 border-b border-aed-border flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-[15px] font-semibold text-slate-800">Usuarios y permisos</h2>
+          <p className="text-[13px] text-slate-500 mt-0.5">
+            Cada usuario ve solo los módulos que tenga permitidos acá, sin importar de qué
+            proyecto sean. Administrador da acceso total, incluida esta pantalla.
+          </p>
+        </div>
+        {!creando && (
+          <button onClick={() => setCreando(true)} className="btn-secondary self-start px-3 py-1.5 text-[13px] flex-shrink-0">
+            Nuevo usuario
+          </button>
+        )}
+      </div>
+
+      {creando && <FormularioUsuario onGuardado={handleGuardado} onCancelar={() => setCreando(false)} />}
+
+      {error && <p className="px-4 py-3 text-[13px] text-red-500">Error: {error}</p>}
+
+      {usuarios && (
+        <div className="divide-y divide-aed-border">
+          {usuarios.map((u) => (
+            <div key={u.id}>
+              <div className="flex items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-medium text-slate-800 flex items-center gap-1.5 flex-wrap">
+                    {u.nombre}
+                    {u.esAdmin && <Badge tone="success">Admin</Badge>}
+                    {!u.activo && <Badge tone="neutral">Inactivo</Badge>}
+                  </p>
+                  <p className="text-[13px] text-slate-500">
+                    {u.email} · {u.esAdmin ? 'acceso total' : `${u.modulosPermitidos.length} módulo(s)`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setEditandoId(editandoId === u.id ? null : u.id)}
+                  className="btn-secondary px-2.5 py-1.5 text-[13px] flex-shrink-0"
+                >
+                  {editandoId === u.id ? 'Cerrar' : 'Editar'}
+                </button>
+              </div>
+              {editandoId === u.id && (
+                <FormularioUsuario usuario={u} onGuardado={handleGuardado} onCancelar={() => setEditandoId(null)} />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function describirAccionAuditoria(r) {
+  switch (r.accion) {
+    case 'crear': return 'creó la cuenta';
+    case 'activar': return 'la activó';
+    case 'desactivar': return 'la desactivó';
+    case 'admin-on': return 'le dio permisos de administrador';
+    case 'admin-off': return 'le quitó permisos de administrador';
+    case 'reset-password': return 'le restableció la contraseña';
+    case 'modulos': {
+      const antes = new Set(r.detalle?.antes ?? []);
+      const despues = new Set(r.detalle?.despues ?? []);
+      const agregados = [...despues].filter((m) => !antes.has(m));
+      const quitados = [...antes].filter((m) => !despues.has(m));
+      const partes = [];
+      if (agregados.length) partes.push(`agregó ${agregados.join(', ')}`);
+      if (quitados.length) partes.push(`quitó ${quitados.join(', ')}`);
+      return partes.length ? partes.join(' · ') : 'actualizó los módulos';
+    }
+    default: return r.accion;
+  }
+}
+
+function AuditoriaCard() {
+  const [registros, setRegistros] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    obtenerAuditoriaUsuarios().then(setRegistros).catch((err) => setError(err.message));
+  }, []);
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="px-4 py-3 border-b border-aed-border">
+        <h2 className="text-[15px] font-semibold text-slate-800">Historial de cambios</h2>
+        <p className="text-[13px] text-slate-500 mt-0.5">Últimos 100 cambios de administración sobre usuarios.</p>
+      </div>
+
+      {error && <p className="px-4 py-3 text-[13px] text-red-500">Error: {error}</p>}
+
+      {registros && registros.length === 0 && (
+        <p className="px-4 py-6 text-[14px] text-slate-400 text-center">Sin cambios registrados todavía.</p>
+      )}
+
+      {registros && registros.length > 0 && (
+        <div className="divide-y divide-aed-border max-h-96 overflow-y-auto">
+          {registros.map((r) => (
+            <div key={r.id} className="px-4 py-2.5 text-[13px]">
+              <p className="text-slate-700">
+                <span className="font-medium">{r.actor.nombre}</span> {describirAccionAuditoria(r)} de{' '}
+                <span className="font-medium">{r.usuario.nombre}</span>
+              </p>
+              <p className="text-slate-400 text-[12px]">{new Date(r.createdAt).toLocaleString('es-CO')}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
 export default function Ajustes() {
-  const { hidden, setVisible } = useHiddenNav();
-  const { proyecto, setProyecto } = useProyectoActivo();
-  const proyectoActual = PROYECTOS.find((p) => p.key === proyecto) ?? PROYECTOS[0];
-  const itemsMenuProyecto = proyecto === 'alegra' ? NAV_ITEMS_ALEGRA : NAV_ITEMS_BAIA_KRISTAL;
-
   return (
     <div className="flex flex-col min-h-screen bg-aed-base">
       {/* Topbar */}
@@ -737,76 +947,9 @@ export default function Ajustes() {
 
       <div className="flex-1 p-5">
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-          <Seccion title="Apariencia" icon={Settings} color="#64748b">
-            <div className="card overflow-hidden">
-              <div className="px-4 py-3 border-b border-aed-border">
-                <h2 className="text-[15px] font-semibold text-slate-800">Proyecto activo</h2>
-                <p className="text-[13px] text-slate-500 mt-0.5">
-                  Elige qué cartera ver en el menú lateral. Cada proyecto tiene su propio
-                  CRM y su propia lógica -- esto solo cambia qué módulos aparecen abajo.
-                </p>
-              </div>
-              <div className="divide-y divide-aed-border">
-                {PROYECTOS.map((p) => (
-                  <button
-                    key={p.key}
-                    onClick={() => setProyecto(p.key)}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-aed-base transition-colors"
-                  >
-                    <div className="flex-1 min-w-0 flex items-center h-9">
-                      <img
-                        src={LOGOS_PROYECTO[p.key]}
-                        alt={p.label}
-                        title={p.label}
-                        className="h-full w-auto max-w-[150px] object-contain object-left"
-                      />
-                    </div>
-                    {proyecto === p.key && <Check size={16} className="text-brand flex-shrink-0" />}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="card overflow-hidden">
-              <div className="px-4 py-3 border-b border-aed-border">
-                <h2 className="text-[15px] font-semibold text-slate-800">
-                  Elementos del menú -- {proyectoActual.label}
-                </h2>
-                <p className="text-[13px] text-slate-500 mt-0.5">
-                  Decide qué secciones se muestran en el menú lateral de este proyecto. Las
-                  que ocultes desaparecen de la barra, pero siguen funcionando si tienes su
-                  enlace. Cada proyecto guarda su propia lista -- ocultar algo acá no
-                  afecta al otro.
-                </p>
-              </div>
-
-              <div className="divide-y divide-aed-border">
-                {itemsMenuProyecto.map((item) => {
-                  const visible = !hidden.has(item.key);
-                  return (
-                    <div key={item.key} className="flex items-center gap-3 px-4 py-3">
-                      <span
-                        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: `${item.color}14`, color: item.color }}
-                      >
-                        <item.Icon size={16} strokeWidth={2} />
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[14px] font-medium text-slate-800">{item.label}</p>
-                        <p className="text-[13px] text-slate-500">
-                          {visible ? 'Visible en el menú' : 'Oculto'}
-                        </p>
-                      </div>
-                      <Toggle
-                        checked={visible}
-                        label={`Mostrar ${item.label}`}
-                        onChange={() => setVisible(item.key, !visible)}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          <Seccion title="Usuarios" icon={Users} color="#64748b">
+            <UsuariosCard />
+            <AuditoriaCard />
           </Seccion>
 
           <Seccion title="Sincronización de datos" icon={RefreshCw} color="#1d4ed8">
