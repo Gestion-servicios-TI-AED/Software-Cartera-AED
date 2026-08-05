@@ -115,8 +115,11 @@ model AuditoriaUsuario {
   permisos o una desactivación, sin esperar a que expire la sesión), y si no existe o
   `activo=false` responde 401. Si es válido, deja `req.usuario = { id, email, nombre,
   esAdmin, modulosPermitidos }` disponible para el resto del pipeline.
-- Nuevo `requireModulo(clave)`: middleware que revisa `req.usuario.esAdmin ||
-  req.usuario.modulosPermitidos.includes(clave)`; si no, responde 403.
+- Nuevo `requireModulo(claveOClaves)`: acepta una clave sola o un array (basta con
+  tener acceso a UNA de las claves dadas — necesario para un puñado de endpoints
+  que alimentan más de un módulo del frontend a la vez, ver tabla abajo); revisa
+  `req.usuario.esAdmin || claves.some(c => req.usuario.modulosPermitidos.includes(c))`;
+  si no, responde 403.
 - Nuevo `requireAdmin`: middleware que revisa `req.usuario.esAdmin`; si no, 403. Se
   usa en las rutas de gestión de usuarios y auditoría.
 
@@ -125,26 +128,36 @@ problemas de build en Windows que sí tiene el paquete `bcrypt`).
 
 ### Mapeo de rutas existentes a módulos
 
-`requireModulo(clave)` se aplica **por sub-ruta**, no al router completo, porque
-varios archivos de rutas de Baía Kristal mezclan más de un módulo bajo el mismo
-prefijo:
+`requireModulo` se aplica **por sub-ruta**, no al router completo, porque varios
+archivos de rutas de Baía Kristal mezclan más de un módulo bajo el mismo prefijo.
+Esta tabla fue verificada línea por línea contra el uso real del frontend (cada
+función de `utils/api.js` rastreada hasta la página que la llama) durante la
+planeación de implementación — difiere en varios puntos de una primera
+aproximación por prefijo de archivo, notados abajo:
 
 | Router (prefijo montado) | Sub-rutas | Módulo requerido |
 |---|---|---|
-| `negocios.js` (`/api/negocios`) | `/`, `/:id`, `/movimientos*`, `/backfill*`, `/resumen-etapas*`, `/:negocioId/flags` | `negocios` |
-| | `/cartera-mora` | `cartera-mora` |
-| | `/dashboard-recaudo` | `dashboard` |
-| `opportunities.js` (`/api/opportunities`) | todo el router | `oportunidades` |
-| `inventario.js` (`/api/inventario`) | todo el router | `inventario` |
-| `fiducia.js` (`/api/fiducia`) | `/encargos*`, `/propietarios`, `/upload` | `encargos` |
-| | `/movimientos*` | `movimientos` |
-| `stats.js` (`/api/stats`) | todo el router | `resumen` |
-| `configuracionesFrentes.js` (`/api/configuraciones/frentes*`) | todo el router | `dashboard` (alimenta Plan vs. Recaudo) |
+| `negocios.js` (`/api/negocios`) | `/`, `/:id`, `/:id/movimientos`, `/backfill*`, `/stats` | `negocios` |
+| | `/movimientos`, `/movimientos/export` | `movimientos` — **no** `negocios`: alimentan la página "Movimientos" (`FiduciaMovimientos.jsx`, `FiduciaPropietario.jsx`), no la página "Negocios" |
+| | `/cartera-mora`, `/:negocioId/flags` | `cartera-mora` |
+| | `/dashboard-recaudo` | `['dashboard', 'resumen']` — lo consumen tanto `ReportePlanRecaudo.jsx` como `Resumen.jsx` |
+| | `/resumen-etapas`, `/resumen-etapas/meses` | `resumen` |
+| `opportunities.js` (`/api/opportunities`) | `/`, `/stages`, `/:id`, `/sync`, `/sync/status` | `oportunidades` |
+| | `/:id/subforms` | `['oportunidades', 'negocios']` — lo consumen tanto `OpportunityDetail.jsx` como `Negocios.jsx` |
+| | `/backfill-subforms`, `/backfill-subforms/status` | `requireAdmin` — solo los usa `Ajustes.jsx` |
+| `inventario.js` (`/api/inventario`) | `/sync`, `/sync/status`, `/`, `/:id` | `inventario` |
+| | `/verificar-project-code` | `requireAdmin` — solo lo usa `Ajustes.jsx` |
+| `fiducia.js` (`/api/fiducia`) | `/encargos*`, `/propietarios`, `/movimientos` (endpoint propio, sin uso actual en el frontend), `/upload` | `encargos` |
+| | `GET /encargos` | `['encargos', 'oportunidades']` — el KPI "Encargos activos" de `Dashboard.jsx` también lo llama |
+| `stats.js` (`/api/stats`) | todo el router | `resumen` — único consumidor es `Resumen.jsx` |
+| `configuracionesFrentes.js` (`/api/configuraciones/frentes*`) | `GET /frentes` | `negocios` — lo lee `Negocios.jsx` (Ajustes también lo lee, pero como admin pasa siempre) |
+| | `PUT /frentes/:frente`, `PUT .../torres/:torre`, `PUT .../pisos/:piso` | `requireAdmin` — la edición solo ocurre en `Ajustes.jsx` |
 | `fields.js` (`/api/fields`) | todo el router | sin restricción — metadatos no sensibles, usados por más de un módulo |
 | `alegra/routes` (`/api/alegra`) | todo el router | sin restricción por ahora — solo existe `/status` (info de configuración de HubSpot, no datos de negocio); cuando existan endpoints reales de datos se les aplicará su `alegra-*` correspondiente igual que a Baía Kristal |
 
 Rutas directas en `index.js` (`/api/sync`, `/api/sync/status`) quedan bajo el módulo
-`negocios` (son parte del flujo de sincronización de Zoho que alimenta esa vista).
+`oportunidades` — solo las consume `SyncStatus.jsx`, montado dentro de la página
+Oportunidades (`Dashboard.jsx`), no la página Negocios.
 
 ### Gestión de usuarios (nuevas rutas, todas `requireAdmin`)
 
