@@ -1,10 +1,12 @@
 import { Target, Landmark, Banknote, Briefcase, BarChart3, Building2, LineChart, ShieldAlert } from 'lucide-react';
 
-// Ítems del menú lateral, separados por proyecto -- Sidebar muestra solo los
-// del proyecto activo (ver selector Baía Kristal/Alegra); Ajustes muestra la
-// lista combinada (NAV_ITEMS) para poder ocultar/mostrar cualquiera sin
-// importar de qué proyecto sea. `key` es el identificador estable usado para
-// guardar la preferencia de visibilidad (global, ver navPrefs.js).
+// Ítems del menú lateral, separados por proyecto. El Sidebar filtra ambas
+// listas por los permisos del usuario logueado (ver utils/usuarioActual.js)
+// y las agrupa visualmente por proyecto -- ya no hay un selector manual de
+// "proyecto activo": lo que se ve depende exclusivamente de qué módulos
+// tenga permitidos esa persona (ver Ajustes → Usuarios y permisos).
+// `key` es el identificador que también usa el backend para el enforcement
+// por módulo (ver backend/src/config/modulos.js -- debe mantenerse igual).
 //
 // Un solo acento (Harbor Teal, el color real de marca) para todo el menú --
 // antes cada módulo tenía su propio color "arcoíris" (rosa, violeta, ámbar…)
@@ -48,6 +50,11 @@ export const NAV_ITEMS_ALEGRA = [
   { key: 'alegra-cartera-mora',  to: '/alegra/cartera-mora',        Icon: ShieldAlert, label: 'Cartera',       color: BRAND_ACCENT, exact: true },
 ];
 
-// Lista combinada -- la usa Ajustes para poder ocultar/mostrar ítems de
-// cualquier proyecto desde un solo lugar.
+// Lista combinada -- la usa el formulario de usuarios en Ajustes para listar
+// los checkboxes de módulos de ambos proyectos en un solo lugar.
 export const NAV_ITEMS = [...NAV_ITEMS_BAIA_KRISTAL, ...NAV_ITEMS_ALEGRA];
+
+// Claves de Alegra -- las usa App.jsx para la ruta comodín `/alegra/*`
+// (todos sus ítems today apuntan al mismo placeholder, así que basta con
+// tener acceso a CUALQUIERA de ellas para entrar).
+export const MODULOS_ALEGRA = NAV_ITEMS_ALEGRA.map((item) => item.key);
