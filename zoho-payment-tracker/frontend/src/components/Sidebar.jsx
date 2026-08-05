@@ -1,10 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Settings, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Settings, LogOut, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 import { NAV_ITEMS_BAIA_KRISTAL, NAV_ITEMS_ALEGRA } from '../config/navItems';
-import { useHiddenNav } from '../utils/navPrefs';
-import { useProyectoActivo } from '../utils/proyectoActivo';
+import { useUsuarioActual } from '../utils/usuarioActual';
 import { logout } from '../utils/api';
 import logoBaiaKristal from '../assets/baia-kristal-logo.png';
 import logoAlegra from '../assets/alegra-logo.svg';
@@ -21,6 +20,11 @@ function leerColapsado() {
   } catch {
     return true;
   }
+}
+
+function iniciales(nombre) {
+  if (!nombre) return '';
+  return nombre.trim().split(/\s+/).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
 }
 
 // Envuelve cualquier ítem del sidebar con un tooltip propio (mismo estilo que
@@ -61,9 +65,8 @@ function ConTooltip({ label, activo, className = '', children }) {
 }
 
 // Fila de navegación icono (+ etiqueta si el sidebar está expandido). Inactivo
-// usa slate-600/900 (con buen contraste, antes era el color de marca al 60%
-// de opacidad y se veía deslavado) -- activo usa el color de acento de marca
-// vía estilo inline (fondo tenue 10% + texto en el color completo).
+// usa slate-600/900 (con buen contraste) -- activo usa el color de acento de
+// marca vía estilo inline (fondo tenue 10% + texto en el color completo).
 function SidebarItem({ to, Icon, label, color, exact, colapsado }) {
   const location = useLocation();
   const isActive = exact
@@ -101,15 +104,37 @@ function SidebarItem({ to, Icon, label, color, exact, colapsado }) {
   );
 }
 
-export default function Sidebar({ onLogout }) {
-  const { hidden } = useHiddenNav();
-  const [colapsado, setColapsado] = useState(leerColapsado);
-  const { proyecto } = useProyectoActivo(); // el control para cambiarlo vive en Ajustes
+// Rótulo pequeño arriba de cada grupo de módulos (uno por proyecto) cuando el
+// sidebar está expandido -- el logo de Alegra es un SVG ancho (ícono +
+// wordmark); se recorta a un cuadrado mostrando solo el ícono, igual que en
+// la cabecera colapsada que tenía antes el selector de proyecto, para que
+// ambos rótulos se vean del mismo tamaño sin importar la composición
+// original de cada logo.
+function EtiquetaProyecto({ proyecto }) {
+  const alegra = proyecto === 'alegra';
+  return (
+    <div className="flex items-center gap-1.5 px-3.5 pt-2.5 pb-1">
+      <div className="w-3.5 h-3.5 rounded-sm overflow-hidden flex items-center flex-shrink-0">
+        <img
+          src={alegra ? logoAlegra : logoBaiaKristal}
+          alt=""
+          className={alegra ? 'h-3.5 w-auto max-w-none object-contain' : 'w-full h-full object-contain'}
+        />
+      </div>
+      <span className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-wide">
+        {alegra ? 'Alegra' : 'Baía Kristal'}
+      </span>
+    </div>
+  );
+}
 
-  const esAlegra = proyecto === 'alegra';
-  const itemsProyecto = esAlegra ? NAV_ITEMS_ALEGRA : NAV_ITEMS_BAIA_KRISTAL;
-  const items = itemsProyecto.filter((item) => !hidden.has(item.key));
-  const nombreProyecto = esAlegra ? 'Alegra' : 'Baía Kristal';
+export default function Sidebar({ onLogout }) {
+  const { usuario } = useUsuarioActual();
+  const [colapsado, setColapsado] = useState(leerColapsado);
+
+  const puedeVer = (item) => !!usuario && (usuario.esAdmin || usuario.modulosPermitidos.includes(item.key));
+  const itemsBaiaKristal = NAV_ITEMS_BAIA_KRISTAL.filter(puedeVer);
+  const itemsAlegra = NAV_ITEMS_ALEGRA.filter(puedeVer);
 
   const toggleColapsado = () => {
     setColapsado((prev) => {
@@ -133,19 +158,16 @@ export default function Sidebar({ onLogout }) {
     >
       <div className={`flex items-center mb-1 flex-shrink-0 ${colapsado ? 'justify-center' : 'justify-between px-1.5'}`}>
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-[10px] flex items-center overflow-hidden flex-shrink-0" title={nombreProyecto}>
-            {esAlegra ? (
-              // El SVG de Alegra es ancho (icono + wordmark); se escala a la altura
-              // de la caja y se recorta por la derecha para mostrar solo el ícono,
-              // igual que el mark compacto de Baía Kristal.
-              <img src={logoAlegra} alt={nombreProyecto} className="h-8 w-auto max-w-none object-contain" />
-            ) : (
-              <img src={logoBaiaKristal} alt={nombreProyecto} className="w-full h-full object-contain" />
-            )}
+          <div
+            className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: 'var(--brand-tint)', color: 'var(--brand-strong)' }}
+            title="Cartera AED"
+          >
+            <Layers size={18} strokeWidth={2} />
           </div>
           {!colapsado && (
             <span className="font-heading text-[14px] font-bold text-ink leading-tight whitespace-nowrap">
-              {nombreProyecto}
+              Cartera AED
             </span>
           )}
         </div>
@@ -172,35 +194,51 @@ export default function Sidebar({ onLogout }) {
         </button>
       )}
 
-      {items.map((item) => (
-        <SidebarItem key={item.key} {...item} colapsado={colapsado} />
-      ))}
+      {itemsBaiaKristal.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {!colapsado && <EtiquetaProyecto proyecto="baia-kristal" />}
+          {itemsBaiaKristal.map((item) => (
+            <SidebarItem key={item.key} {...item} colapsado={colapsado} />
+          ))}
+        </div>
+      )}
+
+      {itemsAlegra.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {itemsBaiaKristal.length > 0 && <div className="h-px bg-slate-200 my-1 mx-1.5" />}
+          {!colapsado && <EtiquetaProyecto proyecto="alegra" />}
+          {itemsAlegra.map((item) => (
+            <SidebarItem key={item.key} {...item} colapsado={colapsado} />
+          ))}
+        </div>
+      )}
 
       <div className="h-px bg-slate-200 my-1.5 mx-1.5" />
 
-      {/* Ajustes */}
-      <ConTooltip label="Ajustes" activo={colapsado} className="relative w-full group">
-        <NavLink
-          to="/ajustes"
-          className={({ isActive }) =>
-            `flex items-center h-11 rounded-[10px] transition-colors ${colapsado ? 'justify-center px-0' : 'gap-3 px-3.5'} ${
-              isActive
-                ? 'bg-slate-100 text-slate-900'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-            }`
-          }
-        >
-          <Settings size={19} strokeWidth={1.9} className="flex-shrink-0 transition-transform group-hover:scale-110" />
-          {!colapsado && <span className="text-[14px] font-medium leading-none">Ajustes</span>}
-        </NavLink>
-      </ConTooltip>
+      {usuario?.esAdmin && (
+        <ConTooltip label="Ajustes" activo={colapsado} className="relative w-full group">
+          <NavLink
+            to="/ajustes"
+            className={({ isActive }) =>
+              `flex items-center h-11 rounded-[10px] transition-colors ${colapsado ? 'justify-center px-0' : 'gap-3 px-3.5'} ${
+                isActive
+                  ? 'bg-slate-100 text-slate-900'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              }`
+            }
+          >
+            <Settings size={19} strokeWidth={1.9} className="flex-shrink-0 transition-transform group-hover:scale-110" />
+            {!colapsado && <span className="text-[14px] font-medium leading-none">Ajustes</span>}
+          </NavLink>
+        </ConTooltip>
+      )}
 
       <div className={`mt-auto flex items-center pt-2 ${colapsado ? 'flex-col gap-2' : 'gap-2.5 px-1.5'}`}>
         <div
           className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-soft to-emerald-100 flex items-center justify-center text-[13px] font-bold text-brand-strong flex-shrink-0"
-          title={colapsado ? 'RG' : undefined}
+          title={colapsado ? usuario?.nombre : undefined}
         >
-          RG
+          {iniciales(usuario?.nombre)}
         </div>
         <ConTooltip label="Cerrar sesión" activo={colapsado} className={colapsado ? '' : 'flex-1 min-w-0'}>
           <button
