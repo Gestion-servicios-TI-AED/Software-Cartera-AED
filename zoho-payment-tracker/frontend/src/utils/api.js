@@ -18,8 +18,8 @@ api.interceptors.response.use(
   }
 );
 
-export async function login(password) {
-  const { data } = await api.post('/auth/login', { password });
+export async function login(email, password) {
+  const { data } = await api.post('/auth/login', { email, password });
   return data;
 }
 
@@ -260,17 +260,6 @@ export async function getConfiguracionesFrentes() {
   return data;
 }
 
-// Ítems del sidebar ocultos -- global para todos (ver navPrefs.js)
-export async function getMenuOculto() {
-  const { data } = await api.get('/configuraciones/menu');
-  return data;
-}
-
-export async function actualizarMenuOculto(hidden) {
-  const { data } = await api.put('/configuraciones/menu', { hidden });
-  return data;
-}
-
 // ── Alegra ─────────────────────────────────────────────────
 export async function getAlegraStatus() {
   const { data } = await api.get('/alegra/status');
@@ -295,5 +284,26 @@ export async function actualizarFechaEntregaPiso(frente, torre, piso, fechaEntre
 
 export async function actualizarFechaEntregaProyecto(frente, fechaEntrega) {
   const { data } = await api.put(`/configuraciones/frentes/${encodeURIComponent(frente)}`, { fechaEntrega });
+  return data;
+}
+
+// ── Usuarios y permisos (admin) ───────────────────────────
+export async function listarUsuarios() {
+  const { data } = await api.get('/usuarios');
+  return data;
+}
+
+export async function crearUsuario(payload) {
+  const { data } = await api.post('/usuarios', payload);
+  return data;
+}
+
+export async function editarUsuario(id, payload) {
+  const { data } = await api.patch(`/usuarios/${id}`, payload);
+  return data;
+}
+
+export async function obtenerAuditoriaUsuarios() {
+  const { data } = await api.get('/usuarios/auditoria');
   return data;
 }
