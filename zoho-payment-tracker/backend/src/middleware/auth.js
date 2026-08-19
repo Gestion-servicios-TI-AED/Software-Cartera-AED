@@ -5,6 +5,7 @@
 // esperar a que expire la sesión.
 const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
+const { MODULOS_VALIDOS } = require('../config/modulos');
 
 const prisma = new PrismaClient();
 
@@ -21,19 +22,43 @@ function createSessionToken(userId) {
   return `${payload}.${sign(payload)}`;
 }
 
-// Devuelve el userId (number) si el token es válido, o null si no.
+// Sesión de acceso COMPARTIDO temporal (puente mientras se crea la cuenta
+// individual de cada persona, ver APP_PASSWORD en .env) -- no corresponde a
+// ningún Usuario real, así que no pasa por la tabla Usuario. Se distingue
+// del token normal porque el primer segmento es el literal "shared" en vez
+// de un id numérico. Da acceso a todos los módulos (ver requireAuth) pero
+// NO a Ajustes/gestión de usuarios -- eso queda exclusivo de cuentas reales.
+function createSessionTokenCompartido() {
+  const exp = Date.now() + MAX_AGE_MS;
+  const payload = `shared.${exp}`;
+  return `${payload}.${sign(payload)}`;
+}
+
+// Comparación en tiempo constante contra APP_PASSWORD, igual que la que
+// tenía este archivo antes de las cuentas individuales.
+function passwordCompartidaValida(candidata) {
+  const esperada = process.env.APP_PASSWORD || '';
+  if (!esperada) return false;
+  const a = crypto.createHash('sha256').update(String(candidata ?? '')).digest();
+  const b = crypto.createHash('sha256').update(esperada).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
+// Devuelve { compartido: true } | { compartido: false, userId } si el token
+// es válido, o null si no.
 function verifySessionToken(token) {
   if (!token) return null;
-  const [userId, exp, sig] = token.split('.');
-  if (!userId || !exp || !sig) return null;
+  const [primero, exp, sig] = token.split('.');
+  if (!primero || !exp || !sig) return null;
   if (Date.now() > Number(exp)) return null;
 
-  const payload = `${userId}.${exp}`;
+  const payload = `${primero}.${exp}`;
   const expected = Buffer.from(sign(payload));
   const actual = Buffer.from(sig);
   if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) return null;
 
-  return Number(userId);
+  if (primero === 'shared') return { compartido: true };
+  return { compartido: false, userId: Number(primero) };
 }
 
 function parseCookies(header = '') {
@@ -49,11 +74,22 @@ function parseCookies(header = '') {
 
 async function requireAuth(req, res, next) {
   const cookies = parseCookies(req.headers.cookie);
-  const userId = verifySessionToken(cookies[SESSION_COOKIE]);
-  if (userId == null) return res.status(401).json({ error: 'No autorizado' });
+  const sesion = verifySessionToken(cookies[SESSION_COOKIE]);
+  if (!sesion) return res.status(401).json({ error: 'No autorizado' });
+
+  if (sesion.compartido) {
+    req.usuario = {
+      id: null,
+      email: null,
+      nombre: 'Acceso compartido (temporal)',
+      esAdmin: false,
+      modulosPermitidos: MODULOS_VALIDOS,
+    };
+    return next();
+  }
 
   try {
-    const usuario = await prisma.usuario.findUnique({ where: { id: userId } });
+    const usuario = await prisma.usuario.findUnique({ where: { id: sesion.userId } });
     if (!usuario || !usuario.activo) return res.status(401).json({ error: 'No autorizado' });
 
     req.usuario = {
@@ -90,5 +126,6 @@ function requireAdmin(req, res, next) {
 
 module.exports = {
   requireAuth, requireModulo, requireAdmin,
-  createSessionToken, SESSION_COOKIE, MAX_AGE_MS,
+  createSessionToken, createSessionTokenCompartido, passwordCompartidaValida,
+  SESSION_COOKIE, MAX_AGE_MS,
 };

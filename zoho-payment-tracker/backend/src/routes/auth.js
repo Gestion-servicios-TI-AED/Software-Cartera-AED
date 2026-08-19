@@ -1,7 +1,10 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { PrismaClient } = require('@prisma/client');
-const { requireAuth, createSessionToken, SESSION_COOKIE, MAX_AGE_MS } = require('../middleware/auth');
+const {
+  requireAuth, createSessionToken, createSessionTokenCompartido, passwordCompartidaValida,
+  SESSION_COOKIE, MAX_AGE_MS,
+} = require('../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -15,6 +18,23 @@ const COOKIE_SECURE = process.env.COOKIE_SECURE === 'true';
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body || {};
+
+    // Puente temporal mientras se crean las cuentas individuales de cada
+    // persona: si se manda SOLO contraseña (sin correo) y coincide con
+    // APP_PASSWORD, entra con acceso a todos los módulos mediante una
+    // sesión "compartida" (ver createSessionTokenCompartido). Quitar esto
+    // -- y la variable APP_PASSWORD del .env -- una vez todo el mundo
+    // tenga su propia cuenta.
+    if (typeof password === 'string' && !email && passwordCompartidaValida(password)) {
+      res.cookie(SESSION_COOKIE, createSessionTokenCompartido(), {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: COOKIE_SECURE,
+        maxAge: MAX_AGE_MS,
+      });
+      return res.json({ ok: true });
+    }
+
     if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
       return res.status(401).json({ error: 'Correo o contraseña incorrectos' });
     }

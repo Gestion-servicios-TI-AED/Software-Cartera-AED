@@ -154,7 +154,7 @@ export default function Sidebar({ onLogout }) {
 
   return (
     <aside
-      className={`${colapsado ? 'w-[60px]' : 'w-[212px]'} bg-white border-r border-aed-border flex flex-col py-4 px-2.5 gap-1 flex-shrink-0 h-screen sticky top-0 overflow-y-auto transition-[width] duration-200`}
+      className={`${colapsado ? 'w-[60px]' : 'w-[212px]'} bg-white border-r border-aed-border flex flex-col py-4 px-2.5 flex-shrink-0 h-screen sticky top-0 transition-[width] duration-200`}
     >
       <div className={`flex items-center mb-1 flex-shrink-0 ${colapsado ? 'justify-center' : 'justify-between px-1.5'}`}>
         <div className="flex items-center gap-2.5 min-w-0">
@@ -194,26 +194,33 @@ export default function Sidebar({ onLogout }) {
         </button>
       )}
 
-      {itemsBaiaKristal.length > 0 && (
-        <div className="flex flex-col gap-1">
-          {!colapsado && <EtiquetaProyecto proyecto="baia-kristal" />}
-          {itemsBaiaKristal.map((item) => (
-            <SidebarItem key={item.key} {...item} colapsado={colapsado} />
-          ))}
-        </div>
-      )}
+      {/* Lista de módulos -- separada del encabezado y del pie en su propio
+          scroll: con ambos proyectos visibles (ej. un admin) puede haber
+          más ítems de los que caben en pantalla, y sin este contenedor
+          propio Ajustes/Cerrar sesión (abajo) quedaban empujados fuera del
+          viewport sin ninguna señal de que había que hacer scroll. */}
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1">
+        {itemsBaiaKristal.length > 0 && (
+          <div className="flex flex-col gap-1">
+            {!colapsado && <EtiquetaProyecto proyecto="baia-kristal" />}
+            {itemsBaiaKristal.map((item) => (
+              <SidebarItem key={item.key} {...item} colapsado={colapsado} />
+            ))}
+          </div>
+        )}
 
-      {itemsAlegra.length > 0 && (
-        <div className="flex flex-col gap-1">
-          {itemsBaiaKristal.length > 0 && <div className="h-px bg-slate-200 my-1 mx-1.5" />}
-          {!colapsado && <EtiquetaProyecto proyecto="alegra" />}
-          {itemsAlegra.map((item) => (
-            <SidebarItem key={item.key} {...item} colapsado={colapsado} />
-          ))}
-        </div>
-      )}
+        {itemsAlegra.length > 0 && (
+          <div className="flex flex-col gap-1">
+            {itemsBaiaKristal.length > 0 && <div className="h-px bg-slate-200 my-1 mx-1.5" />}
+            {!colapsado && <EtiquetaProyecto proyecto="alegra" />}
+            {itemsAlegra.map((item) => (
+              <SidebarItem key={item.key} {...item} colapsado={colapsado} />
+            ))}
+          </div>
+        )}
+      </div>
 
-      <div className="h-px bg-slate-200 my-1.5 mx-1.5" />
+      <div className="h-px bg-slate-200 my-1.5 mx-1.5 flex-shrink-0" />
 
       {usuario?.esAdmin && (
         <ConTooltip label="Ajustes" activo={colapsado} className="relative w-full group">
