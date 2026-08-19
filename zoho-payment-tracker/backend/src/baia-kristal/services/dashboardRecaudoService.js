@@ -1,6 +1,7 @@
 const { prisma, parseProyectoTorre, formatearProyectoTorre, parsePisoNumero, obtenerEtapaTorre, resolverProjectCode, valoresProyectoTorre, compararEtapas, esFrenteSeleccionable } = require('./inventarioNegocioService');
 const { construirPlan, normalizarPagos, conciliar, parseMonto } = require('./conciliacionService');
 const { obtenerFechasEntregaConfiguradas, CLAVE_TODAS } = require('./configuracionFrenteService');
+const { elegirOportunidadVigente } = require('../config/estadosOportunidad');
 
 // ── Cache en memoria del cálculo pesado ─────────────────────────────────────
 // obtenerDashboardRecaudo recibe filtros distintos en cada llamada (Etapa,
@@ -57,33 +58,39 @@ async function resolverNegociosYOportunidades(inmuebles) {
   }
 
   const referenciasNegocio = [...new Set([...negocioPorInmuebleId.values()].map((n) => n.referencia).filter(Boolean))];
+  const SELECT_OPORTUNIDAD = { id: true, referenciaRecaudo: true, stage: true, fechaInicioPlanPagos: true, formaPago: true, propuestaPago: true };
   const oportunidadesExactas = referenciasNegocio.length
     ? await prisma.opportunity.findMany({
         where: { referenciaRecaudo: { in: referenciasNegocio } },
-        select: { id: true, referenciaRecaudo: true, fechaInicioPlanPagos: true, formaPago: true, propuestaPago: true },
+        select: SELECT_OPORTUNIDAD,
         orderBy: { id: 'asc' },
       })
     : [];
-  // orderBy id asc + primer-visto-gana: mismo desempate que
-  // findOportunidadByReferencia ahora usa para una referenciaRecaudo con mas
-  // de una Opportunity -- sin esto, `new Map(...)` se hubiera quedado con la
-  // ULTIMA fila (orden no determinista), no necesariamente la misma que
-  // resuelve el camino uno-a-uno.
-  const oportunidadPorReferencia = new Map();
+  // Si una referenciaRecaudo tiene más de una Opportunity (raro pero real --
+  // casi siempre un error de datos en Zoho: la referencia debería haberse
+  // anulado en la desistida), nunca debe ganar una desistida/backout sobre
+  // una vigente -- ver elegirOportunidadVigente en config/estadosOportunidad.js
+  // (mismo criterio que findOportunidadByReferencia en inventarioNegocioService.js).
+  const candidatasPorReferencia = new Map();
   for (const o of oportunidadesExactas) {
-    if (!oportunidadPorReferencia.has(o.referenciaRecaudo)) oportunidadPorReferencia.set(o.referenciaRecaudo, o);
+    if (!candidatasPorReferencia.has(o.referenciaRecaudo)) candidatasPorReferencia.set(o.referenciaRecaudo, []);
+    candidatasPorReferencia.get(o.referenciaRecaudo).push(o);
+  }
+  const oportunidadPorReferencia = new Map();
+  for (const [referencia, candidatas] of candidatasPorReferencia) {
+    oportunidadPorReferencia.set(referencia, elegirOportunidadVigente(candidatas));
   }
 
   // Respaldo tolerante a formato (igual que findOportunidadByReferencia), solo
   // para las referencias que no calzaron exacto -- típicamente pocas.
   const sinMatch = referenciasNegocio.filter((r) => !oportunidadPorReferencia.has(r) && r.length >= 6);
   for (const referencia of sinMatch) {
-    const opp = await prisma.opportunity.findFirst({
+    const candidatas = await prisma.opportunity.findMany({
       where: { referenciaRecaudo: { contains: referencia, mode: 'insensitive' } },
-      orderBy: { id: 'asc' },
-      select: { id: true, referenciaRecaudo: true, fechaInicioPlanPagos: true, formaPago: true, propuestaPago: true },
+      select: SELECT_OPORTUNIDAD,
     });
-    if (opp) oportunidadPorReferencia.set(referencia, opp);
+    const elegida = elegirOportunidadVigente(candidatas);
+    if (elegida) oportunidadPorReferencia.set(referencia, elegida);
   }
 
   return { negocioPorInmuebleId, oportunidadPorReferencia };

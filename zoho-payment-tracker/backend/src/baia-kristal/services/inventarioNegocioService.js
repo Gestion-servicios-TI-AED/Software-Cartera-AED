@@ -1,4 +1,5 @@
 const { PrismaClient, Prisma } = require('@prisma/client');
+const { elegirOportunidadVigente } = require('../config/estadosOportunidad');
 
 const prisma = new PrismaClient();
 
@@ -460,19 +461,19 @@ async function findOportunidadByReferencia(referencia) {
     pagoSeparacion: true, fechaInicioPlanPagos: true, camposFinancieros: true,
     seccionInmueble: true, lastSyncedAt: true,
   };
-  // Coincidencia exacta primero; luego tolerante a espacios/formato. orderBy
-  // id asc: si una referenciaRecaudo tiene mas de una Opportunity (raro pero
-  // real), siempre gana la de menor id -- determinista en vez de depender
-  // del orden arbitrario que devuelva la BD.
-  let opp = await prisma.opportunity.findFirst({ where: { referenciaRecaudo: referencia }, orderBy: { id: 'asc' }, select });
-  if (!opp && referencia.length >= 6) {
-    opp = await prisma.opportunity.findFirst({
+  // Coincidencia exacta primero; luego tolerante a espacios/formato. Si una
+  // referenciaRecaudo tiene más de una Opportunity (raro pero real -- casi
+  // siempre un error de datos en Zoho: la referencia debería haberse anulado
+  // en la desistida), nunca debe ganar una desistida/backout sobre una
+  // vigente -- ver elegirOportunidadVigente en config/estadosOportunidad.js.
+  let candidatas = await prisma.opportunity.findMany({ where: { referenciaRecaudo: referencia }, select });
+  if (candidatas.length === 0 && referencia.length >= 6) {
+    candidatas = await prisma.opportunity.findMany({
       where: { referenciaRecaudo: { contains: referencia, mode: 'insensitive' } },
-      orderBy: { id: 'asc' },
       select,
     });
   }
-  return opp;
+  return elegirOportunidadVigente(candidatas);
 }
 
 // Dado un InventarioItem, resuelve el id del Negocio vinculado: directo por
