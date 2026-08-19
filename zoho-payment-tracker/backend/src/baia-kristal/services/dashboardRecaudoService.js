@@ -697,9 +697,14 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
   const total = filas.length;
   const pageNum = Math.max(1, page);
   const limitNum = Math.max(1, limit);
+  // porMesInicial/porMesContraentrega SÍ se mandan por fila (a diferencia de
+  // porDia*, que nadie en el frontend usa a nivel de fila) -- las necesita el
+  // filtro 30%/70%/Ambos de Dashboard (Plan vs. Recaudo) para recalcular las
+  // columnas mensuales de cada inmueble sin tener que pedir los datos otra
+  // vez al servidor cada vez que alguien cambia el filtro.
   const data = filas
     .slice((pageNum - 1) * limitNum, pageNum * limitNum)
-    .map(({ _tieneMovimientos, porMesInicial, porMesContraentrega, porDia, porDiaInicial, porDiaContraentrega, ...fila }) => fila);
+    .map(({ _tieneMovimientos, porDia, porDiaInicial, porDiaContraentrega, ...fila }) => fila);
 
   return {
     data,

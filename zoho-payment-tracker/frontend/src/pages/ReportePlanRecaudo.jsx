@@ -196,32 +196,43 @@ const STICKY_LEFT = (() => {
   return mapa;
 })();
 
+// Elige qué desglose de cada fila usar según el filtro Plan (30%/70%/Ambos):
+// Cuota Inicial (~30%, todo el plan MENOS Saldo Contraentrega), Saldo
+// Contraentrega (~70%, la última cuota), o el total combinado -- mismos tres
+// desgloses que ya calcula el backend por fila (porMes/porMesInicial/
+// porMesContraentrega), reutilizados tal cual sin pedir nada más al servidor.
+function fuentePorMes(row, alcancePlan) {
+  if (alcancePlan === 'inicial') return row.porMesInicial;
+  if (alcancePlan === 'contraentrega') return row.porMesContraentrega;
+  return row.porMes;
+}
+
 // Solo se deja la celda vacía cuando Esperado Y Recaudado del mes son
 // AMBOS $0 -- con cientos de columnas de mes, un "$0" repetido en casi
 // todas las celdas es puro ruido visual. Si cualquiera de los dos tiene
 // movimiento real, el otro sigue mostrando "$0" (no puede quedar vacío al
 // lado de un valor real, se vería como que falta un dato).
-function ambosEnCero(row, mes) {
-  const m = row.porMes[mes];
+function ambosEnCero(row, mes, alcancePlan) {
+  const m = fuentePorMes(row, alcancePlan)?.[mes];
   return (m?.esperado ?? 0) === 0 && (m?.recaudado ?? 0) === 0;
 }
 
-const COLUMNA_ESPERADO = (mes) =>
-  columnHelper.accessor((row) => row.porMes[mes]?.esperado ?? 0, {
+const COLUMNA_ESPERADO = (mes, alcancePlan) =>
+  columnHelper.accessor((row) => fuentePorMes(row, alcancePlan)?.[mes]?.esperado ?? 0, {
     id: `${mes}-esperado`,
     header: 'Proyectado',
     cell: (info) => {
-      if (ambosEnCero(info.row.original, mes)) return null;
+      if (ambosEnCero(info.row.original, mes, alcancePlan)) return null;
       return <span className="font-mono text-[13px]">{formatCOP(info.getValue())}</span>;
     },
   });
 
-const COLUMNA_RECAUDADO = (mes) =>
-  columnHelper.accessor((row) => row.porMes[mes]?.recaudado ?? 0, {
+const COLUMNA_RECAUDADO = (mes, alcancePlan) =>
+  columnHelper.accessor((row) => fuentePorMes(row, alcancePlan)?.[mes]?.recaudado ?? 0, {
     id: `${mes}-recaudado`,
     header: 'Recaudado',
     cell: (info) => {
-      if (ambosEnCero(info.row.original, mes)) return null;
+      if (ambosEnCero(info.row.original, mes, alcancePlan)) return null;
       return <span className="font-mono text-[13px] text-emerald-700">{formatCOP(info.getValue())}</span>;
     },
   });
@@ -231,25 +242,26 @@ const COLUMNA_RECAUDADO = (mes) =>
 // esperada cae en ese mes -- mismo campo que la columna "Diferencia" en
 // Negocios → Conciliación. Siempre visible (no depende del filtro "Ver"),
 // porque complementa tanto a Proyectado como a Recaudado.
-const COLUMNA_POR_RECAUDAR = (mes) =>
-  columnHelper.accessor((row) => row.porMes[mes]?.porRecaudar ?? 0, {
+const COLUMNA_POR_RECAUDAR = (mes, alcancePlan) =>
+  columnHelper.accessor((row) => fuentePorMes(row, alcancePlan)?.[mes]?.porRecaudar ?? 0, {
     id: `${mes}-porRecaudar`,
     header: 'Por recaudar',
     cell: (info) => {
-      if (ambosEnCero(info.row.original, mes)) return null;
+      if (ambosEnCero(info.row.original, mes, alcancePlan)) return null;
       return <span className="font-mono text-[13px] text-amber-700">{formatCOP(info.getValue())}</span>;
     },
   });
 
 // `vista` decide qué sub-columnas de cada mes se arman: ambas (por defecto),
-// solo Esperado o solo Recaudado -- el grupo del mes se mantiene igual en
-// los tres casos, solo cambian sus hijas. "Por recaudar" siempre se agrega.
-function construirColumnasMeses(meses, vista = 'ambos') {
+// solo Esperado o solo Recaudado. `alcancePlan` decide de qué desglose salen
+// los valores (30%/70%/Ambos) -- el grupo del mes se mantiene igual en todos
+// los casos, solo cambian sus hijas. "Por recaudar" siempre se agrega.
+function construirColumnasMeses(meses, vista = 'ambos', alcancePlan = 'ambos') {
   return meses.map((mes) => {
     const hijas = [];
-    if (vista !== 'recaudado') hijas.push(COLUMNA_ESPERADO(mes));
-    if (vista !== 'esperado') hijas.push(COLUMNA_RECAUDADO(mes));
-    hijas.push(COLUMNA_POR_RECAUDAR(mes));
+    if (vista !== 'recaudado') hijas.push(COLUMNA_ESPERADO(mes, alcancePlan));
+    if (vista !== 'esperado') hijas.push(COLUMNA_RECAUDADO(mes, alcancePlan));
+    hijas.push(COLUMNA_POR_RECAUDAR(mes, alcancePlan));
     return columnHelper.group({
       id: `mes-${mes}`,
       header: formatMesLabel(mes),
@@ -475,6 +487,13 @@ export default function ReportePlanRecaudo() {
   const [mesDesde, setMesDesde] = useState('');
   const [mesHasta, setMesHasta] = useState('');
   const [vistaMeses, setVistaMeses] = useState('ambos'); // 'ambos' | 'esperado' | 'recaudado'
+  // Qué porción del plan mostrar en las columnas mensuales -- Ambos (100%,
+  // por defecto), Cuota Inicial (~30%) o Saldo Contraentrega (~70%). El
+  // backend ya manda las tres versiones en cada carga (porMes/porMesInicial/
+  // porMesContraentrega por fila, totales/totalesInicial/totalesContraentrega
+  // en general), así que cambiar esto es puramente de presentación -- no
+  // dispara un nuevo fetch (no está en las deps de `load`).
+  const [alcancePlan, setAlcancePlan] = useState('ambos'); // 'ambos' | 'inicial' | 'contraentrega'
   // Modo enfocado: la tabla pasa a cubrir toda la pantalla -- útil con
   // cientos de columnas de mes, donde el layout normal deja poco espacio.
   const [enfocado, toggleEnfocado] = useModoEnfocado();
@@ -484,6 +503,8 @@ export default function ReportePlanRecaudo() {
   const [torresPorFrente, setTorresPorFrente] = useState({});
   const [torresPorEtapaFrente, setTorresPorEtapaFrente] = useState({});
   const [totales, setTotales] = useState({});
+  const [totalesInicial, setTotalesInicial] = useState({});
+  const [totalesContraentrega, setTotalesContraentrega] = useState({});
   const [totalesColumnasFijas, setTotalesColumnasFijas] = useState(null);
   const [filasResaltadas, setFilasResaltadas] = useState(() => new Set());
   const [menuContextual, setMenuContextual] = useState(null); // { x, y, fila } | null
@@ -563,6 +584,8 @@ export default function ReportePlanRecaudo() {
       setTorresPorFrente(res.torresPorFrente);
       setTorresPorEtapaFrente(res.torresPorEtapaFrente);
       setTotales(res.totales);
+      setTotalesInicial(res.totalesInicial);
+      setTotalesContraentrega(res.totalesContraentrega);
       setTotalesColumnasFijas(res.totalesColumnasFijas);
       setPage(p);
     } catch (err) {
@@ -600,10 +623,10 @@ export default function ReportePlanRecaudo() {
   const torreOptions = frenteFilter
     ? (etapaFilter ? (torresPorEtapaFrente[`${etapaFilter}||${frenteFilter}`] || []) : (torresPorFrente[frenteFilter] || []))
     : [];
-  const hasFilters = search || etapaFilter || frenteFilter || torreFilter || conMovimientos || mesDesde || mesHasta || vistaMeses !== 'ambos';
+  const hasFilters = search || etapaFilter || frenteFilter || torreFilter || conMovimientos || mesDesde || mesHasta || vistaMeses !== 'ambos' || alcancePlan !== 'ambos';
   const clearFilters = () => {
     setSearch(''); setEtapaFilter(''); setFrenteFilter(''); setTorreFilter(''); setConMovimientos(false);
-    setMesDesde(''); setMesHasta(''); setVistaMeses('ambos');
+    setMesDesde(''); setMesHasta(''); setVistaMeses('ambos'); setAlcancePlan('ambos');
   };
 
   const mesesFiltrados = useMemo(() => filtrarRangoMeses(meses, mesDesde, mesHasta), [meses, mesDesde, mesHasta]);
@@ -613,9 +636,17 @@ export default function ReportePlanRecaudo() {
   const primeraColMes = vistaMeses === 'recaudado' ? 'recaudado' : 'esperado';
 
   const columns = useMemo(
-    () => [...COLUMNAS_FIJAS, ...construirColumnasMeses(mesesFiltrados, vistaMeses)],
-    [mesesFiltrados, vistaMeses]
+    () => [...COLUMNAS_FIJAS, ...construirColumnasMeses(mesesFiltrados, vistaMeses, alcancePlan)],
+    [mesesFiltrados, vistaMeses, alcancePlan]
   );
+
+  // Totales del pie de tabla según el mismo filtro Plan (30%/70%/Ambos) --
+  // las tres versiones ya vinieron en la carga, acá solo se elige cuál mostrar.
+  const totalesActivos = useMemo(() => {
+    if (alcancePlan === 'inicial') return totalesInicial;
+    if (alcancePlan === 'contraentrega') return totalesContraentrega;
+    return totales;
+  }, [alcancePlan, totales, totalesInicial, totalesContraentrega]);
 
   // Mapea el id de cada columna de mes (grupo y sus dos hijas) al indice del
   // mes dentro de `mesesFiltrados`, para poder alternar el contraste de fondo mes a mes.
@@ -773,7 +804,7 @@ export default function ReportePlanRecaudo() {
         colsMeses.forEach((c, j) => {
           const col = FIJAS.length + j + 1;
           const cell = row.getCell(col);
-          const valorMes = n.porMes[c.mes]?.[c.tipo] ?? 0;
+          const valorMes = fuentePorMes(n, alcancePlan)?.[c.mes]?.[c.tipo] ?? 0;
           // A diferencia de la pantalla (que deja el mes en blanco cuando
           // Esperado Y Recaudado son ambos $0, por limpieza visual), acá
           // siempre se escribe 0 -- una columna con celdas realmente vacías
@@ -823,10 +854,13 @@ export default function ReportePlanRecaudo() {
           cell.font = { bold: true, color: { argb: colorPorClave[f.key] ?? COLOR_EXCEL.textoTotalLabel } };
         });
 
+        const totalesExport = alcancePlan === 'inicial' ? res.totalesInicial
+          : alcancePlan === 'contraentrega' ? res.totalesContraentrega
+          : res.totales;
         colsMeses.forEach((c, j) => {
           const col = FIJAS.length + j + 1;
           const cell = totalRow.getCell(col);
-          cell.value = res.totales[c.mes]?.[c.tipo] ?? 0;
+          cell.value = totalesExport[c.mes]?.[c.tipo] ?? 0;
           cell.numFmt = '#,##0';
           cell.font = {
             bold: true,
@@ -843,8 +877,9 @@ export default function ReportePlanRecaudo() {
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
+      const sufijoAlcance = alcancePlan === 'inicial' ? '-30pct' : alcancePlan === 'contraentrega' ? '-70pct' : '';
       a.href = url;
-      a.download = `dashboard-plan-vs-recaudo-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.download = `dashboard-plan-vs-recaudo${sufijoAlcance}-${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -852,7 +887,7 @@ export default function ReportePlanRecaudo() {
     } finally {
       setExporting(false);
     }
-  }, [search, etapaFilter, frenteFilter, torreFilter, conMovimientos, sortBy, sortDir, mesDesde, mesHasta, vistaMeses, filasResaltadas]);
+  }, [search, etapaFilter, frenteFilter, torreFilter, conMovimientos, sortBy, sortDir, mesDesde, mesHasta, vistaMeses, alcancePlan, filasResaltadas]);
 
   return (
     <div className={enfocado
@@ -971,6 +1006,28 @@ export default function ReportePlanRecaudo() {
             ))}
           </div>
         </div>
+        <div className="field">
+          <label className="field-label">Plan</label>
+          <div className="flex h-8 rounded-md border border-aed-border overflow-hidden">
+            {[
+              { value: 'ambos', label: 'Ambos (100%)' },
+              { value: 'inicial', label: 'Cuota inicial (30%)' },
+              { value: 'contraentrega', label: 'Contraentrega (70%)' },
+            ].map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => setAlcancePlan(value)}
+                className={`px-2.5 text-[14px] font-medium whitespace-nowrap transition-colors border-r border-aed-border last:border-r-0 ${
+                  alcancePlan === value
+                    ? 'bg-brand text-white'
+                    : 'bg-white text-slate-500 hover:bg-aed-base'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         <button
           onClick={() => setConMovimientos((v) => !v)}
           className={`h-8 flex items-center gap-2 px-2.5 rounded-md border text-[14px] font-medium transition-colors ${
@@ -1007,7 +1064,7 @@ export default function ReportePlanRecaudo() {
           toggleResaltado={toggleResaltado}
           abrirMenuContextual={abrirMenuContextual}
           vistaMeses={vistaMeses}
-          totales={totales}
+          totales={totalesActivos}
           totalesColumnasFijas={totalesColumnasFijas}
           sortBy={sortBy}
           sortDir={sortDir}
