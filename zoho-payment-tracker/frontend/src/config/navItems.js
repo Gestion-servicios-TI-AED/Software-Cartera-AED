@@ -40,14 +40,14 @@ export const NAV_ITEMS_BAIA_KRISTAL = [
 // placeholder (`/alegra/*` en App.jsx), lista para reemplazarse una por una
 // sin tener que tocar este menú otra vez cuando se construya cada módulo.
 export const NAV_ITEMS_ALEGRA = [
-  { key: 'alegra-negocios',      to: '/alegra',                    Icon: Briefcase,   label: 'Negocios',      color: BRAND_ACCENT, exact: true },
-  { key: 'alegra-oportunidades', to: '/alegra/oportunidades',       Icon: Target,      label: 'Oportunidades', color: BRAND_ACCENT, exact: true },
-  { key: 'alegra-inventario',    to: '/alegra/inventario',          Icon: Building2,   label: 'Inmuebles',     color: BRAND_ACCENT, exact: true },
-  { key: 'alegra-encargos',      to: '/alegra/fiducia',             Icon: Landmark,    label: 'Encargos',      color: BRAND_ACCENT },
-  { key: 'alegra-movimientos',   to: '/alegra/fiducia/movimientos', Icon: Banknote,    label: 'Movimientos',   color: BRAND_ACCENT },
-  { key: 'alegra-resumen',       to: '/alegra/resumen',             Icon: BarChart3,   label: 'Resumen',       color: BRAND_ACCENT, exact: true },
-  { key: 'alegra-dashboard',     to: '/alegra/dashboard',           Icon: LineChart,   label: 'Dashboard',     color: BRAND_ACCENT, exact: true },
-  { key: 'alegra-cartera-mora',  to: '/alegra/cartera-mora',        Icon: ShieldAlert, label: 'Cartera',       color: BRAND_ACCENT, exact: true },
+  // { key: 'alegra-negocios',      to: '/alegra',                    Icon: Briefcase,   label: 'Negocios',      color: BRAND_ACCENT, exact: true },
+  // { key: 'alegra-oportunidades', to: '/alegra/oportunidades',       Icon: Target,      label: 'Oportunidades', color: BRAND_ACCENT, exact: true },
+  // { key: 'alegra-inventario',    to: '/alegra/inventario',          Icon: Building2,   label: 'Inmuebles',     color: BRAND_ACCENT, exact: true },
+  // { key: 'alegra-encargos',      to: '/alegra/fiducia',             Icon: Landmark,    label: 'Encargos',      color: BRAND_ACCENT },
+  // { key: 'alegra-movimientos',   to: '/alegra/fiducia/movimientos', Icon: Banknote,    label: 'Movimientos',   color: BRAND_ACCENT },
+  // { key: 'alegra-resumen',       to: '/alegra/resumen',             Icon: BarChart3,   label: 'Resumen',       color: BRAND_ACCENT, exact: true },
+  // { key: 'alegra-dashboard',     to: '/alegra/dashboard',           Icon: LineChart,   label: 'Dashboard',     color: BRAND_ACCENT, exact: true },
+  // { key: 'alegra-cartera-mora',  to: '/alegra/cartera-mora',        Icon: ShieldAlert, label: 'Cartera',       color: BRAND_ACCENT, exact: true },
 ];
 
 // Lista combinada -- la usa el formulario de usuarios en Ajustes para listar
