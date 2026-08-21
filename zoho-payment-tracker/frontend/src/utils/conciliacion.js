@@ -45,7 +45,13 @@ function esSaldoContraentrega(etiqueta) {
 
 // Construye las cuotas del plan desde las filas del subform. Se excluyen las
 // filas sin monto positivo (mismo espíritu que el filtrado de PlanSubTable).
-export function construirPlan(rows, fechaBase) {
+// `esPlanNegociado` distingue el origen: true para Propuesta de Pago (el plan
+// real que ese cliente negoció, con exactamente tantas filas como meses tiene
+// su plan real) y false para Forma de Pago (la plantilla genérica del
+// proyecto, con más filas placeholder -- Cuota 9 a 55, todas en $0 -- de las
+// que cualquier cliente real necesita). Afecta solo cómo se infiere la fecha
+// de Saldo Contraentrega cuando no trae la suya -- ver comentario más abajo.
+export function construirPlan(rows, fechaBase, { esPlanNegociado = true } = {}) {
   if (!rows?.length) return [];
   const keys = [...new Set(rows.flatMap(Object.keys))].filter((k) => !SKIP_KEYS.includes(k));
   const cuotaKey = detectarCuotaKey(rows);
@@ -106,7 +112,18 @@ export function construirPlan(rows, fechaBase) {
     }
     const etiqueta = cuotaKey ? String(row[cuotaKey] ?? `Fila ${i + 1}`) : `Fila ${i + 1}`;
     let fechaEstimada = fechaPropia;
-    if (!fechaEstimada && cuotaKey && esSaldoContraentrega(row[cuotaKey]) && ultimaFechaReal) {
+    // El fallback "última cuota + 1 mes" solo es confiable en un plan
+    // realmente negociado (Propuesta de Pago): ahí el número de filas
+    // corresponde 1 a 1 con los meses reales de ESE cliente. En la Forma de
+    // Pago genérica (cuando no hubo Propuesta, el cliente se adaptó al plan
+    // original del proyecto) el número de filas es solo la capacidad máxima
+    // de la plantilla -- Cuota 9 a 55, todas en $0 -- y no refleja los meses
+    // reales hasta la entrega. Contarlas igual dispara Saldo Contraentrega
+    // años después de la entrega real (confirmado con Nelcy Marimón González,
+    // Kala Torre 2 1-G: calculaba 2031 en vez de ~2027). Sin un plan
+    // negociado, es mejor dejar la fecha sin inferir -- queda pendiente de la
+    // fecha de entrega configurada en Ajustes, que es la fuente confiable acá.
+    if (!fechaEstimada && esPlanNegociado && cuotaKey && esSaldoContraentrega(row[cuotaKey]) && ultimaFechaReal) {
       const d = new Date(ultimaFechaReal);
       d.setUTCMonth(d.getUTCMonth() + 1);
       fechaEstimada = d;

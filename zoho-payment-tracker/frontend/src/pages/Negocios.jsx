@@ -589,8 +589,9 @@ async function obtenerConciliacionCompleta(negocio) {
   // del negocio), Forma de Pago como respaldo solo si no hay propuesta.
   // Mismo criterio que dashboardRecaudoService.js (Dashboard / Cartera en
   // Gestión) para que no diverjan entre sí.
-  const planRows = subs?.propuestaPago?.length ? subs.propuestaPago : (subs?.formaPago || []);
-  const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos);
+  const esPlanNegociado = !!subs?.propuestaPago?.length;
+  const planRows = esPlanNegociado ? subs.propuestaPago : (subs?.formaPago || []);
+  const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos, { esPlanNegociado });
   if (cuotasPlan.length === 0) {
     return { cuotas: [], resumen: null, movimientos, valorVenta };
   }

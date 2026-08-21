@@ -287,8 +287,9 @@ async function construirFilasCompletas() {
     if (oportunidad) {
       // Propuesta de Pago primero (es con la que se hace la conciliación real
       // del negocio), Forma de Pago como respaldo solo si no hay propuesta.
-      const planRows = oportunidad.propuestaPago?.length ? oportunidad.propuestaPago : (oportunidad.formaPago || []);
-      const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos);
+      const esPlanNegociado = !!oportunidad.propuestaPago?.length;
+      const planRows = esPlanNegociado ? oportunidad.propuestaPago : (oportunidad.formaPago || []);
+      const cuotasPlan = construirPlan(planRows, oportunidad.fechaInicioPlanPagos, { esPlanNegociado });
 
       // Ajustar la última cuota (Saldo Contraentrega) para que el total del
       // plan cuadre con Valor Venta del Excel -- mismo ajuste que ya hacía

@@ -41,6 +41,17 @@ function esSaldoContraentrega(cuotaVal) {
   return String(cuotaVal ?? '').toLowerCase().replace(/\s+/g, '').includes('saldocontraentrega');
 }
 
+// Una fila "trae datos propios" si tiene algún valor diligenciado más allá
+// del id y la columna de cuota -- distingue una cuota real (aunque sea $0 a
+// propósito) de una fila de plantilla nunca llenada (ej. Cuota 9 a 55 de la
+// Forma de Pago genérica cuando el cliente terminó de pagar su cuota inicial
+// en las primeras 8: esas filas solo traen "id", ningún monto).
+function tieneDatosPropios(row, cuotaKey) {
+  return Object.entries(row).some(
+    ([k, v]) => k !== 'id' && k !== cuotaKey && v !== undefined && v !== null && v !== ''
+  );
+}
+
 // Enriquece las filas con una columna "Fecha estimada" al inicio.
 export function addFechaEstimada(rows, fechaBase) {
   if (!fechaBase || !rows?.length) return rows;
@@ -50,7 +61,9 @@ export function addFechaEstimada(rows, fechaBase) {
   // cuota numerada) -- se usa para inferir la de Saldo Contraentrega, que en
   // Zoho llega sin "Fecha_Estimada" propia: es la fecha que le sigue a esa
   // última cuota (filas de subtotal como "TOTAL CUOTA INICIAL" no la mueven,
-  // porque tampoco tienen fecha propia).
+  // porque tampoco tienen fecha propia). Solo cuentan las filas con datos
+  // propios diligenciados -- ver tieneDatosPropios -- para que una plantilla
+  // sin negociar no arrastre la fecha años más adelante de la entrega real.
   let ultimaFechaReal = null;
   return rows.map((row) => {
     let fecha = fechaEstimadaCuota(fechaBase, row[cuotaKey]);
@@ -58,7 +71,7 @@ export function addFechaEstimada(rows, fechaBase) {
       fecha = new Date(ultimaFechaReal);
       fecha.setUTCMonth(fecha.getUTCMonth() + 1);
     }
-    if (fecha) ultimaFechaReal = fecha;
+    if (fecha && tieneDatosPropios(row, cuotaKey)) ultimaFechaReal = fecha;
     if (!fecha) return row;
     return { 'Fecha estimada': formatFechaUTC(fecha), ...row };
   });
