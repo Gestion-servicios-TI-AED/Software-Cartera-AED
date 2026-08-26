@@ -2,6 +2,7 @@ const { prisma, parseProyectoTorre, formatearProyectoTorre, parsePisoNumero, obt
 const { construirPlan, normalizarPagos, conciliar, parseMonto } = require('./conciliacionService');
 const { obtenerFechasEntregaConfiguradas, CLAVE_TODAS } = require('./configuracionFrenteService');
 const { elegirOportunidadVigente } = require('../config/estadosOportunidad');
+const { estaExcluidoDelPortafolio, esNombreMarcadoInvalido } = require('../config/inventarioExcluido');
 
 // ── Cache en memoria del cálculo pesado ─────────────────────────────────────
 // obtenerDashboardRecaudo recibe filtros distintos en cada llamada (Etapa,
@@ -203,11 +204,22 @@ async function construirFilasCompletas() {
   // "Verificar Project Code" en Ajustes) también rompía este orden -- una
   // unidad como "246" se colaba entre las "204" porque su Project_Code decía
   // "204", en vez de aparecer cerca de "245"/"247".
-  const inmuebles = await prisma.$queryRaw`
+  // Excluye unidades marcadas en inventarioExcluido.js: torres completas (ej.
+  // Vela Village Torre 2, a pedido explícito del usuario) y registros
+  // individuales marcados con "*" al inicio del nombre (retirados/duplicados
+  // en Zoho, confirmado contra el reporte oficial de inventario -- ver
+  // comentario en inventarioExcluido.js). Se filtra acá, en la fuente
+  // compartida por Dashboard, Cartera en Gestión y Resumen
+  // Gerencial/Consolidado, para que los tres reflejen el mismo universo sin
+  // tener que repetir el filtro en cada uno.
+  const inmueblesSinFiltrar = await prisma.$queryRaw`
     SELECT id, datos, piso, "referenciaRecaudo", estado
     FROM "InventarioItem"
     ORDER BY datos->>'Proyecto_Torre' ASC NULLS LAST, datos->>'Product_Name' ASC NULLS LAST
   `;
+  const inmuebles = inmueblesSinFiltrar.filter((inv) =>
+    !estaExcluidoDelPortafolio(inv.datos?.Proyecto_Torre) && !esNombreMarcadoInvalido(inv.datos?.Product_Name)
+  );
 
   const { negocioPorInmuebleId, oportunidadPorReferencia } = await resolverNegociosYOportunidades(inmuebles);
 
@@ -930,11 +942,14 @@ async function obtenerCarteraMora({ search, etapa, frente, torre, rango, vista, 
 // Ventas Fiduciaria/Cuotas Iniciales/Uni. Disponibles, VR. Total Recaudado,
 // % Recaudo/Ventas, % Recaudo/Cuota Inicial, Cartera >5 días + %, VR. Total
 // Pendiente, Valor Cuotas Iniciales por Recaudar, Valor en Crédito por
-// Recaudar, Fecha de Corte. Una sola columna del Excel completo no tiene
-// todavía un criterio confirmado en el sistema (queda en `null`, el
-// frontend la marca como "Pendiente"):
-//  - UNI VENDIDAS (FIDU): un conteo fiduciario distinto del estado de
-//    Inventario que no sabemos reproducir.
+// Recaudar, Fecha de Corte.
+//
+// UNI VENDIDAS (FIDU) = negocios (Excel de fiducia) en estado PROMETIDO,
+// OPCIONADO o VENDIDO -- confirmado con el usuario. Es un conteo por Negocio
+// (fuente: fiducia), distinto de UNIDADES VENDIDAS CRM (que cuenta por
+// InventarioItem.estado, fuente: Producto de Zoho) -- ambas columnas pueden
+// diferir porque clasifican universos distintos (negocio financiero vs.
+// inmueble físico).
 //
 // CARTERA > 5 DÍAS sí se completa (a pedido explícito, con el mejor criterio
 // disponible hoy, aunque no calce 100% con la definición exacta del Excel):
@@ -949,13 +964,21 @@ async function obtenerCarteraMora({ search, etapa, frente, torre, rango, vista, 
 // entrega. Misma fórmula que ya usa `totalesColumnasFijas.pendienteContraentrega`
 // en obtenerDashboardRecaudo() más abajo -- no cambiar uno sin el otro.
 const ESTADOS_INV_VENDIDA_CRM = new Set(['Vendido', 'Reservado', 'Separado']);
+// ESCRITURA_AUTORIZADA se agregó al criterio original (PROMETIDO/OPCIONADO/
+// VENDIDO) porque un negocio que llega a ese estado sigue siendo una unidad
+// vendida (más avanzada, no menos) -- excluirlo hacía que el conteo pareciera
+// BAJAR con el tiempo a medida que negocios maduraban a ese estado, cuando en
+// realidad debía subir. Confirmado contra el Excel "CONSOLIDADO DE CARTERA"
+// de abril 2026 (Etapa 2 mostraba 283 vendidas ahí; sin este estado el
+// cálculo en vivo de agosto daba 227 -- con él, 284, que sí cuadra y crece).
+const ESTADOS_NEGOCIO_VENDIDA_FIDU = new Set(['PROMETIDO', 'OPCIONADO', 'VENDIDO', 'ESCRITURA_AUTORIZADA']);
 const UMBRAL_CARTERA_DIAS = 5;
 
 function acumuladoEtapaVacio() {
   return {
     uniTotales: 0,
+    uniVendidasFidu: 0,
     uniVendidasCRM: 0,
-    uniDisponible: 0,
     valorTotalVentasFiduciaria: 0,
     valorCuotasIniciales: 0,
     valorTotalUnidadesDisponibles: 0,
@@ -970,7 +993,7 @@ function acumuladoEtapaVacio() {
 }
 
 const CAMPOS_SUMABLES_TOTAL = [
-  'uniTotales', 'uniVendidasCRM', 'uniDisponible',
+  'uniTotales', 'uniVendidasFidu', 'uniVendidasCRM',
   'valorTotalVenta', 'valorTotalVentasFiduciaria', 'valorCuotasIniciales', 'valorTotalUnidadesDisponibles',
   'recaudoReal', 'recaudoCuotaInicial', 'carteraMas5Dias', 'esperadoAFechaInicial',
   'pendienteTotalFiduciaria', 'pendienteCuotaInicial', 'pendienteCredito',
@@ -986,8 +1009,8 @@ async function obtenerResumenPorEtapa() {
     if (!porEtapa.has(f.etapa)) porEtapa.set(f.etapa, acumuladoEtapaVacio());
     const e = porEtapa.get(f.etapa);
     e.uniTotales += 1;
+    if (ESTADOS_NEGOCIO_VENDIDA_FIDU.has(f.estado)) e.uniVendidasFidu += 1;
     if (ESTADOS_INV_VENDIDA_CRM.has(f.estadoInventario)) e.uniVendidasCRM += 1;
-    else if (f.estadoInventario === 'Disponible') e.uniDisponible += 1;
 
     // "Fiduciaria" = tiene Negocio vinculado (encargo fiduciario real);
     // "Disponibles" = sin Negocio todavía -- mismo corte que ya usan las
@@ -1030,9 +1053,13 @@ async function obtenerResumenPorEtapa() {
     return {
       etapa,
       uniTotales: e.uniTotales,
-      uniVendidasFidu: null,
+      uniVendidasFidu: e.uniVendidasFidu,
       uniVendidasCRM: e.uniVendidasCRM,
-      uniDisponible: e.uniDisponible,
+      // Disponible = Totales - Vendidas (Fidu) -- a pedido explícito del
+      // usuario, en vez de contarse aparte por InventarioItem.estado
+      // (quedaba desalineada de la resta: dos clasificaciones distintas,
+      // Negocio vs. Producto de Zoho, no siempre suman igual a Totales).
+      uniDisponible: e.uniTotales - e.uniVendidasFidu,
       valorTotalVenta: e.valorTotalVentasFiduciaria + e.valorTotalUnidadesDisponibles,
       valorTotalVentasFiduciaria: e.valorTotalVentasFiduciaria,
       valorCuotasIniciales: e.valorCuotasIniciales,
@@ -1061,7 +1088,7 @@ async function obtenerResumenPorEtapa() {
   }, {});
   Object.assign(total, {
     etapa: 'TOTAL GENERAL',
-    uniVendidasFidu: null,
+    uniDisponible: total.uniTotales - total.uniVendidasFidu,
     pctRecaudoSobreVentasFiduciaria: total.valorTotalVentasFiduciaria > 0 ? total.recaudoReal / total.valorTotalVentasFiduciaria : null,
     pctRecaudoSobreCuotaInicial: total.valorCuotasIniciales > 0 ? total.recaudoCuotaInicial / total.valorCuotasIniciales : null,
     pctCarteraMas5Dias: total.esperadoAFechaInicial > 0 ? total.carteraMas5Dias / total.esperadoAFechaInicial : null,

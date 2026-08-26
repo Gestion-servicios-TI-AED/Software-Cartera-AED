@@ -27,20 +27,7 @@ function formatFechaCorte(iso) {
   return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-// Columna sin un criterio confirmado todavía en el sistema -- ver comentario
-// en obtenerResumenPorEtapa() (dashboardRecaudoService.js) para el detalle de
-// por qué cada una quedó pendiente. Se muestra como una etiqueta muda en vez
-// de inventar un número que no se pueda defender.
-function CeldaPendiente({ motivo }) {
-  return (
-    <span className="inline-flex items-center gap-1 text-[13px] text-slate-400 italic">
-      Pendiente
-      <HelpTip text={motivo} />
-    </span>
-  );
-}
-
-const MOTIVO_VENDIDAS_FIDU = 'No sabemos reproducir este conteo: es distinto del estado del inmueble en Inventario (que sí usamos para "Vendidas CRM"). Falta confirmar el criterio fiduciario exacto.';
+const NOTA_VENDIDAS_FIDU = 'Cuenta Negocios (Excel de fiducia) en estado PROMETIDO, OPCIONADO, VENDIDO o ESCRITURA_AUTORIZADA -- confirmado con el usuario y verificado contra el Excel "CONSOLIDADO DE CARTERA" de abril 2026. Es un conteo distinto de "Vendidas CRM" (que cuenta por estado del inmueble en Inventario): clasifican universos distintos, negocio financiero vs. inmueble físico.';
 
 // Esta sí se completa, pero con un criterio aproximado (no 100% igual al que
 // describe el Excel) -- se marca con una notita en el encabezado en vez de
@@ -69,7 +56,7 @@ const GRUPOS = [
 // las trae.
 const COLUMNAS = [
   { key: 'uniTotales', grupo: 0, label: 'UNI TOTALES', render: (e) => formatInt(e.uniTotales) },
-  { key: 'uniVendidasFidu', grupo: 0, label: 'UNI VENDIDAS (FIDU)', pendiente: MOTIVO_VENDIDAS_FIDU },
+  { key: 'uniVendidasFidu', grupo: 0, label: 'UNI VENDIDAS (FIDU)', nota: NOTA_VENDIDAS_FIDU, render: (e) => formatInt(e.uniVendidasFidu) },
   { key: 'uniVendidasCRM', grupo: 0, label: 'UNIDADES VENDIDAS CRM (Estado: Vendido, reservado, separado)', render: (e) => formatInt(e.uniVendidasCRM) },
   { key: 'uniDisponible', grupo: 0, label: 'UNIDADES DISPONIBLE', render: (e) => formatInt(e.uniDisponible) },
   { key: 'valorTotalVenta', grupo: 0, label: 'VALOR TOTAL VENTA (FIDUCIARIA+DISPONIBLES)', render: (e) => formatMM(e.valorTotalVenta) },
@@ -114,7 +101,7 @@ function FilaEtapa({ fila, esTotal, color }) {
             key={col.key}
             className={`px-2 py-3 whitespace-nowrap text-center text-[14px] ${esTotal ? '' : g.bg} ${INICIO_DE_GRUPO.has(col.key) ? `border-l-2 ${g.border}` : ''}`}
           >
-            {col.pendiente ? <CeldaPendiente motivo={col.pendiente} /> : col.render(fila)}
+            {col.render(fila)}
           </td>
         );
       })}
@@ -136,7 +123,7 @@ export default function ConsolidadoCarteraEtapa({ data }) {
     <div>
       <p className="text-[13px] text-slate-500 mb-3">
         Cifras en miles de millones de pesos (misma convención del Excel "CONSOLIDADO DE CARTERA"), calculadas en vivo sobre la conciliación real -- no una copia mensual a mano.
-        Las columnas marcadas <span className="italic text-slate-400">Pendiente</span> no tienen todavía un criterio confirmado en el sistema; las que tienen un ⓘ junto al encabezado sí se completaron, pero con un criterio aproximado (pasa el mouse para ver el detalle).
+        Las columnas con un ⓘ junto al encabezado usan un criterio aproximado o recién confirmado, no necesariamente idéntico al del Excel original (pasa el mouse para ver el detalle).
       </p>
       <div className="overflow-x-auto">
         <table className="text-[14px] w-full">

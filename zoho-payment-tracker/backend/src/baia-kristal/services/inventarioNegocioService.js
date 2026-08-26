@@ -1,5 +1,11 @@
 const { PrismaClient, Prisma } = require('@prisma/client');
 const { elegirOportunidadVigente } = require('../config/estadosOportunidad');
+const { PROYECTO_TORRE_EXCLUIDOS } = require('../config/inventarioExcluido');
+// El patrón "*" al inicio del nombre (ver esNombreMarcadoInvalido en
+// inventarioExcluido.js) se aplica acá directo en SQL con ILIKE/NOT LIKE en
+// vez de importar la función JS -- las dos consultas de este archivo ya
+// vienen como Prisma.sql crudo.
+const PATRON_NOMBRE_EXCLUIDO = '*%';
 
 const prisma = new PrismaClient();
 
@@ -161,6 +167,11 @@ async function estadisticasPorEtapaYFrente() {
       ORDER BY (i."referenciaRecaudo" = n.referencia) DESC, i.id ASC
       LIMIT 1
     ) inv ON true
+    -- Unidades excluidas (ver inventarioExcluido.js) se sacan por completo de
+    -- estas estadísticas -- no se reclasifican como huérfanas (por eso el OR
+    -- IS NULL, que sigue dejando pasar los negocios sin inmueble).
+    WHERE inv.datos->>'Proyecto_Torre' IS NULL
+       OR inv.datos->>'Proyecto_Torre' <> ALL(${[...PROYECTO_TORRE_EXCLUIDOS]}::text[])
   `;
 
   const porEtapa = new Map();
@@ -335,7 +346,15 @@ huerfanos AS (
   )
 ),
 combinado AS (
+  -- El filtro de unidades excluidas (ver inventarioExcluido.js, ej. Vela
+  -- Village Torre 2) se aplica ACÁ, no arriba en "inmuebles" -- si se
+  -- excluyera ahí, un negocio vinculado a esa torre dejaría de "reclamarla"
+  -- en el LATERAL y el chequeo NOT EXISTS de huerfanos lo mostraría como
+  -- huérfano (sin inmueble) en vez de simplemente no mostrarlo. Así, el
+  -- negocio queda igual de "reclamado" y a la vez fuera del listado final.
   SELECT * FROM inmuebles
+  WHERE COALESCE(inventario_datos->>'Proyecto_Torre', '') <> ALL(${[...PROYECTO_TORRE_EXCLUIDOS]}::text[])
+    AND COALESCE(inventario_datos->>'Product_Name', '') NOT LIKE ${PATRON_NOMBRE_EXCLUIDO}
   UNION ALL
   SELECT * FROM huerfanos
 )

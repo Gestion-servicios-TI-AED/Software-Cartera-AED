@@ -1,6 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { excluirEnResumen } = require('../config/columnasExcluidas');
+const { PROYECTO_TORRE_EXCLUIDOS } = require('../config/inventarioExcluido');
 const {
   resolverColumnasMovPorPropietario,
   parseCompradoresCell,
@@ -531,8 +532,24 @@ router.get('/movimientos/export', requireModulo('movimientos'), async (req, res)
 // GET /api/negocios/stats — resumen agregado para el dashboard
 router.get('/stats', requireModulo('negocios'), async (_req, res) => {
   try {
+    // Mismo criterio de exclusión que Dashboard/Cartera en Gestión/Resumen
+    // Gerencial/Inmuebles (ver inventarioExcluido.js) -- torres completas
+    // excluidas a pedido del usuario + registros marcados con "*" al inicio
+    // del nombre (retirados/duplicados en Zoho).
+    const inventarioNoExcluido = {
+      AND: [
+        {
+          NOT: {
+            OR: [
+              ...[...PROYECTO_TORRE_EXCLUIDOS].map((v) => ({ datos: { path: ['Proyecto_Torre'], equals: v } })),
+              { nombre: { startsWith: '*' } },
+            ],
+          },
+        },
+      ],
+    };
     const [totalInmuebles, total, conSaldo, saldoAgg, porEstado, { porEtapa, porFrente }] = await Promise.all([
-      prisma.inventarioItem.count(),
+      prisma.inventarioItem.count({ where: inventarioNoExcluido }),
       prisma.negocio.count(),
       prisma.negocio.count({ where: { saldoActual: { gt: 0 } } }),
       prisma.negocio.aggregate({ _sum: { saldoActual: true } }),

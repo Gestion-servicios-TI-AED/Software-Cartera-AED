@@ -8,6 +8,7 @@ const {
   esFrenteSeleccionable,
 } = require('../services/inventarioNegocioService');
 const { requireModulo, requireAdmin } = require('../../middleware/auth');
+const { PROYECTO_TORRE_EXCLUIDOS } = require('../config/inventarioExcluido');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -48,7 +49,22 @@ router.get('/', requireModulo('inventario'), async (req, res) => {
     // Torre aunque no tenga negocio vinculado).
     const valores = await valoresProyectoTorre();
 
-    const and = [];
+    // Unidades excluidas del portafolio (ver inventarioExcluido.js): torres
+    // completas a pedido explícito del usuario, y registros marcados con "*"
+    // al inicio del nombre (retirados/duplicados en Zoho, confirmado contra
+    // el reporte oficial de inventario) -- mismo criterio que ya aplican
+    // Dashboard, Cartera en Gestión, Resumen Gerencial y Negocios, para que
+    // la lista de Inmuebles no muestre más unidades que las demás vistas.
+    const and = [
+      {
+        NOT: {
+          OR: [
+            ...[...PROYECTO_TORRE_EXCLUIDOS].map((v) => ({ datos: { path: ['Proyecto_Torre'], equals: v } })),
+            { nombre: { startsWith: '*' } },
+          ],
+        },
+      },
+    ];
     if (proyecto) and.push({ proyecto });
     if (categoria) and.push({ categoria });
     if (estado) and.push({ estado });
