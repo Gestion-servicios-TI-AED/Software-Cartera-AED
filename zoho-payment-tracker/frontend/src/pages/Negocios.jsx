@@ -22,6 +22,24 @@ import cornerBaiaKristal from '../assets/baia-kristal-corner.png';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+// Etapas 1 y 2 (Kabo/Prive) ya están en entrega -- para un inmueble VENDIDO
+// de esas etapas, el Valor Venta real deja de ser "Valor venta" (el estimado
+// de la negociación) y pasa a ser "Valor Factura" (el valor con el que
+// efectivamente se facturó al entregar). Mismo criterio que
+// dashboardRecaudoService.js (resolverValorVenta) -- no cambiar uno sin el
+// otro.
+const ETAPAS_EN_ENTREGA = new Set(['1', '2']);
+function resolverValorVenta(negocio) {
+  const datos = negocio?.datos || {};
+  if (negocio?.estado === 'VENDIDO' && ETAPAS_EN_ENTREGA.has(negocio?.etapa)) {
+    const facturaKey = Object.keys(datos).find((k) => k.toLowerCase() === 'valor factura');
+    const valorFactura = facturaKey ? parseMonto(datos[facturaKey]) : NaN;
+    if (!isNaN(valorFactura)) return valorFactura;
+  }
+  const ventaKey = Object.keys(datos).find((k) => k.toLowerCase() === 'valor venta');
+  return ventaKey ? parseMonto(datos[ventaKey]) : null;
+}
+
 function useDebounce(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -582,8 +600,7 @@ async function obtenerConciliacionCompleta(negocio) {
     page += 1;
   } while (page <= totalPages);
 
-  const valorVentaKey = Object.keys(negocio.datos || {}).find((k) => k.toLowerCase() === 'valor venta');
-  const valorVenta = valorVentaKey ? parseMonto(negocio.datos[valorVentaKey]) : null;
+  const valorVenta = resolverValorVenta(negocio);
 
   // Propuesta de Pago primero (es con la que se hace la conciliación real
   // del negocio), Forma de Pago como respaldo solo si no hay propuesta.
@@ -1266,9 +1283,17 @@ async function exportarEstadoCuenta(negocio, datos) {
   });
 
   // Tabla resumen coloreada (derecha)
-  const valorCuota = cuotas.length > 1
-    ? cuotas.slice(0, -1).reduce((s, c) => s + c.valorPlan, 0)
-    : (cuotas[0]?.valorPlan ?? 0);
+  // Cuota Inicial real: el cronograma de Zoho no siempre coincide con lo que
+  // la fiducia registra -- mismo criterio que obtenerConciliacionCompleta /
+  // dashboardRecaudoService.js, usa el campo "Cuota Inicial" de la fiducia
+  // cuando existe.
+  const cuotaInicialFiduciaKey = Object.keys(negocio.datos || {}).find((k) => k.toLowerCase() === 'cuota inicial');
+  const cuotaInicialFiducia = cuotaInicialFiduciaKey ? parseMonto(negocio.datos[cuotaInicialFiduciaKey]) : NaN;
+  const valorCuota = !isNaN(cuotaInicialFiducia)
+    ? cuotaInicialFiducia
+    : cuotas.length > 1
+      ? cuotas.slice(0, -1).reduce((s, c) => s + c.valorPlan, 0)
+      : (cuotas[0]?.valorPlan ?? 0);
   const valorPendiente = Math.max(0, resumen.totalPlan - resumen.totalPagado);
   autoTable(doc, {
     startY: yInicio,

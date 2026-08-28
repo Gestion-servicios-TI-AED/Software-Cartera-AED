@@ -17,7 +17,12 @@ const COLS_RESUMEN_EXCLUIR = [
   // necesario para cuando se va a entregar el inmueble
   'Fecha Autoriz. Escritura', 'Matricula Inmobiliaria', 'Valor Escritura', 'Observaciones',
   'Fecha Factura', 'Número Factura', 'Número Escritura Publica', 'Notaria',
-  'Valor Factura', 'Fecha Envío Contabilidad',
+  'Fecha Envío Contabilidad',
+  // 'Valor Factura' SÍ se conserva desde que Etapa 1 y 2 empezaron a
+  // entregarse -- confirmado con el usuario: para inmuebles VENDIDO de esas
+  // etapas, el Valor Venta real pasa a ser esta columna (no la "Valor venta"
+  // original) en cuanto se emite la factura. Ver uso en
+  // dashboardRecaudoService.js / Negocios.jsx (resolverValorVenta()).
 ];
 
 // Hoja Movimientos / Mov_Por_Propietario (alimenta NegocioMovimiento.datos)

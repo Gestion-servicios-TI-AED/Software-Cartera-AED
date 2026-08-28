@@ -4,6 +4,26 @@ const { obtenerFechasEntregaConfiguradas, CLAVE_TODAS } = require('./configuraci
 const { elegirOportunidadVigente } = require('../config/estadosOportunidad');
 const { estaExcluidoDelPortafolio, esNombreMarcadoInvalido } = require('../config/inventarioExcluido');
 
+// Etapas 1 y 2 (Kabo/Prive) ya están en entrega -- confirmado con el usuario:
+// para un inmueble VENDIDO de esas etapas, el Valor Venta real deja de ser la
+// columna "Valor venta" (el estimado de la negociación) y pasa a ser "Valor
+// Factura" (el valor con el que efectivamente se facturó al momento de
+// entregar). Fuera de Etapa 1/2, o si el negocio no está VENDIDO, o si el
+// negocio todavía no trae "Valor Factura" (falta resubir el Excel de fiducia
+// tras quitar esta columna de columnasExcluidas.js), se usa "Valor venta"
+// como siempre.
+const ETAPAS_EN_ENTREGA = new Set(['1', '2']);
+function resolverValorVenta(negocio, etapa) {
+  const datos = negocio?.datos || {};
+  if (negocio?.estado === 'VENDIDO' && ETAPAS_EN_ENTREGA.has(etapa)) {
+    const facturaKey = Object.keys(datos).find((k) => k.toLowerCase() === 'valor factura');
+    const valorFactura = facturaKey ? parseMonto(datos[facturaKey]) : NaN;
+    if (!isNaN(valorFactura)) return valorFactura;
+  }
+  const ventaKey = Object.keys(datos).find((k) => k.toLowerCase() === 'valor venta');
+  return ventaKey ? parseMonto(datos[ventaKey]) : null;
+}
+
 // ── Cache en memoria del cálculo pesado ─────────────────────────────────────
 // obtenerDashboardRecaudo recibe filtros distintos en cada llamada (Etapa,
 // Frente, Torre, búsqueda, Solo con movimientos), pero el cálculo caro --
@@ -310,8 +330,7 @@ async function construirFilasCompletas() {
       // Dashboard mostraran cuotas/mora distintas a la Conciliación real de
       // cada negocio (la última cuota es justo la que casi siempre está en
       // mora en los casos más viejos, así que la diferencia era grande ahí).
-      const valorVentaKey = Object.keys(negocio.datos || {}).find((k) => k.toLowerCase() === 'valor venta');
-      const valorVenta = valorVentaKey ? parseMonto(negocio.datos[valorVentaKey]) : null;
+      const valorVenta = resolverValorVenta(negocio, etapa);
       if (valorVenta != null && !isNaN(valorVenta) && cuotasPlan.length >= 2) {
         const sumaResto = cuotasPlan.slice(0, -1).reduce((s, c) => s + c.valorPlan, 0);
         cuotasPlan[cuotasPlan.length - 1].valorPlan = valorVenta - sumaResto;
@@ -348,6 +367,28 @@ async function construirFilasCompletas() {
       abonadoCuotaInicial = cuotasCuotaInicial.length > 0
         ? cuotasCuotaInicial.reduce((s, c) => s + c.cubierto, 0)
         : null;
+
+      // Cuota Inicial real -- el cronograma de Zoho (cuotas numeradas antes
+      // de Saldo Contraentrega) no siempre coincide con lo que la fiducia
+      // registra como Cuota Inicial real del negocio (p.ej. cuando el
+      // cronograma no se actualizó tras una renegociación) -- confirmado
+      // contra el Excel "TRABAJAR CONSOLIDADO... JULIO 2026": VALOR CUOTAS
+      // INICIALES calculado desde el cronograma quedaba hasta la mitad del
+      // valor real de la fiducia en varias etapas. Si el negocio trae el
+      // campo "Cuota Inicial" en la fiducia, se usa como el valor real, y
+      // Saldo Contraentrega se recalcula como el residuo contra Valor Venta
+      // -- mismo criterio que ya se usaba arriba para ajustar la última
+      // cuota, solo que ahora el "corte" lo da la fiducia en vez del
+      // cronograma.
+      const cuotaInicialFiduciaKey = Object.keys(negocio.datos || {}).find((k) => k.toLowerCase() === 'cuota inicial');
+      const cuotaInicialFiducia = cuotaInicialFiduciaKey ? parseMonto(negocio.datos[cuotaInicialFiduciaKey]) : NaN;
+      if (!isNaN(cuotaInicialFiducia)) {
+        valorCuotaInicial = cuotaInicialFiducia;
+        if (valorVenta != null && !isNaN(valorVenta)) {
+          valorSaldoContraentrega = valorVenta - cuotaInicialFiducia;
+        }
+      }
+
       totalAbonado = resumen.totalPagado;
       cuotasEnMora = resumen.cuotasEnMora;
       montoEnMora = resumen.montoEnMora;
@@ -583,15 +624,19 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
   const totalesPorDiaInicial = new Map();
   const totalesPorDiaContraentrega = new Map();
   // Totales de las columnas fijas monetarias (para la fila de totales del
-  // <tfoot>, igual que ya se hace por mes) -- mismo criterio de "pendiente
-  // por recaudar" que la columna en pantalla (Math.max(0, valor - abonado)).
+  // <tfoot>, igual que ya se hace por mes). pendienteRecaudar/
+  // pendienteContraentrega/recaudadoContraentrega se derivan DESPUÉS del loop
+  // sobre el agregado (valor total - abonado total), no negocio por negocio
+  // -- mismo criterio que Resumen Gerencial, confirmado exacto contra el
+  // Excel "TRABAJAR CONSOLIDADO... JULIO 2026". Antes se sumaba el pendiente
+  // de cada negocio con su propio piso en 0 para que un sobrepago no
+  // "tapara" la deuda de otro (más prudente para cobranza real) -- pero no
+  // es el criterio de este reporte; Cartera en Gestión sigue con la lista
+  // operativa por negocio, sin tocar.
   const totalesColumnasFijas = {
     valorInmueble: 0, valorCuotaInicial: 0, abonadoCuotaInicial: 0,
     valorSaldoContraentrega: 0, totalAbonado: 0, pendienteRecaudar: 0,
     cuotasEnMora: 0, montoEnMora: 0,
-    // KPIs de gerencial: mismo criterio de "flotar en 0 por fila antes de
-    // sumar" que pendienteRecaudar de arriba, para no dejar que un negocio
-    // sobrepagado (saldo a favor) esconda la deuda real de otro negocio.
     pendienteContraentrega: 0, recaudadoContraentrega: 0,
     cuotasEnMoraInicial: 0, montoEnMoraInicial: 0,
     // "Disponible" = sin negocio vinculado o con estado LIBRE (aún no
@@ -607,27 +652,10 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
     if (f.abonadoCuotaInicial != null) totalesColumnasFijas.abonadoCuotaInicial += f.abonadoCuotaInicial;
     if (f.valorSaldoContraentrega != null) totalesColumnasFijas.valorSaldoContraentrega += f.valorSaldoContraentrega;
     if (f.totalAbonado != null) totalesColumnasFijas.totalAbonado += f.totalAbonado;
-    if (f.valorInmueble != null && f.totalAbonado != null) {
-      totalesColumnasFijas.pendienteRecaudar += Math.max(0, f.valorInmueble - f.totalAbonado);
-    }
     totalesColumnasFijas.cuotasEnMora += f.cuotasEnMora ?? 0;
     totalesColumnasFijas.montoEnMora += f.montoEnMora ?? 0;
     totalesColumnasFijas.cuotasEnMoraInicial += f.cuotasEnMoraInicial ?? 0;
     totalesColumnasFijas.montoEnMoraInicial += f.montoEnMoraInicial ?? 0;
-
-    // Saldo Pendiente Contraentrega: lo que aún falta de la última cuota,
-    // usando lo abonado hacia esa parte (lo que sobra después de cubrir la
-    // Cuota Inicial) -- consistente con la cascada de conciliar(). Cuando el
-    // plan tiene una sola cuota (todo es Saldo Contraentrega, sin Cuota
-    // Inicial separada) abonadoCuotaInicial es null -- tratarlo como 0, no
-    // saltar la fila, porque en ese caso el 100% de lo abonado va hacia acá.
-    if (f.valorSaldoContraentrega != null && f.totalAbonado != null) {
-      const abonadoHaciaContraentrega = f.totalAbonado - (f.abonadoCuotaInicial ?? 0);
-      totalesColumnasFijas.pendienteContraentrega += Math.max(0, f.valorSaldoContraentrega - abonadoHaciaContraentrega);
-      // Recaudado real hacia el 70%, tope en el valor de esa cuota (lo que
-      // sobrepasa el plan es saldo a favor, no "recaudado contraentrega").
-      totalesColumnasFijas.recaudadoContraentrega += Math.min(Math.max(0, abonadoHaciaContraentrega), f.valorSaldoContraentrega);
-    }
 
     // Disponible vs. Vendidos -- según el estado propio del inmueble en
     // Inventario (Vendido/Reservado/Disponible/Separado/Stand-By/Pend
@@ -702,6 +730,16 @@ async function obtenerDashboardRecaudo({ search, etapa, frente, torre, conMovimi
       t.porRecaudar += v.porRecaudar ?? 0;
     }
   }
+
+  // Pendientes derivados del agregado (ver comentario en totalesColumnasFijas
+  // más arriba): "abonado hacia Cuota Inicial" tope en el valor de esa
+  // porción; el resto de lo abonado va hacia Saldo Contraentrega.
+  const abonadoHaciaCuotaInicial = Math.min(totalesColumnasFijas.valorCuotaInicial, totalesColumnasFijas.totalAbonado);
+  const abonadoHaciaContraentrega = Math.max(0, totalesColumnasFijas.totalAbonado - totalesColumnasFijas.valorCuotaInicial);
+  totalesColumnasFijas.pendienteRecaudar = Math.max(0, totalesColumnasFijas.valorInmueble - totalesColumnasFijas.totalAbonado);
+  totalesColumnasFijas.pendienteContraentrega = Math.max(0, totalesColumnasFijas.valorSaldoContraentrega - abonadoHaciaContraentrega);
+  totalesColumnasFijas.recaudadoContraentrega = Math.min(abonadoHaciaContraentrega, totalesColumnasFijas.valorSaldoContraentrega);
+
   const meses = [...mesesSet].sort();
   const totales = Object.fromEntries(meses.map((m) => [m, totalesPorMes.get(m)]));
   const totalesInicial = Object.fromEntries(meses.map((m) => [m, totalesPorMesInicial.get(m) ?? periodoVacio()]));
@@ -986,9 +1024,6 @@ function acumuladoEtapaVacio() {
     recaudoCuotaInicial: 0,
     carteraMas5Dias: 0,
     esperadoAFechaInicial: 0,
-    pendienteCredito: 0,
-    pendienteTotalFiduciaria: 0,
-    pendienteCuotaInicial: 0,
   };
 }
 
@@ -1012,36 +1047,23 @@ async function obtenerResumenPorEtapa() {
     if (ESTADOS_NEGOCIO_VENDIDA_FIDU.has(f.estado)) e.uniVendidasFidu += 1;
     if (ESTADOS_INV_VENDIDA_CRM.has(f.estadoInventario)) e.uniVendidasCRM += 1;
 
-    // "Fiduciaria" = tiene Negocio vinculado (encargo fiduciario real);
-    // "Disponibles" = sin Negocio todavía -- mismo corte que ya usan las
-    // tarjetas de Inmuebles disponibles/vendidos de este Resumen, pero por
-    // presencia de Negocio en vez de estadoInventario (son clasificaciones
-    // independientes: Zoho Producto vs. Zoho Negocio).
-    if (f.negocioId != null) {
+    // "Fiduciaria" = Negocio vinculado Y en estado vendida (mismo criterio
+    // que uniVendidasFidu arriba); "Disponibles" = todo lo demás -- sin
+    // Negocio, o con Negocio en LIBRE/EN_RETIRO (esos ya no representan una
+    // venta activa). Antes el corte era solo "tiene Negocio o no", así que un
+    // Negocio LIBRE/EN_RETIRO se sumaba como "vendido" en vez de disponible
+    // -- esto dejaba a Disponibles con menos valor del real y a Ventas
+    // Fiduciaria con más, verificado contra el Excel "TRABAJAR CONSOLIDADO...
+    // JULIO 2026": con el corte viejo, Valor Disponibles quedaba miles de
+    // millones por debajo de esa fuente en varias etapas; con este corte,
+    // coincide (ej. Etapa 1: 3,271.3M en ambos, exacto).
+    if (f.negocioId != null && ESTADOS_NEGOCIO_VENDIDA_FIDU.has(f.estado)) {
       if (f.valorInmueble != null) e.valorTotalVentasFiduciaria += f.valorInmueble;
       if (f.valorCuotaInicial != null) e.valorCuotasIniciales += f.valorCuotaInicial;
       if (f.totalAbonado != null) e.recaudoReal += f.totalAbonado;
       if (f.abonadoCuotaInicial != null) e.recaudoCuotaInicial += f.abonadoCuotaInicial;
       if (f.esperadoAFechaInicial != null) e.esperadoAFechaInicial += f.esperadoAFechaInicial;
       if ((f.maxDiasAtrasoInicial ?? 0) > UMBRAL_CARTERA_DIAS) e.carteraMas5Dias += f.montoEnMoraInicial ?? 0;
-      // Los 3 "pendiente" se calculan por NEGOCIO (no sobre el agregado de la
-      // etapa) y cada uno con su propio piso en 0 -- mismo criterio que ya
-      // usa totalesColumnasFijas más abajo (pendienteRecaudar/
-      // pendienteContraentrega) para las tarjetas KPI de este mismo Resumen.
-      // Es a propósito: si se calculara sobre el agregado, el saldo a favor
-      // de un negocio sobrepagado podría "tapar" la deuda real de otro
-      // dentro de la misma etapa, y de paso Total ya no cuadraría con Cuota
-      // Inicial + Crédito sumados.
-      if (f.valorInmueble != null && f.totalAbonado != null) {
-        e.pendienteTotalFiduciaria += Math.max(0, f.valorInmueble - f.totalAbonado);
-      }
-      if (f.valorCuotaInicial != null && f.abonadoCuotaInicial != null) {
-        e.pendienteCuotaInicial += Math.max(0, f.valorCuotaInicial - f.abonadoCuotaInicial);
-      }
-      if (f.valorSaldoContraentrega != null && f.totalAbonado != null) {
-        const abonadoHaciaContraentrega = f.totalAbonado - (f.abonadoCuotaInicial ?? 0);
-        e.pendienteCredito += Math.max(0, f.valorSaldoContraentrega - abonadoHaciaContraentrega);
-      }
     } else if (f.valorInmueble != null) {
       e.valorTotalUnidadesDisponibles += f.valorInmueble;
     }
@@ -1072,12 +1094,28 @@ async function obtenerResumenPorEtapa() {
       recaudoCuotaInicial: e.recaudoCuotaInicial,
       esperadoAFechaInicial: e.esperadoAFechaInicial,
       pctRecaudoSobreVentasFiduciaria: e.valorTotalVentasFiduciaria > 0 ? e.recaudoReal / e.valorTotalVentasFiduciaria : null,
-      pctRecaudoSobreCuotaInicial: e.valorCuotasIniciales > 0 ? e.recaudoCuotaInicial / e.valorCuotasIniciales : null,
+      // Recaudo total (no solo lo aplicado a Cuota Inicial) sobre el valor de
+      // Cuota Inicial -- puede superar 100% cuando el cliente ya adelantó
+      // plata hacia el Saldo Contraentrega. Confirmado exacto contra el
+      // Excel "TRABAJAR CONSOLIDADO... JULIO 2026" en las 7 etapas (ej.
+      // Etapa 1: $130.753,1M recaudado / $101.374,7M cuota inicial =
+      // 128.98%, igual al Excel).
+      pctRecaudoSobreCuotaInicial: e.valorCuotasIniciales > 0 ? e.recaudoReal / e.valorCuotasIniciales : null,
       carteraMas5Dias: e.carteraMas5Dias,
       pctCarteraMas5Dias: e.esperadoAFechaInicial > 0 ? e.carteraMas5Dias / e.esperadoAFechaInicial : null,
-      pendienteTotalFiduciaria: e.pendienteTotalFiduciaria,
-      pendienteCuotaInicial: e.pendienteCuotaInicial,
-      pendienteCredito: e.pendienteCredito,
+      // Los 3 "pendiente" se calculan sobre el AGREGADO de la etapa (recaudo
+      // total contra el objetivo de esa etapa), no negocio por negocio -- así
+      // los calcula el Excel de Gerencia (confirmado exacto contra "TRABAJAR
+      // CONSOLIDADO... JULIO 2026" en las 7 etapas). Antes se sumaba el
+      // pendiente de cada negocio con su propio piso en 0 para que un
+      // sobrepago no "tapara" la deuda real de otro dentro de la misma
+      // etapa -- más prudente para cobranza real, pero no es el criterio que
+      // usa este reporte gerencial. Cartera en Gestión (la lista operativa de
+      // cobranza) sigue usando el cálculo por negocio, sin tocar.
+      pendienteTotalFiduciaria: Math.max(0, e.valorTotalVentasFiduciaria - e.recaudoReal),
+      pendienteCuotaInicial: Math.max(0, e.valorCuotasIniciales - e.recaudoReal),
+      pendienteCredito:
+        Math.max(0, e.valorTotalVentasFiduciaria - e.recaudoReal) - Math.max(0, e.valorCuotasIniciales - e.recaudoReal),
       fechaCorte,
     };
   });
@@ -1090,7 +1128,7 @@ async function obtenerResumenPorEtapa() {
     etapa: 'TOTAL GENERAL',
     uniDisponible: total.uniTotales - total.uniVendidasFidu,
     pctRecaudoSobreVentasFiduciaria: total.valorTotalVentasFiduciaria > 0 ? total.recaudoReal / total.valorTotalVentasFiduciaria : null,
-    pctRecaudoSobreCuotaInicial: total.valorCuotasIniciales > 0 ? total.recaudoCuotaInicial / total.valorCuotasIniciales : null,
+    pctRecaudoSobreCuotaInicial: total.valorCuotasIniciales > 0 ? total.recaudoReal / total.valorCuotasIniciales : null,
     pctCarteraMas5Dias: total.esperadoAFechaInicial > 0 ? total.carteraMas5Dias / total.esperadoAFechaInicial : null,
     // El Excel deja "Fecha de Corte" vacía en la fila de totales -- solo la
     // repite en cada fila de Etapa.
