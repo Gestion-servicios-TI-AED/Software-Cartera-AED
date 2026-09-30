@@ -1,9 +1,99 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Layers, MapPin, Building, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, AlertTriangle, Briefcase, ExternalLink, Warehouse, Clock, Repeat, Check } from 'lucide-react';
+import ExcelJS from 'exceljs';
+import { Search, Layers, MapPin, Building, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, AlertTriangle, Briefcase, ExternalLink, Warehouse, Clock, Repeat, Check, Download } from 'lucide-react';
 import { getCarteraMora, actualizarFlagsNegocio } from '../utils/api';
 import { formatCOP } from '../utils/format';
 import { etiquetaEtapa } from '../utils/etapas';
 import Spinner from '../components/Spinner';
+
+// Misma paleta que ReportePlanRecaudo.jsx#COLOR_EXCEL (Dashboard) -- mismo
+// lenguaje visual para cualquier .xlsx que exporte este app, Cartera en
+// Gestión incluida (Jefe Gabriel, 2026-09-30: "agreguemos el mismo botón
+// exportar a excel ahí en el viejo", mismo pedido ya resuelto en el proyecto
+// nuevo -- Cartera/frontend/src/features/cartera-mora/CarteraMoraPage.jsx).
+const COLOR_EXCEL = {
+  headerFijaBg: 'FF0D9488', // teal-600
+  headerTexto: 'FFFFFFFF',
+  filaImparBg: 'FFF8FAFC', // slate-50
+  filaParBg: 'FFFFFFFF',
+  textoPendiente: 'FFB45309', // amber-700
+  textoVencido: 'FFDC2626', // red-600
+};
+
+// El Excel es una foto fiel de la tabla en pantalla -- mismas 2 vistas,
+// mismas columnas exactas que `COLUMNAS`/`COLUMNAS_CONTRAENTREGA` de más
+// abajo (Etapa/Frente/Torre por separado, no combinadas, a diferencia del
+// proyecto nuevo que sí las fusiona en una sola "Frente/Torre" -- acá se
+// respeta el shape que esta página YA muestra, sin cambiarlo).
+const EXCEL_COLUMNAS_INICIAL = [
+  { key: 'etapa', header: 'ETAPA', width: 10, align: 'left', render: (f) => f.etapa ?? '—' },
+  { key: 'frente', header: 'FRENTE', width: 16, align: 'left', render: (f) => f.frente ?? '—' },
+  { key: 'torre', header: 'TORRE', width: 10, align: 'left', render: (f) => (f.torre != null ? `Torre ${f.torre}` : '—') },
+  { key: 'unidad', header: 'NOMENCLATURA', width: 16, align: 'left', render: (f) => f.unidad ?? '—' },
+  { key: 'referencia', header: 'REFERENCIA', width: 16, align: 'left', render: (f) => f.referencia ?? '—' },
+  { key: 'comprador', header: 'COMPRADOR', width: 32, align: 'left', render: (f) => f.comprador ?? '—' },
+  { key: 'valorInmueble', header: 'VALOR APARTAMENTO', width: 20, numFmt: '#,##0', render: (f) => f.valorInmueble ?? 0 },
+  { key: 'cuotasEnMora', header: 'CUOTAS MORA', width: 14, numFmt: '#,##0', render: (f) => f.cuotasEnMora ?? 0 },
+  { key: 'maxDiasAtraso', header: 'DÍAS ATRASO', width: 14, numFmt: '#,##0', tono: 'warning', render: (f) => f.maxDiasAtraso ?? 0 },
+  { key: 'montoEnMora', header: 'VALOR VENCIDO', width: 20, numFmt: '#,##0', tono: 'danger', render: (f) => f.montoEnMora ?? 0 },
+  { key: 'pctEnMora', header: '% EN MORA', width: 13, numFmt: '0.0"%"', tono: 'danger', render: (f) => f.pctEnMora ?? 0 },
+];
+const EXCEL_COLUMNAS_CONTRAENTREGA = [
+  { key: 'frente', header: 'FRENTE', width: 16, align: 'left', render: (f) => f.frente ?? '—' },
+  { key: 'torre', header: 'TORRE', width: 10, align: 'left', render: (f) => (f.torre != null ? `Torre ${f.torre}` : '—') },
+  { key: 'unidad', header: 'NOMENCLATURA', width: 16, align: 'left', render: (f) => f.unidad ?? '—' },
+  { key: 'referencia', header: 'REFERENCIA', width: 16, align: 'left', render: (f) => f.referencia ?? '—' },
+  { key: 'comprador', header: 'COMPRADOR', width: 32, align: 'left', render: (f) => f.comprador ?? '—' },
+  { key: 'fechaSaldoContraentrega', header: 'FECHA VENCIDA', width: 16, isDate: true, tono: 'warning', render: (f) => (f.fechaSaldoContraentrega ? new Date(f.fechaSaldoContraentrega) : null) },
+  { key: 'montoEnMora', header: 'VALOR PENDIENTE', width: 20, numFmt: '#,##0', tono: 'danger', render: (f) => f.montoEnMora ?? 0 },
+];
+
+function construirLibroCarteraMora(filas, columnas, nombreHoja) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(nombreHoja);
+  const fillSolida = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+
+  columnas.forEach((col, i) => { ws.getColumn(i + 1).width = col.width; });
+
+  const headerRow = ws.getRow(1);
+  columnas.forEach((col, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = col.header;
+    cell.fill = fillSolida(COLOR_EXCEL.headerFijaBg);
+    cell.font = { bold: true, color: { argb: COLOR_EXCEL.headerTexto }, size: 11 };
+    cell.alignment = { vertical: 'middle', horizontal: col.align === 'left' ? 'left' : 'center', wrapText: true };
+  });
+  headerRow.height = 22;
+
+  filas.forEach((fila, idx) => {
+    const row = ws.getRow(idx + 2);
+    const bgFila = idx % 2 === 1 ? COLOR_EXCEL.filaImparBg : COLOR_EXCEL.filaParBg;
+    columnas.forEach((col, i) => {
+      const cell = row.getCell(i + 1);
+      cell.value = col.render(fila);
+      if (col.numFmt) cell.numFmt = col.numFmt;
+      if (col.isDate) cell.numFmt = 'dd/mm/yyyy';
+      cell.alignment = { vertical: 'middle', horizontal: col.align === 'left' ? 'left' : 'center' };
+      cell.fill = fillSolida(bgFila);
+      if (col.tono === 'warning') cell.font = { color: { argb: COLOR_EXCEL.textoPendiente } };
+      else if (col.tono === 'danger') cell.font = { color: { argb: COLOR_EXCEL.textoVencido } };
+    });
+  });
+
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+  return wb;
+}
+
+async function descargarLibroCarteraMora(wb, nombreArchivo) {
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombreArchivo;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 // Encabezados ordenables -- 3 clics por columna: ascendente → descendente →
 // sin ordenar. `key` es el campo que el backend usa para ordenar todo el
@@ -141,6 +231,7 @@ export default function CarteraMora() {
   const [conteos, setConteos] = useState({ inicial: 0, contraentrega: 0 });
   const [topFilas, setTopFilas] = useState([]);
   const [topAbierto, setTopAbierto] = useState(false); // escondido por defecto
+  const [exportando, setExportando] = useState(false);
 
   const debouncedSearch = useDebounce(search);
 
@@ -166,6 +257,23 @@ export default function CarteraMora() {
     page: p,
     limit: 50,
   }), [debouncedSearch, etapaFilter, frenteFilter, torreFilter, rangoFilter, tramiteFilter, vista, sortBy, sortDir]);
+
+  // Mismos filtros/orden activos que la tabla, sin paginar (limit=9999) --
+  // mismo criterio que handleExport de ReportePlanRecaudo.jsx.
+  const handleExportarExcel = useCallback(async () => {
+    setExportando(true);
+    try {
+      const res = await getCarteraMora({ ...paramsActuales(1), limit: 9999 });
+      const columnas = vista === 'contraentrega' ? EXCEL_COLUMNAS_CONTRAENTREGA : EXCEL_COLUMNAS_INICIAL;
+      const wb = construirLibroCarteraMora(res.data, columnas, 'Cartera en Gestión');
+      await descargarLibroCarteraMora(wb, `cartera-en-gestion-${vista}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (err) {
+      console.error('Error exportando cartera en gestión a Excel:', err);
+      window.alert(`No se pudo exportar: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setExportando(false);
+    }
+  }, [paramsActuales, vista]);
 
   const aplicarResultado = (res, p) => {
     setFilas(res.data);
@@ -329,15 +437,24 @@ export default function CarteraMora() {
   return (
     <div className="min-h-screen flex flex-col gap-3 p-5">
       <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-        <h1 className="text-[19px] font-bold text-slate-800 flex items-center gap-2">
-          <AlertTriangle size={18} className="text-red-500" />
-          Cartera en Gestión
-        </h1>
-        <span className="text-[13px] text-slate-500">
-          {vista === 'contraentrega'
-            ? 'Inmuebles cuyo Saldo Contraentrega ya venció — puede reflejar que aún no se ha escriturado, no necesariamente mora activa de cobranza.'
-            : 'Negocios con cuotas atrasadas de la Cuota Inicial — no incluye Saldo Contraentrega, calculado en vivo contra los movimientos reales.'}
-        </span>
+        <div className="flex items-center gap-2 flex-1 flex-wrap">
+          <h1 className="text-[19px] font-bold text-slate-800 flex items-center gap-2">
+            <AlertTriangle size={18} className="text-red-500" />
+            Cartera en Gestión
+          </h1>
+          <span className="text-[13px] text-slate-500">
+            {vista === 'contraentrega'
+              ? 'Inmuebles cuyo Saldo Contraentrega ya venció — puede reflejar que aún no se ha escriturado, no necesariamente mora activa de cobranza.'
+              : 'Negocios con cuotas atrasadas de la Cuota Inicial — no incluye Saldo Contraentrega, calculado en vivo contra los movimientos reales.'}
+          </span>
+        </div>
+        <button
+          onClick={handleExportarExcel}
+          disabled={exportando || filas.length === 0}
+          className="btn-secondary px-3 py-1.5 text-[14px] flex items-center gap-1.5 disabled:opacity-50"
+        >
+          <Download size={13} /> {exportando ? 'Exportando…' : 'Exportar a Excel'}
+        </button>
       </div>
 
       <div className="flex gap-1 flex-shrink-0">
